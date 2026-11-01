@@ -52,6 +52,7 @@
   <p>For a frozen weight \(W_0 \in \mathbb{R}^{d \times k}\), LoRA learns \(B \in \mathbb{R}^{d \times r}\) and \(A \in \mathbb{R}^{r \times k}\) with \(r \ll \min(d,k)\):</p>
   <div class="eq">\[ h = W_0 x + \frac{\alpha}{r}\, B A x \]<span class="eqcap">\(A\) starts random (Gaussian), \(B\) starts at zero, so \(BA = 0\) and training begins exactly at the pretrained model. \(\alpha\) is a fixed scale; dividing by \(r\) keeps the update size roughly stable when you change the rank.</span></div>
   <p>The update has \(r(d+k)\) trainable parameters instead of \(dk\). For a 4096 × 4096 projection at rank 16, that is 131,072 instead of 16.8 million, under 1%. After training, \(W = W_0 + \frac{\alpha}{r}BA\) can be merged into the base weights, so a single-adapter deployment has no extra inference cost.</p>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>import torch, torch.nn as nn
 
 class LoRALinear(nn.Module):
@@ -76,6 +77,85 @@ class LoRALinear(nn.Module):
 layer = LoRALinear(nn.Linear(4096, 4096, bias=False), r=16)
 trainable = sum(p.numel() for p in layer.parameters() if p.requires_grad)
 print(trainable, f"{trainable / 4096**2:.2%}")  # 131072 0.78%</code></pre>
+<pre class="code" data-lang="rust"><code>// Plain Rust, no ML framework: the same math on small vectors.
+// Matrices are flat row-major Vec&lt;f64&gt;. The random init uses a small inline PRNG
+// (SplitMix64), so the draws differ from torch; the parameter count does not.
+
+struct SplitMix64(u64);
+
+impl SplitMix64 {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn uniform(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64 // in [0, 1)
+    }
+    fn normal(&amp;mut self) -&gt; f64 {
+        // Box-Muller; 1 - u keeps the log argument in (0, 1]
+        let (u1, u2) = (1.0 - self.uniform(), self.uniform());
+        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+    }
+}
+
+struct LoRALinear {
+    weight: Vec&lt;f64&gt;, // d_out x d_in; the pretrained weight stays frozen
+    a: Vec&lt;f64&gt;,      // r x d_in, trainable
+    b: Vec&lt;f64&gt;,      // d_out x r, trainable
+    d_out: usize,
+    d_in: usize,
+    r: usize,
+    scale: f64,
+}
+
+impl LoRALinear {
+    fn new(weight: Vec&lt;f64&gt;, d_out: usize, d_in: usize, r: usize, alpha: f64, rng: &amp;mut SplitMix64) -&gt; Self {
+        let a = (0..r * d_in).map(|_| rng.normal() / (r as f64).sqrt()).collect();
+        let b = vec![0.0; d_out * r]; // zero init: BA = 0 at step 0
+        LoRALinear { weight, a, b, d_out, d_in, r, scale: alpha / r as f64 }
+    }
+
+    fn trainable_params(&amp;self) -&gt; usize {
+        self.a.len() + self.b.len() // only A and B get gradients
+    }
+
+    fn forward(&amp;self, x: &amp;[f64]) -&gt; Vec&lt;f64&gt; {
+        // base(x) + scale * B (A x), never forming the d_out x d_in product BA
+        let ax: Vec&lt;f64&gt; = (0..self.r)
+            .map(|i| (0..self.d_in).map(|j| self.a[i * self.d_in + j] * x[j]).sum())
+            .collect();
+        (0..self.d_out)
+            .map(|o| {
+                let base: f64 = (0..self.d_in).map(|j| self.weight[o * self.d_in + j] * x[j]).sum();
+                let lora: f64 = (0..self.r).map(|i| self.b[o * self.r + i] * ax[i]).sum();
+                base + self.scale * lora
+            })
+            .collect()
+    }
+
+    fn merge(&amp;mut self) {
+        // fold the adapter into the weight for zero-overhead serving
+        for o in 0..self.d_out {
+            for j in 0..self.d_in {
+                let ba: f64 = (0..self.r).map(|i| self.b[o * self.r + i] * self.a[i * self.d_in + j]).sum();
+                self.weight[o * self.d_in + j] += self.scale * ba;
+            }
+        }
+    }
+}
+
+fn main() {
+    let d = 4096;
+    let mut rng = SplitMix64(0);
+    let layer = LoRALinear::new(vec![0.0; d * d], d, d, 16, 32.0, &amp;mut rng);
+    let trainable = layer.trainable_params();
+    let frac = trainable as f64 / (d * d) as f64;
+    println!("{} {:.2}%", trainable, 100.0 * frac); // 131072 0.78%
+}</code></pre>
+</div>
   <p>Practical defaults have shifted since 2021. The original paper adapted only the attention query and value projections. Later work, including QLoRA and the Thinking Machines "LoRA Without Regret" study (2025), found that adapting <i>all</i> linear layers, especially the MLP blocks, matters more than raising the rank. The same study reports that the best LoRA learning rate is about 10× the best full fine-tuning rate. Rank-stabilised LoRA (Kalajdzievski, 2023) scales by \(\alpha/\sqrt{r}\) instead of \(\alpha/r\) so that high ranks keep learning.</p>
 </div>
 

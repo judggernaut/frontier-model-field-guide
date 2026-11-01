@@ -80,6 +80,7 @@ What is 17 * 3?&lt;|im_end|&gt;
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Labels of -100</span></div>
   <p>In PyTorch, <code>CrossEntropyLoss</code> ignores label positions set to <code>-100</code> by default. Masking is done by copying the input ids into labels and overwriting non-target spans:</p>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>import torch
 
 IGNORE = -100  # CrossEntropyLoss(ignore_index=-100) skips these positions
@@ -97,6 +98,28 @@ ids = torch.arange(12)                       # stand-in token ids
 spans = [(0, 4, "system"), (4, 7, "user"), (7, 12, "assistant")]
 print(build_labels(ids, spans))
 # tensor([-100, -100, -100, -100, -100, -100, -100,    7,    8,    9,   10,   11])</code></pre>
+<pre class="code" data-lang="rust"><code>// Plain Rust, no ML framework: the same math on small vectors.
+const IGNORE: i64 = -100; // CrossEntropyLoss(ignore_index=-100) skips these positions
+
+/// spans: list of (start, end, role) over token positions.
+/// Only assistant tokens, including the end-of-turn token, become targets.
+fn build_labels(input_ids: &amp;[i64], spans: &amp;[(usize, usize, &amp;str)]) -&gt; Vec&lt;i64&gt; {
+    let mut labels = vec![IGNORE; input_ids.len()];
+    for &amp;(start, end, role) in spans {
+        if role == "assistant" {
+            labels[start..end].copy_from_slice(&amp;input_ids[start..end]);
+        }
+    }
+    labels
+}
+
+fn main() {
+    let ids: Vec&lt;i64&gt; = (0..12).collect(); // stand-in token ids
+    let spans = [(0, 4, "system"), (4, 7, "user"), (7, 12, "assistant")];
+    println!("{:?}", build_labels(&amp;ids, &amp;spans));
+    // [-100, -100, -100, -100, -100, -100, -100, 7, 8, 9, 10, 11]
+}</code></pre>
+</div>
   <p>One detail with real consequences: the loss is usually averaged over target tokens in the batch. Long responses then get more total weight than short ones. Some recipes average per sequence first, so every example counts equally. Neither is wrong, but changing it shifts the model toward or away from long answers.</p>
 </div>
 <div class="widget" id="w-sf-mask">

@@ -117,7 +117,8 @@
   <p>Training a reward model \(r_\phi\) is maximum likelihood under this model, which is binary cross-entropy on the score difference:</p>
   <div class="eq">\[ \mathcal{L}_{\text{RM}}(\phi) = -\,\mathbb{E}_{(x, y_w, y_l)}\Big[\log \sigma\big(r_\phi(x, y_w) - r_\phi(x, y_l) - m\big)\Big] \]<span class="eqcap">\(m = 0\) in the plain version. Llama 2 used a margin \(m &gt; 0\) that grows with the labeled preference strength, which pushes clearly better pairs further apart.</span></div>
   <p>Two consequences matter in practice. First, the scores are only identified up to an additive constant per prompt, so raw reward values are not comparable across prompts or across reward model versions. Teams normalize (subtract the mean reward on a reference set) before using them. Second, the scale is set by labeler consistency: noisy labels compress all score gaps toward zero, because the model learns that even large quality differences only win 70 percent of the time.</p>
-  <pre class="code" data-lang="python"><code>import torch
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import torch
 import torch.nn.functional as F
 
 def bradley_terry_loss(r_chosen, r_rejected, margin=None):
@@ -132,6 +133,36 @@ r_w = torch.tensor([1.2, 0.3, 2.0])
 r_l = torch.tensor([0.2, 0.9, -1.0])
 print(round(bradley_terry_loss(r_w, r_l).item(), 3))                  # 0.466
 print(round(((r_w - r_l) &gt; 0).float().mean().item(), 3))             # pairwise accuracy 0.667</code></pre>
+<pre class="code" data-lang="rust"><code>// Plain Rust, no ML framework: the same math on small vectors.
+
+fn softplus(x: f64) -&gt; f64 {
+    // log(1 + e^x) without overflow: max(x, 0) + log(1 + e^-|x|)
+    x.max(0.0) + (-x.abs()).exp().ln_1p()
+}
+
+/// r_chosen, r_rejected: slices of length batch, scalar scores from the reward model.
+fn bradley_terry_loss(r_chosen: &amp;[f64], r_rejected: &amp;[f64], margin: Option&lt;&amp;[f64]&gt;) -&gt; f64 {
+    let n = r_chosen.len() as f64;
+    let mut total = 0.0;
+    for i in 0..r_chosen.len() {
+        let mut diff = r_chosen[i] - r_rejected[i];
+        if let Some(m) = margin { // Llama 2 style: demand a bigger gap for clearer preferences
+            diff -= m[i];
+        }
+        // -log sigmoid(diff) == softplus(-diff), and the softplus form is numerically stable
+        total += softplus(-diff);
+    }
+    total / n
+}
+
+fn main() {
+    let r_w = [1.2, 0.3, 2.0];
+    let r_l = [0.2, 0.9, -1.0];
+    println!("{:.3}", bradley_terry_loss(&amp;r_w, &amp;r_l, None)); // 0.466
+    let wins = r_w.iter().zip(&amp;r_l).filter(|(w, l)| w &gt; l).count();
+    println!("{:.3}", wins as f64 / r_w.len() as f64);     // pairwise accuracy 0.667
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-rm-bt">
@@ -158,7 +189,8 @@ print(round(((r_w - r_l) &gt; 0).float().mean().item(), 3))             # pairwi
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Architecture</span></div>
   <p>Take a transformer language model, drop the vocabulary projection, and add a linear head that maps the final hidden state of the last token to one scalar. Run the prompt and response through, read the scalar, done. Chosen and rejected responses are run as two sequences that share the prompt.</p>
-  <pre class="code" data-lang="python"><code>import torch
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import torch
 import torch.nn as nn
 
 class RewardModel(nn.Module):
@@ -172,6 +204,42 @@ class RewardModel(nn.Module):
         last = attention_mask.sum(dim=1) - 1     # index of the final real token (assumes right padding)
         h_last = h[torch.arange(h.size(0)), last]
         return self.value_head(h_last).squeeze(-1)   # one scalar reward per sequence</code></pre>
+<pre class="code" data-lang="rust"><code>// Plain Rust, no ML framework: the same math on small vectors.
+// The backbone is any function from token ids to hidden states [batch][seq][hidden].
+
+struct RewardModel&lt;F: Fn(&amp;[Vec&lt;u32&gt;]) -&gt; Vec&lt;Vec&lt;Vec&lt;f64&gt;&gt;&gt;&gt; {
+    backbone: F,          // e.g. the SFT model without its LM head
+    value_head_w: Vec&lt;f64&gt;, // Linear(hidden_size, 1): one weight per hidden unit
+    value_head_b: f64,
+}
+
+impl&lt;F: Fn(&amp;[Vec&lt;u32&gt;]) -&gt; Vec&lt;Vec&lt;Vec&lt;f64&gt;&gt;&gt;&gt; RewardModel&lt;F&gt; {
+    fn forward(&amp;self, input_ids: &amp;[Vec&lt;u32&gt;], attention_mask: &amp;[Vec&lt;u8&gt;]) -&gt; Vec&lt;f64&gt; {
+        let h = (self.backbone)(input_ids);
+        h.iter()
+            .zip(attention_mask)
+            .map(|(seq, mask)| {
+                // index of the final real token (assumes right padding)
+                let last = mask.iter().map(|&amp;m| m as usize).sum::&lt;usize&gt;() - 1;
+                let h_last = &amp;seq[last];
+                // one scalar reward per sequence
+                h_last.iter().zip(&amp;self.value_head_w).map(|(x, w)| x * w).sum::&lt;f64&gt;() + self.value_head_b
+            })
+            .collect()
+    }
+}
+
+fn main() {
+    // tiny worked example: a toy backbone whose hidden state is [token / 4, 1]
+    let backbone = |ids: &amp;[Vec&lt;u32&gt;]| -&gt; Vec&lt;Vec&lt;Vec&lt;f64&gt;&gt;&gt; {
+        ids.iter().map(|seq| seq.iter().map(|&amp;t| vec![t as f64 / 4.0, 1.0]).collect()).collect()
+    };
+    let rm = RewardModel { backbone, value_head_w: vec![1.0, 0.5], value_head_b: 0.0 };
+    let ids = vec![vec![5, 8, 3, 0], vec![4, 2, 9, 7]];
+    let mask = vec![vec![1, 1, 1, 0], vec![1, 1, 1, 1]];
+    println!("{:?}", rm.forward(&amp;ids, &amp;mask)); // [1.25, 2.25]  reads token 3, then token 7; the pad is never used
+}</code></pre>
+</div>
   <p>Alternatives you will hear about: <b>generative reward models</b> that write a critique and then a verdict (an LLM judge trained on preference data, see <a href="#judges">LLM as judge</a>), <b>multi-objective</b> heads that score helpfulness and harmlessness separately (Llama 2 trained two separate reward models), and <b>pairwise</b> models that read both responses at once and output which is better.</p>
 </div>
 

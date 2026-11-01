@@ -71,7 +71,8 @@
   <p>The KL term is not the textbook expectation. It is estimated per token with the "k3" estimator, which is never negative and, as a <em>value</em>, is an unbiased estimate of \(\mathrm{KL}(\pi_\theta\,\|\,\pi_\text{ref})\) under samples from \(\pi_\theta\). Used as a loss term, though, its per-token gradient is \((1 - \pi_\text{ref}/\pi_\theta)\,\nabla\log\pi_\theta\), whose expectation is the gradient of the <em>reverse</em> KL, \(\mathrm{KL}(\pi_\text{ref}\,\|\,\pi_\theta)\). That subtlety is one reason some later recipes drop or re-derive the KL term:</p>
   <div class="eq">\[ \mathbb{D}_{\text{KL}} \approx \frac{\pi_\text{ref}(o_{i,t}\mid\cdot)}{\pi_\theta(o_{i,t}\mid\cdot)} - \log\frac{\pi_\text{ref}(o_{i,t}\mid\cdot)}{\pi_\theta(o_{i,t}\mid\cdot)} - 1 \]</div>
   <p>Note where KL lives. In PPO-based RLHF it is folded into the reward. In GRPO it is a separate loss term, so it does not distort the advantages.</p>
-  <pre class="code" data-lang="python"><code>import math
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
 
 def group_advantages(rewards, eps=1e-6, scale_by_std=True):
     """Outcome-reward advantages for one prompt's group of G responses."""
@@ -97,6 +98,45 @@ print([round(a, 2) for a in group_advantages([1, 1, 1, 1])])
 # [0.0, 0.0, 0.0, 0.0]   all correct: this prompt teaches nothing
 print(round(grpo_token_loss(-0.5, -1.0, -1.0, 1.73), 4))
 # -2.0717  ratio 1.65 was clipped to 1.2, so the update stops pushing this token up</code></pre>
+<pre class="code" data-lang="rust"><code>/// Outcome-reward advantages for one prompt's group of G responses.
+fn group_advantages(rewards: &amp;[f64], eps: f64, scale_by_std: bool) -&gt; Vec&lt;f64&gt; {
+    let g = rewards.len() as f64;
+    let mu = rewards.iter().sum::&lt;f64&gt;() / g;
+    let sd = (rewards.iter().map(|r| (r - mu).powi(2)).sum::&lt;f64&gt;() / g).sqrt();
+    if !scale_by_std { // Dr. GRPO: centre only, keep the scale
+        return rewards.iter().map(|r| r - mu).collect();
+    }
+    rewards.iter().map(|r| (r - mu) / (sd + eps)).collect()
+}
+
+/// Loss for ONE token. Average over tokens, then responses, then prompts.
+fn grpo_token_loss(logp_new: f64, logp_old: f64, logp_ref: f64, adv: f64, clip_eps: f64, beta: f64) -&gt; f64 {
+    let ratio = (logp_new - logp_old).exp();
+    let clipped = ratio.min(1.0 + clip_eps).max(1.0 - clip_eps);
+    let surrogate = (ratio * adv).min(clipped * adv); // pessimistic of the two
+    let log_r = logp_ref - logp_new;
+    let kl = log_r.exp() - log_r - 1.0;                // k3 estimator, always &gt;= 0
+    -(surrogate - beta * kl)                           // minimise the negative objective
+}
+
+fn round_to(x: f64, digits: usize) -&gt; f64 {
+    // like Python's round(x, n): format the exact value, then read it back
+    format!("{:.*}", digits, x).parse().unwrap()
+}
+
+fn rounded(xs: &amp;[f64], digits: usize) -&gt; Vec&lt;f64&gt; {
+    xs.iter().map(|&amp;x| round_to(x, digits)).collect()
+}
+
+fn main() {
+    println!("{:?}", rounded(&amp;group_advantages(&amp;[1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], 1e-6, true), 2));
+    // [1.73, -0.58, -0.58, 1.73, -0.58, -0.58, -0.58, -0.58]
+    println!("{:?}", rounded(&amp;group_advantages(&amp;[1.0, 1.0, 1.0, 1.0], 1e-6, true), 2));
+    // [0.0, 0.0, 0.0, 0.0]   all correct: this prompt teaches nothing
+    println!("{:?}", round_to(grpo_token_loss(-0.5, -1.0, -1.0, 1.73, 0.2, 0.04), 4));
+    // -2.0717  ratio 1.65 was clipped to 1.2, so the update stops pushing this token up
+}</code></pre>
+</div>
   <p>Memory accounting: PPO holds four networks (policy, reference, reward model, critic) and trains two. GRPO with a programmatic verifier holds two (policy and reference) and trains one. The reference can be dropped too when \(\beta = 0\), which several later recipes do.</p>
 </div>
 
@@ -151,13 +191,31 @@ print(round(grpo_token_loss(-0.5, -1.0, -1.0, 1.73), 4))
   <p><b>Length bias.</b> Averaging each response's token losses with \(1/|o_i|\) before averaging across responses gives every response equal total weight regardless of length. Per token, a long response is diluted. With negative advantage, that dilution is a discount on the penalty. DAPO's token-level loss averages over all tokens in the batch instead, \(\frac{1}{\sum_i |o_i|}\sum_i\sum_t(\cdot)\), so every token counts equally.</p>
   <p><b>Clip-higher.</b> Symmetric clipping at \(1\pm\varepsilon\) caps how fast a low-probability token can be promoted, since a token at probability 0.01 can only rise to 0.012 per step. That suppresses exploration and drives entropy down. DAPO decouples the bounds (for example \(\varepsilon_\text{low}=0.2\), \(\varepsilon_\text{high}=0.28\)) to give rare tokens room to grow.</p>
   <p><b>Dynamic sampling.</b> Groups where every response gets the same reward have all-zero advantages and contribute only the KL term. DAPO over-samples and drops those groups so each batch has a full count of informative prompts.</p>
-  <pre class="code" data-lang="python"><code>def rloo_advantages(rewards):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def rloo_advantages(rewards):
     """Leave-one-out baseline: compare each response to the others' mean."""
     g, total = len(rewards), sum(rewards)
     return [r - (total - r) / (g - 1) for r in rewards]
 
 print([round(a, 3) for a in rloo_advantages([1, 0, 0, 1, 0, 0, 0, 0])])
 # [0.857, -0.286, ...]  equals G/(G-1) times (r - mean)</code></pre>
+<pre class="code" data-lang="rust"><code>/// Leave-one-out baseline: compare each response to the others' mean.
+fn rloo_advantages(rewards: &amp;[f64]) -&gt; Vec&lt;f64&gt; {
+    let (g, total) = (rewards.len() as f64, rewards.iter().sum::&lt;f64&gt;());
+    rewards.iter().map(|r| r - (total - r) / (g - 1.0)).collect()
+}
+
+fn round_to(x: f64, digits: usize) -&gt; f64 {
+    // like Python's round(x, n): format the exact value, then read it back
+    format!("{:.*}", digits, x).parse().unwrap()
+}
+
+fn main() {
+    let adv = rloo_advantages(&amp;[1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
+    println!("{:?}", adv.iter().map(|&amp;a| round_to(a, 3)).collect::&lt;Vec&lt;f64&gt;&gt;());
+    // [0.857, -0.286, ...]  equals G/(G-1) times (r - mean)
+}</code></pre>
+</div>
 </div>
 
 <div class="callout warn"><span class="tag">Watch out</span><div><b>Entropy collapse.</b> As RL proceeds, the policy's token entropy falls and its samples within a group become near-identical. Groups then stop having reward variance, so the learning signal dries up and training plateaus. Monitor entropy and the fraction of zero-variance groups alongside reward. A rising reward with collapsing entropy and a growing zero-signal fraction is a run that is about to stall.</div></div>

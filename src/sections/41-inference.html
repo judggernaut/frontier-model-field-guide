@@ -47,7 +47,8 @@
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The filters, precisely</span></div>
   <p>Given logits \(z_i\), temperature \(T\) gives \(p_i = \exp(z_i/T)/\sum_j \exp(z_j/T)\). As \(T\to 0\) this approaches greedy; at \(T=1\) it is the model's distribution. Top-k keeps the \(k\) largest \(p_i\). Top-p, or nucleus sampling (Holtzman et al., 2020), keeps the smallest prefix of the sorted list whose cumulative mass is at least \(p\). Min-p (Nguyen et al., 2024) keeps tokens with \(p_i \ge p_\text{min}\cdot\max_j p_j\), so the cutoff scales with the model's confidence: strict when one token dominates, permissive when many are plausible. After filtering, renormalise and sample. Implementations differ in the order they apply these filters, which is one reason scores differ across inference stacks.</p>
-  <pre class="code" data-lang="python"><code>import math, random
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math, random
 
 def sample(logits, temperature=1.0, top_p=1.0, rng=random.Random(0)):
     if temperature == 0:                                  # greedy
@@ -68,6 +69,64 @@ def sample(logits, temperature=1.0, top_p=1.0, rng=random.Random(0)):
         if r &lt;= 0:
             return i
     return kept[-1][1]</code></pre>
+<pre class="code" data-lang="rust"><code>// The PRNG is a small inline SplitMix64, so draws differ from Python's random.Random(0).
+// Rust has no shared default argument, so the caller passes the generator in.
+
+struct SplitMix64(u64);
+
+impl SplitMix64 {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64 // in [0, 1), like random.random()
+    }
+}
+
+fn sample(logits: &amp;[f64], temperature: f64, top_p: f64, rng: &amp;mut SplitMix64) -&gt; usize {
+    if temperature == 0.0 { // greedy
+        return (0..logits.len()).max_by(|&amp;a, &amp;b| logits[a].total_cmp(&amp;logits[b])).unwrap();
+    }
+    let z: Vec&lt;f64&gt; = logits.iter().map(|l| l / temperature).collect();
+    let m = z.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let w: Vec&lt;f64&gt; = z.iter().map(|v| (v - m).exp()).collect(); // subtract max for stability
+    let s: f64 = w.iter().sum();
+    let mut ranked: Vec&lt;(f64, usize)&gt; = w.iter().enumerate().map(|(i, p)| (p / s, i)).collect();
+    ranked.sort_by(|a, b| b.partial_cmp(a).unwrap()); // descending, like sorted(..., reverse=True)
+    let (mut kept, mut cum) = (Vec::new(), 0.0);
+    for (p, i) in ranked { // nucleus: smallest set reaching top_p
+        kept.push((p, i));
+        cum += p;
+        if cum &gt;= top_p {
+            break;
+        }
+    }
+    let mut r = rng.random() * kept.iter().map(|(p, _)| p).sum::&lt;f64&gt;(); // renormalise implicitly
+    for &amp;(p, i) in &amp;kept {
+        r -= p;
+        if r &lt;= 0.0 {
+            return i;
+        }
+    }
+    kept[kept.len() - 1].1
+}
+
+fn main() {
+    // tiny worked example: probabilities 0.61, 0.22, 0.14, 0.03 at temperature 1
+    let logits = [2.0, 1.0, 0.5, -1.0];
+    let mut rng = SplitMix64(0);
+    println!("{}", sample(&amp;logits, 0.0, 1.0, &amp;mut rng)); // 0  greedy takes the argmax
+    let mut counts = [0; 4];
+    for _ in 0..10_000 {
+        counts[sample(&amp;logits, 1.0, 0.9, &amp;mut rng)] += 1;
+    }
+    println!("{:?}", counts); // [6326, 2326, 1348, 0]  top_p = 0.9 keeps three tokens; the 0.03 tail is never drawn
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-in-decode">
@@ -104,7 +163,8 @@ def sample(logits, temperature=1.0, top_p=1.0, rng=random.Random(0)):
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The unbiased pass@k estimator</span></div>
   <p>The naive estimate, sampling exactly \(k\) times and checking whether any passed, has high variance. Chen et al. (2021) sample \(n \ge k\) responses, count \(c\) correct, and compute the probability that a random subset of size \(k\) contains at least one correct response:</p>
   <div class="eq">\[ \widehat{\text{pass@}k} = \mathbb{E}_{\text{problems}}\left[1 - \frac{\binom{n-c}{k}}{\binom{n}{k}}\right] \]<span class="eqcap">Unbiased for each problem. Average across problems. Use n comfortably larger than the largest k you report.</span></div>
-  <pre class="code" data-lang="python"><code>from math import comb
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>from math import comb
 import numpy as np
 
 def pass_at_k(n, c, k):
@@ -121,6 +181,39 @@ def pass_at_k_stable(n, c, k):
 
 print(round(pass_at_k(20, 3, 1), 4), round(pass_at_k(20, 3, 5), 4), round(pass_at_k(20, 3, 10), 4))
 # 0.15 0.6009 0.8947</code></pre>
+<pre class="code" data-lang="rust"><code>/// Exact binomial coefficient; u128 is plenty for the n used in evals.
+fn comb(n: u64, k: u64) -&gt; u128 {
+    let k = k.min(n - k);
+    // multiply then divide at each step: every partial result is itself a binomial, so it divides exactly
+    (0..k).fold(1u128, |acc, i| acc * (n - i) as u128 / (i + 1) as u128)
+}
+
+/// n samples, c correct. Probability a random size-k subset has a correct one.
+fn pass_at_k(n: u64, c: u64, k: u64) -&gt; f64 {
+    if n - c &lt; k {
+        return 1.0;
+    }
+    1.0 - comb(n - c, k) as f64 / comb(n, k) as f64
+}
+
+/// Same value, no huge binomials (form used in the Codex paper).
+fn pass_at_k_stable(n: u64, c: u64, k: u64) -&gt; f64 {
+    if n - c &lt; k {
+        return 1.0;
+    }
+    1.0 - (n - c + 1..=n).map(|i| 1.0 - k as f64 / i as f64).product::&lt;f64&gt;()
+}
+
+fn round_to(x: f64, digits: usize) -&gt; f64 {
+    // like Python's round(x, n): format the exact value, then read it back
+    format!("{:.*}", digits, x).parse().unwrap()
+}
+
+fn main() {
+    println!("{:?} {:?} {:?}", round_to(pass_at_k(20, 3, 1), 4), round_to(pass_at_k(20, 3, 5), 4), round_to(pass_at_k(20, 3, 10), 4));
+    // 0.15 0.6009 0.8947
+}</code></pre>
+</div>
   <p>Sampling variance has two sources: which problems are in the set, and which samples each problem drew. With \(n\) samples per problem, the per-problem estimate of pass@1 is \(c/n\), whose variance shrinks with \(n\). The between-problem variance does not. More samples per problem helps only until problem-to-problem variation dominates. For intervals, bootstrap over problems, keeping each problem's samples together (the clustering point from <a href="#evalstats">eval statistics</a>).</p>
 </div>
 
@@ -221,11 +314,22 @@ print(round(pass_at_k(20, 3, 1), 4), round(pass_at_k(20, 3, 5), 4), round(pass_a
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The arithmetic</span></div>
   <p><b>KV cache.</b> Each layer stores a key and a value vector per KV head per token:</p>
   <div class="eq">\[ \text{bytes} = 2 \times L \times H_{kv} \times d_\text{head} \times \text{tokens} \times \text{sequences} \times \text{bytes per value} \]<span class="eqcap">The 2 counts keys and values. Grouped-query attention shrinks \(H_{kv}\) below the number of query heads, which is why modern models use it.</span></div>
-  <pre class="code" data-lang="python"><code>def kv_cache_bytes(layers, kv_heads, head_dim, seq_len, batch, bytes_per=2):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def kv_cache_bytes(layers, kv_heads, head_dim, seq_len, batch, bytes_per=2):
     return 2 * layers * kv_heads * head_dim * seq_len * batch * bytes_per
 
 print(kv_cache_bytes(80, 8, 128, 32_768, 1) / 2**30)   # 10.0 GiB: one 32K-token sequence, 70B-class with GQA
 print(kv_cache_bytes(80, 64, 128, 32_768, 1) / 2**30)  # 80.0 GiB: the same without GQA</code></pre>
+<pre class="code" data-lang="rust"><code>fn kv_cache_bytes(layers: u64, kv_heads: u64, head_dim: u64, seq_len: u64, batch: u64, bytes_per: u64) -&gt; u64 {
+    2 * layers * kv_heads * head_dim * seq_len * batch * bytes_per
+}
+
+fn main() {
+    let gib = (1u64 &lt;&lt; 30) as f64;
+    println!("{:?}", kv_cache_bytes(80, 8, 128, 32_768, 1, 2) as f64 / gib);  // 10.0 GiB: one 32K-token sequence, 70B-class with GQA
+    println!("{:?}", kv_cache_bytes(80, 64, 128, 32_768, 1, 2) as f64 / gib); // 80.0 GiB: the same without GQA
+}</code></pre>
+</div>
   <p><b>Decode speed bound.</b> At batch size 1, each token requires reading all weights once. A 70B model in 16-bit is about 140 GB; on an accelerator with roughly 3.35 TB/s of memory bandwidth, that caps decode at about 24 tokens per second per sequence, before any parallelism across devices. Batching amortises that read across sequences.</p>
   <p><b>Speculative decoding.</b> With draft length \(\gamma\) and per-token acceptance probability \(\alpha\), the expected number of tokens produced per target-model pass is \(\frac{1-\alpha^{\gamma+1}}{1-\alpha}\). For \(\alpha = 0.8,\ \gamma = 4\) that is about 3.4.</p>
   <p><b>Cost per million tokens.</b></p>
