@@ -2,6 +2,110 @@
 <h2>The offline to online gap: does the lab score predict the real world?</h2>
 <p>Every offline eval is a bet that a number computed on a fixed task set will move the same way as the thing you actually care about: user acceptance, retention, task success in production. This chapter is about testing that bet, putting a number on how wrong it is, and saying honestly how much of the gap you can close.</p>
 
+<div class="story" id="st-gap-driving">
+  <div class="story-head"><div class="story-title">The driving test and the rush-hour commute</div><p class="story-sub">Why a better lab score does not always mean a better product, in five pictures.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A quiet driving test lot next to a busy rainy commute">
+      <g class="a" style="--d:0">
+        <rect x="20" y="30" width="280" height="180" rx="12" fill="var(--sunk)" stroke="var(--line-strong)"/>
+        <text x="160" y="56" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Driving test (offline eval)</text>
+        <rect x="40" y="150" width="240" height="38" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+        <path d="M120 150 l8 -16 l8 16 Z M180 150 l8 -16 l8 16 Z M240 150 l8 -16 l8 16 Z" fill="var(--fn)"/>
+        <rect x="56" y="158" width="44" height="20" rx="5" fill="var(--eli5)"/><circle cx="66" cy="180" r="4" fill="var(--fg)"/><circle cx="90" cy="180" r="4" fill="var(--fg)"/>
+        <circle cx="262" cy="80" r="12" fill="var(--fn)" opacity=".6"/>
+        <rect x="90" y="80" width="130" height="32" rx="16" fill="var(--good-soft)" stroke="var(--good)"/>
+        <text x="155" y="101" text-anchor="middle" font-size="14" font-weight="600" fill="var(--good)">Score 92 / 100</text>
+      </g>
+      <g class="a" style="--d:2">
+        <rect x="340" y="30" width="280" height="180" rx="12" fill="var(--sunk)" stroke="var(--line-strong)"/>
+        <text x="480" y="56" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Real commute (production)</text>
+        <rect x="360" y="150" width="240" height="38" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+        <rect x="370" y="158" width="40" height="20" rx="5" fill="var(--eli5)"/><rect x="420" y="158" width="40" height="20" rx="5" fill="var(--fp)"/>
+        <rect x="470" y="158" width="40" height="20" rx="5" fill="var(--tn)"/><rect x="520" y="158" width="40" height="20" rx="5" fill="var(--lead)"/>
+        <path d="M380 70 l-6 14 M420 66 l-6 14 M560 70 l-6 14 M590 90 l-6 14 M370 110 l-6 14 M600 120 l-6 14" stroke="var(--eli5)" stroke-width="2" stroke-linecap="round"/>
+        <rect x="415" y="80" width="130" height="32" rx="16" fill="var(--warn-soft)" stroke="var(--warn)"/>
+        <text x="480" y="101" text-anchor="middle" font-size="14" font-weight="600" fill="var(--warn)">Score ?</text>
+      </g>
+      <text class="a" style="--d:4" x="320" y="242" text-anchor="middle" font-size="14" fill="var(--muted)">Does a better test score mean a better commute?</text>
+    </svg>
+    <p>The test is quiet, sunny and predictable. The commute is crowded and wet. Your offline eval is the test; production is the commute. This chapter is about checking how well one predicts the other.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Three drivers keep the same order from test to road, but the gaps shrink">
+      <line x1="170" y1="50" x2="170" y2="210" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="440" y1="50" x2="440" y2="210" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="170" y="36" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Test score</text>
+      <text x="440" y="36" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Road score</text>
+      <g font-size="11" fill="var(--faint)" text-anchor="end"><text x="160" y="214">60</text><text x="160" y="174">70</text><text x="160" y="134">80</text><text x="160" y="94">90</text><text x="160" y="54">100</text></g>
+      <g class="a" style="--d:0"><line x1="170" y1="170" x2="440" y2="210" stroke="var(--eli5)" stroke-width="2.5"/><circle cx="170" cy="170" r="6" fill="var(--eli5)"/><circle cx="440" cy="210" r="6" fill="var(--eli5)"/><text x="190" y="166" font-size="12" fill="var(--eli5)">A 70</text><text x="452" y="214" font-size="12" fill="var(--eli5)">A 60</text></g>
+      <g class="a" style="--d:1"><line x1="170" y1="130" x2="440" y2="186" stroke="var(--lead)" stroke-width="2.5"/><circle cx="170" cy="130" r="6" fill="var(--lead)"/><circle cx="440" cy="186" r="6" fill="var(--lead)"/><text x="190" y="126" font-size="12" fill="var(--lead)">B 80</text><text x="452" y="190" font-size="12" fill="var(--lead)">B 66</text></g>
+      <g class="a" style="--d:2"><line x1="170" y1="90" x2="440" y2="162" stroke="var(--deep)" stroke-width="2.5"/><circle cx="170" cy="90" r="6" fill="var(--deep)"/><circle cx="440" cy="162" r="6" fill="var(--deep)"/><text x="190" y="86" font-size="12" fill="var(--deep)">C 90</text><text x="452" y="166" font-size="12" fill="var(--deep)">C 72</text></g>
+      <g class="a" style="--d:4"><text x="505" y="80" font-size="14" font-weight="600" fill="var(--good)">Same order</text><text x="505" y="104" font-size="13" fill="var(--fg)">10 test points</text><text x="505" y="122" font-size="13" fill="var(--fg)">≈ 6 road points</text></g>
+    </svg>
+    <p>Two questions, kept apart. <b>Ordering:</b> do drivers keep the same rank on the road? Here yes, A &lt; B &lt; C. <b>Size:</b> each 10 points on the test is worth only about 6 on the road. Ordering matters most for a ship decision; size tells you how much to promise.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Fourteen past releases; twelve moved the same direction offline and online, two did not">
+      <rect x="320" y="30" width="200" height="90" fill="var(--good-soft)" opacity=".7"/><rect x="120" y="120" width="200" height="90" fill="var(--good-soft)" opacity=".7"/>
+      <line x1="120" y1="120" x2="520" y2="120" stroke="var(--line-strong)" stroke-width="2"/><line x1="320" y1="30" x2="320" y2="210" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="516" y="138" text-anchor="end" font-size="12" fill="var(--muted)">offline change →</text>
+      <text x="328" y="44" font-size="12" fill="var(--muted)">↑ online change</text>
+      <text x="510" y="200" text-anchor="end" font-size="12" fill="var(--warn)">offline up, online down</text>
+      <text x="130" y="44" font-size="12" fill="var(--warn)">offline down, online up</text>
+      <g fill="var(--tp)">
+        <circle class="a" style="--d:0" cx="380" cy="80" r="7"/><circle class="a" style="--d:0" cx="420" cy="60" r="7"/><circle class="a" style="--d:1" cx="450" cy="72" r="7"/>
+        <circle class="a" style="--d:1" cx="360" cy="96" r="7"/><circle class="a" style="--d:1" cx="400" cy="102" r="7"/><circle class="a" style="--d:2" cx="475" cy="52" r="7"/>
+        <circle class="a" style="--d:2" cx="342" cy="106" r="7"/><circle class="a" style="--d:2" cx="250" cy="150" r="7"/><circle class="a" style="--d:3" cx="220" cy="172" r="7"/>
+        <circle class="a" style="--d:3" cx="272" cy="140" r="7"/><circle class="a" style="--d:3" cx="196" cy="160" r="7"/><circle class="a" style="--d:3" cx="292" cy="134" r="7"/>
+      </g>
+      <g class="a" style="--d:5"><circle class="pulse" cx="372" cy="146" r="8" fill="var(--fp)"/><circle class="pulse" cx="262" cy="98" r="8" fill="var(--fp)"/></g>
+      <text class="a" style="--d:6" x="320" y="244" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Same direction on 12 of 14 releases: direction accuracy 86%</text>
+    </svg>
+    <p>Plot every past release: offline change across, online change up. Green zones mean the two agreed. Two releases landed in the wrong zone, so the offline suite pointed the wrong way 2 times in 14. That <b>direction accuracy</b> is the single most useful number about an eval suite.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Four reasons the test and the commute differ">
+      <g class="a" style="--d:0"><rect x="20" y="40" width="140" height="160" rx="12" fill="var(--surface)" stroke="var(--good)"/>
+        <path d="M45 70 l25 -8 l25 8 l25 -8 v40 l-25 8 l-25 -8 l-25 8 Z" fill="var(--good-soft)" stroke="var(--good)"/><path d="M52 98 C70 80 90 100 112 74" stroke="var(--good)" stroke-width="2" fill="none" class="dash"/>
+        <text x="90" y="140" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Route coverage</text><text x="90" y="158" text-anchor="middle" font-size="12" fill="var(--muted)">task distribution</text>
+        <rect x="55" y="170" width="70" height="20" rx="10" fill="var(--good-soft)"/><text x="90" y="184" text-anchor="middle" font-size="11" font-weight="600" fill="var(--good)">fixable</text></g>
+      <g class="a" style="--d:1"><rect x="175" y="40" width="140" height="160" rx="12" fill="var(--surface)" stroke="var(--good)"/>
+        <rect x="215" y="74" width="60" height="26" rx="7" fill="var(--eli5)"/><circle cx="228" cy="102" r="6" fill="var(--fg)"/><circle cx="262" cy="102" r="6" fill="var(--fg)"/>
+        <text x="245" y="140" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">The test car</text><text x="245" y="158" text-anchor="middle" font-size="12" fill="var(--muted)">harness realism</text>
+        <rect x="210" y="170" width="70" height="20" rx="10" fill="var(--good-soft)"/><text x="245" y="184" text-anchor="middle" font-size="11" font-weight="600" fill="var(--good)">fixable</text></g>
+      <g class="a" style="--d:2"><rect x="330" y="40" width="140" height="160" rx="12" fill="var(--surface)" stroke="var(--good)"/>
+        <rect x="380" y="62" width="40" height="50" rx="5" fill="var(--sunk)" stroke="var(--line-strong)"/><path d="M388 78 h24 M388 88 h24 M388 98 h14" stroke="var(--muted)" stroke-width="2"/>
+        <text x="400" y="140" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">The examiner</text><text x="400" y="158" text-anchor="middle" font-size="12" fill="var(--muted)">judge fidelity</text>
+        <rect x="365" y="170" width="70" height="20" rx="10" fill="var(--good-soft)"/><text x="400" y="184" text-anchor="middle" font-size="11" font-weight="600" fill="var(--good)">fixable</text></g>
+      <g class="a" style="--d:3"><rect x="485" y="40" width="140" height="160" rx="12" fill="var(--sunk)" stroke="var(--line-strong)"/>
+        <ellipse cx="555" cy="80" rx="30" ry="15" fill="var(--surface)" stroke="var(--faint)"/><path d="M540 100 l-4 9 M555 100 l-4 9 M570 100 l-4 9" stroke="var(--eli5)" stroke-width="2" stroke-linecap="round"/>
+        <text x="555" y="140" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Daily traffic</text><text x="555" y="158" text-anchor="middle" font-size="12" fill="var(--muted)">irreducible noise</text>
+        <rect x="515" y="170" width="80" height="20" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="555" y="184" text-anchor="middle" font-size="11" font-weight="600" fill="var(--muted)">estimate it</text></g>
+      <text class="a" style="--d:5" x="320" y="236" text-anchor="middle" font-size="14" fill="var(--muted)">Spend on the first three. Measure the fourth with an A/A test.</text>
+    </svg>
+    <p>The gap has four sources. The test route skips some roads (the task set misses real usage). The test car is not your car (the harness lacks real tools and context). The examiner grades differently from real outcomes (judge fidelity). And traffic varies day to day, which no test can predict.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A calibration line: ten points offline is worth about six points online">
+      <line x1="110" y1="190" x2="430" y2="190" stroke="var(--line-strong)" stroke-width="2"/><line x1="110" y1="40" x2="110" y2="210" stroke="var(--line-strong)" stroke-width="2"/>
+      <g font-size="11" fill="var(--faint)" text-anchor="middle"><text x="110" y="208">0</text><text x="270" y="208">5</text><text x="430" y="208">10</text></g>
+      <text x="270" y="232" text-anchor="middle" font-size="12" fill="var(--muted)">lab (offline) gain, points</text>
+      <text x="118" y="36" font-size="12" fill="var(--muted)">↑ real (online) gain</text>
+      <line x1="110" y1="190" x2="430" y2="50" stroke="var(--faint)" stroke-dasharray="4 4"/><text x="372" y="64" text-anchor="end" font-size="11" fill="var(--faint)">if the lab were perfect</text>
+      <polygon class="a" style="--d:1" points="110,173 430,89 430,123 110,207" fill="var(--accent-soft)"/>
+      <line class="a" style="--d:2" x1="110" y1="190" x2="430" y2="106" stroke="var(--accent)" stroke-width="3"/>
+      <circle class="a pulse" style="--d:3" cx="430" cy="106" r="7" fill="var(--accent)"/>
+      <g class="a" style="--d:4"><rect x="455" y="66" width="170" height="114" rx="12" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="540" y="92" text-anchor="middle" font-size="12" fill="var(--muted)">fitted on 14 releases</text>
+        <text x="540" y="120" text-anchor="middle" font-size="15" font-weight="600" fill="var(--accent)">+10 lab → +6 real</text>
+        <text x="540" y="144" text-anchor="middle" font-size="12" fill="var(--fg)">typical miss ±1.2</text>
+        <text x="540" y="164" text-anchor="middle" font-size="12" fill="var(--fg)">right direction 86%</text></g>
+    </svg>
+    <p>Put it together and the offline suite becomes a calibrated instrument: a lab gain of 10 points predicts about 6 online, give or take 1.2, and the direction is right 86% of the time. Recompute this after every launch; when direction accuracy falls, the suite has drifted from real use.</p>
+  </div>
+</div>
+
+
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The driving test and the commute</span></div>
   <p>A driving test happens on a quiet route, in good weather, with an examiner watching. Passing it predicts how someone drives on a real commute, but not perfectly. Some careful test-takers panic in traffic. Some sloppy ones are fine in practice.</p>
   <p>An offline eval is the driving test. Production is the commute. The questions in this chapter are simple to say: when a new model scores better on the test, does it also do better on the commute? By how much? And how often does the test point the wrong way entirely?</p>

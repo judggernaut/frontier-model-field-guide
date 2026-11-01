@@ -12,7 +12,7 @@ with sync_playwright() as p:
     b = p.chromium.launch(); pg = b.new_page(viewport={'width': 1100, 'height': 900}, device_scale_factor=1)
     errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
     pg.goto('file://' + path); pg.wait_for_timeout(800)
-    pg.add_style_tag(content='.story .step.on .a,.story .step.on .grow-x{animation:none!important;opacity:1!important;transform:none!important}')
+    pg.add_style_tag(content='.story .step.on,.story .step.on .a,.story .step.on .grow-x{animation:none!important;opacity:1!important;transform:none!important}')
     ids = pg.evaluate("[...document.querySelectorAll('.story')].map(s=>s.id)")
     for sid in ids:
         shots = []
@@ -29,4 +29,5 @@ with sync_playwright() as p:
         print(f'{sid}: {len(shots)//2} steps -> /tmp/story-{sid}.png')
     b.close()
 print('\n'.join(errs) if errs else 'no JS errors')
-os.remove(path)
+try: os.remove(path)
+except OSError: pass

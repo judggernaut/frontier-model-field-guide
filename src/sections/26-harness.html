@@ -2,6 +2,100 @@
 <h2>Building the eval harness: the machine that produces every number</h2>
 <p>Every statistic in Part II is computed from results that a harness produced. If the harness drops tasks, retries silently, caches stale outputs, or reports a bare pass rate, the statistics on top are wrong no matter how careful they are. This chapter builds a harness in four passes, each with an acceptance test, and shows where measurement errors hide in the engineering.</p>
 
+<div class="story" id="st-hn-kitchen">
+  <div class="story-head"><div class="story-title">An eval harness is a restaurant kitchen</div><p class="story-sub">Tickets, cooks, dropped plates and the redo trap: where harness bugs quietly change the score.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Order tickets go to three cooks, an expo checks each plate, results go on a board">
+      <g class="a" style="--d:0"><rect x="20" y="40" width="110" height="150" rx="10" fill="var(--sunk)" stroke="var(--line-strong)"/>
+        <text x="75" y="62" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Tickets</text>
+        <rect x="38" y="74" width="74" height="18" rx="3" fill="var(--surface)" stroke="var(--line-strong)"/><rect x="38" y="98" width="74" height="18" rx="3" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <rect x="38" y="122" width="74" height="18" rx="3" fill="var(--surface)" stroke="var(--line-strong)"/><rect x="38" y="146" width="74" height="18" rx="3" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="75" y="210" text-anchor="middle" font-size="12" fill="var(--muted)">= tasks</text></g>
+      <path class="a dash" style="--d:1" d="M136 115 H190" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:1">
+        <circle cx="230" cy="70" r="16" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><circle cx="230" cy="115" r="16" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><circle cx="230" cy="160" r="16" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/>
+        <text x="230" y="210" text-anchor="middle" font-size="12" fill="var(--muted)">3 cooks = workers</text></g>
+      <path class="a dash" style="--d:2" d="M256 115 H320" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:2"><circle cx="360" cy="98" r="18" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><ellipse cx="360" cy="140" rx="30" ry="8" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="360" y="210" text-anchor="middle" font-size="12" fill="var(--muted)">expo = grader</text></g>
+      <path class="a dash" style="--d:3" d="M396 115 H450" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:3"><rect x="460" y="40" width="160" height="150" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="540" y="62" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Results board</text>
+        <text x="480" y="90" font-size="13" fill="var(--fg)">#1 <tspan fill="var(--tp)">✓ good</tspan></text><text x="480" y="114" font-size="13" fill="var(--fg)">#2 <tspan fill="var(--fp)">✗ wrong</tspan></text>
+        <text x="480" y="138" font-size="13" fill="var(--fg)">#3 <tspan fill="var(--tp)">✓ good</tspan></text><text x="480" y="162" font-size="13" fill="var(--fg)">#4 <tspan fill="var(--muted)">⋯ cooking</tspan></text>
+        <text x="540" y="210" text-anchor="middle" font-size="12" fill="var(--muted)">= result rows</text></g>
+    </svg>
+    <p>Every ticket (task) goes to a free cook (a worker), the expo checks the plate (the grader), and the result goes on the board. More cooks means faster service, the same way more concurrency finishes an eval sooner.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Ten tickets: six good, two wrong, two dropped plates; hiding the dropped ones inflates the score">
+      <g font-size="13">
+        <g class="a" style="--d:0"><rect x="40" y="40" width="40" height="40" rx="6" fill="var(--good-soft)" stroke="var(--tp)"/><text x="60" y="66" text-anchor="middle" fill="var(--tp)">✓</text>
+        <rect x="90" y="40" width="40" height="40" rx="6" fill="var(--good-soft)" stroke="var(--tp)"/><text x="110" y="66" text-anchor="middle" fill="var(--tp)">✓</text>
+        <rect x="140" y="40" width="40" height="40" rx="6" fill="var(--good-soft)" stroke="var(--tp)"/><text x="160" y="66" text-anchor="middle" fill="var(--tp)">✓</text>
+        <rect x="190" y="40" width="40" height="40" rx="6" fill="var(--good-soft)" stroke="var(--tp)"/><text x="210" y="66" text-anchor="middle" fill="var(--tp)">✓</text>
+        <rect x="240" y="40" width="40" height="40" rx="6" fill="var(--good-soft)" stroke="var(--tp)"/><text x="260" y="66" text-anchor="middle" fill="var(--tp)">✓</text></g>
+        <g class="a" style="--d:1"><rect x="290" y="40" width="40" height="40" rx="6" fill="var(--good-soft)" stroke="var(--tp)"/><text x="310" y="66" text-anchor="middle" fill="var(--tp)">✓</text>
+        <rect x="340" y="40" width="40" height="40" rx="6" fill="var(--warn-soft)" stroke="var(--fp)"/><text x="360" y="66" text-anchor="middle" fill="var(--fp)">✗</text>
+        <rect x="390" y="40" width="40" height="40" rx="6" fill="var(--warn-soft)" stroke="var(--fp)"/><text x="410" y="66" text-anchor="middle" fill="var(--fp)">✗</text></g>
+        <g class="a" style="--d:2"><rect x="440" y="40" width="40" height="40" rx="6" fill="var(--sunk)" stroke="var(--faint)" stroke-dasharray="4 3"/><text x="460" y="66" text-anchor="middle" fill="var(--muted)">—</text>
+        <rect x="490" y="40" width="40" height="40" rx="6" fill="var(--sunk)" stroke="var(--faint)" stroke-dasharray="4 3"/><text x="510" y="66" text-anchor="middle" fill="var(--muted)">—</text>
+        <text x="485" y="100" text-anchor="middle" font-size="12" fill="var(--muted)">dropped (the hard dishes)</text></g>
+      </g>
+      <g class="a" style="--d:3"><rect x="40" y="130" width="270" height="70" rx="10" fill="var(--warn-soft)" stroke="var(--fp)"/>
+        <text x="175" y="158" text-anchor="middle" font-size="13" fill="var(--fg)">Hide the dropped plates</text><text x="175" y="184" text-anchor="middle" font-size="16" font-weight="700" fill="var(--fp)">6 / 8 = 75%</text></g>
+      <g class="a" style="--d:4"><rect x="330" y="130" width="270" height="70" rx="10" fill="var(--good-soft)" stroke="var(--tp)"/>
+        <text x="465" y="158" text-anchor="middle" font-size="13" fill="var(--fg)">Count every ticket</text><text x="465" y="184" text-anchor="middle" font-size="16" font-weight="700" fill="var(--tp)">6 / 10 = 60%</text></g>
+      <text class="a" style="--d:5" x="320" y="236" text-anchor="middle" font-size="14" fill="var(--muted)">A crashed task is data. It stays on the board.</text>
+    </svg>
+    <p>Two plates hit the floor. If the board quietly skips them, the kitchen looks like it got 75% right. Dropped plates are usually the hard dishes, so skipping them always flatters the score. Count every ticket and the honest number is 60%.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Redoing fifteen orders gives them a second chance and inflates sixty percent to about sixty-four">
+      <text x="40" y="40" font-size="13" font-weight="600" fill="var(--fg)">100 orders, each dish comes out right 60% of the time</text>
+      <text x="40" y="84" font-size="13" fill="var(--muted)">Real skill</text>
+      <rect x="150" y="68" width="400" height="24" rx="5" fill="var(--sunk)"/>
+      <rect class="grow-x" style="--d:1" x="150" y="68" width="240" height="24" rx="5" fill="var(--tp)"/><text x="400" y="85" font-size="13" font-weight="600" fill="var(--fg)">60</text>
+      <text x="40" y="134" font-size="13" fill="var(--muted)">Kitchen reports</text>
+      <rect x="150" y="118" width="400" height="24" rx="5" fill="var(--sunk)"/>
+      <rect class="grow-x" style="--d:3" x="150" y="118" width="254.4" height="24" rx="5" fill="var(--fp)"/><text x="414" y="135" font-size="13" font-weight="600" fill="var(--fg)">63.6</text>
+      <g class="a" style="--d:5"><rect x="40" y="166" width="560" height="56" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="60" y="189" font-size="13" fill="var(--fg)">85 orders, one try each: 85 × 0.6 = <tspan font-weight="600">51</tspan></text>
+        <text x="60" y="210" font-size="13" fill="var(--fg)">15 orders "redone" after a hiccup get two tries: 15 × (1 − 0.4²) = <tspan font-weight="600">12.6</tspan></text></g>
+      <text class="a" style="--d:6" x="320" y="246" text-anchor="middle" font-size="14" fill="var(--fp)">No cook got better. The redo policy added 3.6 points.</text>
+    </svg>
+    <p>Fifteen orders hit a hiccup and get remade. A remade dish gets a second chance to come out right, so those tickets are scored more like "best of two". The kitchen reports 63.6% when its real rate is 60%. This is retry inflation, and you can only detect it if every result records how many attempts it took.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A prepared dish can be reused only when every detail of the order matches">
+      <g class="a" style="--d:0"><rect x="30" y="40" width="250" height="120" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="50" y="66" font-size="12" font-weight="600" fill="var(--muted)">Yesterday's ticket</text>
+        <text x="50" y="92" font-size="13" fill="var(--fg)">dish: steak</text><text x="50" y="114" font-size="13" fill="var(--fg)">doneness: <tspan fill="var(--accent)" font-weight="600">medium rare</tspan></text><text x="50" y="136" font-size="13" fill="var(--fg)">salt: none</text></g>
+      <g class="a" style="--d:1"><rect x="360" y="40" width="250" height="120" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="380" y="66" font-size="12" font-weight="600" fill="var(--muted)">Today's ticket</text>
+        <text x="380" y="92" font-size="13" fill="var(--fg)">dish: steak</text><text x="380" y="114" font-size="13" fill="var(--fg)">doneness: <tspan fill="var(--accent)" font-weight="600">well done</tspan></text><text x="380" y="136" font-size="13" fill="var(--fg)">salt: none</text></g>
+      <g class="a" style="--d:2"><rect x="30" y="180" width="270" height="44" rx="10" fill="var(--warn-soft)" stroke="var(--fp)"/><text x="165" y="207" text-anchor="middle" font-size="13" fill="var(--fp)">Key = dish only → serve the old plate ✗</text></g>
+      <g class="a" style="--d:3"><rect x="340" y="180" width="270" height="44" rx="10" fill="var(--good-soft)" stroke="var(--tp)"/><text x="475" y="207" text-anchor="middle" font-size="13" fill="var(--tp)">Key = every detail → cook fresh ✓</text></g>
+    </svg>
+    <p>Caching saves money: if an identical order comes in, reuse the plate. But "identical" must include every detail. In a harness the cache key covers the task, the prompt, the model, and every sampling setting. Leave one out and a changed setting silently serves yesterday's answers.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="An end-of-night report that always shows count, interval, dropped and redone orders">
+      <g class="a" style="--d:0"><rect x="160" y="20" width="320" height="220" rx="12" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="320" y="48" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">End-of-night report</text>
+        <line x1="180" y1="60" x2="460" y2="60" stroke="var(--line)" stroke-dasharray="4 4"/></g>
+      <g class="a" style="--d:1" font-size="13"><text x="185" y="86" fill="var(--muted)">Orders</text><text x="455" y="86" text-anchor="end" fill="var(--fg)">1,000</text></g>
+      <g class="a" style="--d:2" font-size="13"><text x="185" y="112" fill="var(--muted)">Good</text><text x="455" y="112" text-anchor="end" fill="var(--fg)">63.6% (60.6–66.5)</text></g>
+      <g class="a" style="--d:3" font-size="13"><text x="185" y="138" fill="var(--muted)">Dropped</text><text x="455" y="138" text-anchor="end" fill="var(--fg)">0</text></g>
+      <g class="a" style="--d:4" font-size="13"><text x="185" y="164" fill="var(--muted)">Redone</text><text x="455" y="164" text-anchor="end" fill="var(--fp)">150</text></g>
+      <g class="a" style="--d:5" font-size="13"><text x="185" y="190" fill="var(--muted)">Good, redone removed</text><text x="455" y="190" text-anchor="end" fill="var(--fg)">60.0% (56.7–63.2)</text></g>
+      <text class="a" style="--d:6" x="320" y="222" text-anchor="middle" font-size="12" fill="var(--fp)">The two "good" lines disagree: that gap is the redo effect.</text>
+    </svg>
+    <p>The fix is a report that cannot be printed without the count, an interval, the dropped plates, and the redo count, plus the score with redone orders removed. When those two scores disagree, the retry policy is part of what you measured.</p>
+  </div>
+</div>
+
+
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A fair exam room</span></div>
   <p>Think of the harness as the exam room. It hands each question to the model, collects the answer, marks it, and writes down the result. A good exam room treats every student the same: same time limit, same number of attempts, same marking rules. If one student's pen breaks, you note it and carry on; you do not cancel the exam.</p>
   <p>Most harness bugs are unfairness bugs. One question gets two attempts while another gets one. A crashed question disappears from the results instead of counting. Yesterday's answers get reused after the questions changed. Each of these quietly changes the score.</p>
@@ -10,13 +104,13 @@
 <div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Treat the harness as measurement infrastructure</span></div>
   <p>Teams under-invest in harnesses because they look like plumbing. They are the measuring instrument. A harness bug that inflates scores by two points is as damaging as a training bug, and much harder to notice, because nobody complains when numbers go up.</p>
   <p>What a mature harness guarantees:</p>
-  <ul>
-    <li><b>No silent loss.</b> Every task produces a result row, including errors.</li>
-    <li><b>Equal treatment.</b> Attempts, timeouts, and sampling parameters are identical across tasks and models, and recorded.</li>
-    <li><b>Reproducibility.</b> A result can be traced to model id, prompt hash, parameters, harness version, and judge version.</li>
-    <li><b>Honest reporting.</b> The summary cannot be produced without n, a confidence interval, the error count, and the retry count.</li>
-    <li><b>Flakiness control.</b> Tasks whose scores vary run to run at fixed settings are quarantined, not averaged in.</li>
-  </ul>
+  <div class="four">
+    <div class="tile"><h4>No silent loss</h4><p>Every task produces a result row, including errors.</p></div>
+    <div class="tile"><h4>Equal treatment</h4><p>Attempts, timeouts, and sampling parameters are identical across tasks and models, and recorded.</p></div>
+    <div class="tile"><h4>Reproducibility</h4><p>A result can be traced to model id, prompt hash, parameters, harness version, and judge version.</p></div>
+    <div class="tile"><h4>Honest reporting</h4><p>The summary cannot be produced without n, a confidence interval, the error count, and the retry count.</p></div>
+    <div class="tile"><h4>Flakiness control</h4><p>Tasks whose scores vary run to run at fixed settings are quarantined, not averaged in.</p></div>
+  </div>
   <p>What to fund: a small, dedicated owner for the harness, versioned like a product, with its own regression tests. The return is every downstream decision.</p>
   <div class="callout ask"><span class="tag">Principal asks</span><div>
     <ul>

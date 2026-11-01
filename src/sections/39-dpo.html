@@ -2,6 +2,71 @@
 <h2>DPO and offline preference methods: RLHF without the RL loop</h2>
 <p>Direct Preference Optimization (Rafailov et al. 2023) showed that the KL-regularised RLHF objective from the <a href="#rlhf">previous chapter</a> can be optimized with a simple classification loss on preference pairs. No reward model at training time, no sampling, no value function, no PPO. It became the default post-training method for open models within a year, and it spawned a family of variants. Understanding exactly what DPO optimizes, and where that differs from RLHF in practice, is one of the most useful pieces of judgment in post-training.</p>
 
+<div class="story" id="st-dp-direct">
+  <div class="story-head"><div class="story-title">This one, not that one</div><p class="story-sub">How DPO learns straight from pairs, without hiring a judge.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 230" role="img" aria-label="The RLHF pipeline has four stages">
+      <text x="320" y="30" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">RLHF: the long way round</text>
+      <g class="a" style="--d:0"><rect x="20" y="70" width="120" height="60" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="80" y="96" text-anchor="middle" font-size="13" fill="var(--fg)">Preference</text><text x="80" y="114" text-anchor="middle" font-size="13" fill="var(--fg)">pairs</text></g>
+      <g class="a" style="--d:1"><rect x="175" y="70" width="120" height="60" rx="10" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="235" y="96" text-anchor="middle" font-size="13" fill="var(--fg)">Train a</text><text x="235" y="114" text-anchor="middle" font-size="13" fill="var(--fg)">reward model</text></g>
+      <g class="a" style="--d:2"><rect x="330" y="70" width="120" height="60" rx="10" fill="var(--eli5-soft)" stroke="var(--eli5)"/><text x="390" y="96" text-anchor="middle" font-size="13" fill="var(--fg)">Sample and</text><text x="390" y="114" text-anchor="middle" font-size="13" fill="var(--fg)">score answers</text></g>
+      <g class="a" style="--d:3"><rect x="485" y="70" width="135" height="60" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="552" y="96" text-anchor="middle" font-size="13" fill="var(--fg)">PPO with</text><text x="552" y="114" text-anchor="middle" font-size="13" fill="var(--fg)">4 models</text></g>
+      <g stroke="var(--faint)" stroke-width="2" class="a" style="--d:3"><path class="dash" d="M142 100 L172 100"/><path class="dash" d="M297 100 L327 100"/><path class="dash" d="M452 100 L482 100"/></g>
+      <text class="a" style="--d:4" x="320" y="190" text-anchor="middle" font-size="13" fill="var(--muted)">a judge, a sampling loop, and a lot of memory</text>
+    </svg>
+    <p>RLHF turns preference pairs into a reward model, then samples answers, scores them, and runs PPO with four networks in memory. It works, but it is slow and fragile.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 230" role="img" aria-label="DPO goes straight from pairs to the policy">
+      <text x="320" y="30" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">DPO: straight from the pairs</text>
+      <rect x="20" y="70" width="120" height="60" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="80" y="96" text-anchor="middle" font-size="13" fill="var(--fg)">Preference</text><text x="80" y="114" text-anchor="middle" font-size="13" fill="var(--fg)">pairs</text>
+      <g opacity=".3"><rect x="175" y="70" width="120" height="60" rx="10" fill="var(--sunk)" stroke="var(--line-strong)"/><rect x="330" y="70" width="120" height="60" rx="10" fill="var(--sunk)" stroke="var(--line-strong)"/></g>
+      <path class="a" style="--d:1" d="M170 100 L455 100" stroke="var(--fp)" stroke-width="2"/>
+      <text class="a" style="--d:1" x="312" y="152" text-anchor="middle" font-size="12" fill="var(--muted)">no reward model, no sampling, no value model</text>
+      <path class="a" style="--d:2" d="M142 66 C 250 30, 400 30, 500 66" stroke="var(--good)" stroke-width="3" fill="none"/>
+      <g class="a" style="--d:2"><rect x="485" y="70" width="135" height="60" rx="10" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="552" y="96" text-anchor="middle" font-size="13" font-weight="600" fill="var(--good)">Policy</text><text x="552" y="114" text-anchor="middle" font-size="12" fill="var(--fg)">+ frozen reference</text></g>
+      <text class="a" style="--d:3" x="320" y="200" text-anchor="middle" font-size="13" fill="var(--muted)">trains like supervised learning: one pass per pair, two models</text>
+    </svg>
+    <p>DPO shows the policy each pair directly. Training looks like ordinary supervised learning: a fixed dataset, one forward and backward pass per pair, and only the policy plus a frozen copy of its starting point in memory.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 230" role="img" aria-label="The lesson on one pair: chosen up, rejected down, relative to the old self">
+      <g class="a" style="--d:0"><rect x="40" y="30" width="240" height="70" rx="12" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="160" y="60" text-anchor="middle" font-size="14" font-weight="600" fill="var(--good)">Picked answer</text><text x="160" y="82" text-anchor="middle" font-size="13" fill="var(--fg)">make a bit more likely ↑</text></g>
+      <g class="a" style="--d:1"><rect x="360" y="30" width="240" height="70" rx="12" fill="var(--warn-soft)" stroke="var(--fp)" stroke-width="2"/><text x="480" y="60" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fp)">Rejected answer</text><text x="480" y="82" text-anchor="middle" font-size="13" fill="var(--fg)">make a bit less likely ↓</text></g>
+      <g class="a" style="--d:2"><rect x="200" y="150" width="240" height="56" rx="12" fill="var(--sunk)" stroke="var(--tn)" stroke-dasharray="5 4"/><text x="320" y="174" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">…compared with the old self</text><text x="320" y="194" text-anchor="middle" font-size="12" fill="var(--muted)">the frozen reference model</text></g>
+      <g stroke="var(--faint)" stroke-width="2" fill="none" class="a" style="--d:2"><path class="dash" d="M160 102 L250 148"/><path class="dash" d="M480 102 L390 148"/></g>
+    </svg>
+    <p>Every pair carries one instruction: nudge the picked answer up and the rejected answer down, measured against how the model wrote before training. That comparison to the old self is the leash, built straight into the loss.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="The model's own probability ratio acts as the reward">
+      <text class="a" style="--d:0" x="320" y="28" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">log (new probability ÷ old probability)</text>
+      <line x1="120" y1="140" x2="520" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="528" y="144" font-size="12" fill="var(--muted)">unchanged</text>
+      <rect class="a" style="--d:1" x="200" y="84" width="80" height="56" rx="4" fill="var(--good)"/>
+      <text class="a" style="--d:1" x="240" y="74" text-anchor="middle" font-size="13" font-weight="600" fill="var(--good)">+0.8</text>
+      <text x="240" y="162" text-anchor="middle" font-size="13" fill="var(--fg)">picked</text>
+      <rect class="a" style="--d:2" x="360" y="140" width="80" height="28" rx="4" fill="var(--fp)"/>
+      <text class="a" style="--d:2" x="400" y="186" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fp)">−0.4</text>
+      <text x="400" y="128" text-anchor="middle" font-size="13" fill="var(--fg)">rejected</text>
+      <text class="a" style="--d:4" x="320" y="228" text-anchor="middle" font-size="14" fill="var(--fg)">margin h = 0.8 − (−0.4) = 1.2: this gap is the hidden "reward"</text>
+    </svg>
+    <p>DPO's trick is that the model's own shift in probability, relative to its old self, works as a reward score. The loss only looks at the gap between the picked and rejected shifts, which is why the paper's subtitle is "your language model is secretly a reward model". Numbers are illustrative.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Pairs ranked wrongly get a strong push, pairs ranked clearly right get a small one">
+      <text x="40" y="32" font-size="13" font-weight="600" fill="var(--muted)">How hard each pair pushes (β = 1, illustrative)</text>
+      <g font-size="13" fill="var(--fg)"><text x="40" y="80">ranked wrong, h = −2.5</text><text x="40" y="130">barely right, h = 0.5</text><text x="40" y="180">clearly right, h = 2</text></g>
+      <rect class="grow-x" style="--d:1" x="210" y="64" width="333" height="22" rx="5" fill="var(--fp)"/>
+      <rect class="grow-x" style="--d:2" x="210" y="114" width="136" height="22" rx="5" fill="var(--fn)"/>
+      <rect class="grow-x" style="--d:3" x="210" y="164" width="43" height="22" rx="5" fill="var(--tp)"/>
+      <g font-size="13" font-weight="600" fill="var(--fg)"><text x="551" y="80">0.92</text><text x="354" y="130">0.38</text><text x="261" y="180">0.12</text></g>
+      <text class="a" style="--d:4" x="320" y="228" text-anchor="middle" font-size="13" fill="var(--muted)">Mistakes get most of the attention. No pair ever drops to zero.</text>
+    </svg>
+    <p>Each pair's push is weighted by how wrong the model currently is about it. A pair the model ranks backwards gets a strong correction; one it already ranks clearly right gets a small one. β controls how fast that weight falls as the margin grows.</p>
+  </div>
+</div>
+
 <h3>The idea</h3>
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Skip the middleman</span></div>
   <p>RLHF works in two stages: first train a judge on people's picks, then train the student against the judge. DPO skips the judge. It shows the student each pair directly and says: make the picked answer a bit more likely and the rejected answer a bit less likely, compared with how you used to write. The comparison to how it used to write is the leash, built straight into the lesson.</p>
@@ -28,6 +93,9 @@
 </div>
 
 <h3>What the gradient does</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What β means in DPO</span></div>
+  <p>β plays the same role as in RLHF: the strength of the leash to the reference. In DPO it also sets how far the margin must grow before a pair stops contributing. Typical values sit between 0.01 and 0.5, and results are sensitive to it, so a sweep over β is part of any serious DPO experiment. If a team reports one DPO run at one β, the result tells you about that β, not about DPO.</p>
+</div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A weighted push and pull</span></div>
   <div class="eq">\[ \nabla_\theta \mathcal{L}_{\text{DPO}} = -\beta\, \mathbb{E}\Big[\underbrace{\sigma\big(\hat r_\theta(x, y_l) - \hat r_\theta(x, y_w)\big)}_{\text{high when the model ranks the pair wrongly}}\Big(\nabla_\theta \log \pi_\theta(y_w\mid x) - \nabla_\theta \log \pi_\theta(y_l\mid x)\Big)\Big] \]<span class="eqcap">Raise the chosen response, lower the rejected one, weighted by how wrong the implicit reward currently is. Pairs already ranked correctly by a wide margin get small weight but never zero.</span></div>
   <p>The gradient only constrains the <b>difference</b> between the two log-likelihoods. Nothing in it says the chosen response's probability must rise. That single fact explains the most important DPO failure mode.</p>
@@ -54,13 +122,53 @@ def dpo_loss(pi_logp_w, pi_logp_l, ref_logp_w, ref_logp_l, beta=0.1):
   <canvas></canvas>
   <div class="readout" data-out></div>
 </div>
-<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What β means in DPO</span></div>
-  <p>β plays the same role as in RLHF: the strength of the leash to the reference. In DPO it also sets how far the margin must grow before a pair stops contributing. Typical values sit between 0.01 and 0.5, and results are sensitive to it, so a sweep over β is part of any serious DPO experiment. If a team reports one DPO run at one β, the result tells you about that β, not about DPO.</p>
-</div>
 
 <h3>Failure modes</h3>
+<div class="story" id="st-dp-race">
+  <div class="story-head"><div class="story-title">The race where both runners slow down</div><p class="story-sub">Likelihood displacement: how DPO can widen the gap while making both answers less likely.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Runners for the chosen and rejected answers on a track"><line x1="40" y1="70" x2="600" y2="70" stroke="var(--line)" stroke-width="2"/><line x1="40" y1="130" x2="600" y2="130" stroke="var(--line)" stroke-width="2"/><line x1="40" y1="190" x2="600" y2="190" stroke="var(--line)" stroke-width="2"/><text x="40" y="215" font-size="12" fill="var(--muted)">less likely</text><text x="600" y="215" text-anchor="end" font-size="12" fill="var(--muted)">more likely →</text><line x1="320" y1="40" x2="320" y2="200" stroke="var(--faint)" stroke-width="2" stroke-dasharray="4 4"/><text x="320" y="32" text-anchor="middle" font-size="12" fill="var(--muted)">where both started</text><g class="a" style="--d:0"><circle cx="320" cy="100" r="14" fill="var(--tp)"/><text x="320" y="105" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">C</text></g><g class="a" style="--d:1"><circle cx="320" cy="160" r="14" fill="var(--fp)"/><text x="320" y="165" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">R</text></g><text x="598" y="92" text-anchor="end" font-size="12" font-weight="600" fill="var(--tp)">chosen</text><text x="598" y="152" text-anchor="end" font-size="12" font-weight="600" fill="var(--fp)">rejected</text><text class="a" style="--d:4" x="320" y="245" text-anchor="middle" font-size="13" fill="var(--fg)">Position = how likely the model is to write that answer.</text></svg>
+    <p>Two runners start side by side: the chosen answer and the rejected answer. A runner further right is an answer the model is more likely to write.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Runners for the chosen and rejected answers on a track"><line x1="40" y1="70" x2="600" y2="70" stroke="var(--line)" stroke-width="2"/><line x1="40" y1="130" x2="600" y2="130" stroke="var(--line)" stroke-width="2"/><line x1="40" y1="190" x2="600" y2="190" stroke="var(--line)" stroke-width="2"/><text x="40" y="215" font-size="12" fill="var(--muted)">less likely</text><text x="600" y="215" text-anchor="end" font-size="12" fill="var(--muted)">more likely →</text><line x1="320" y1="40" x2="320" y2="200" stroke="var(--faint)" stroke-width="2" stroke-dasharray="4 4"/><text x="320" y="32" text-anchor="middle" font-size="12" fill="var(--muted)">where both started</text><g class="a" style="--d:0"><circle cx="370" cy="100" r="14" fill="var(--tp)"/><text x="370" y="105" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">C</text></g><g class="a" style="--d:1"><circle cx="290" cy="160" r="14" fill="var(--fp)"/><text x="290" y="165" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">R</text></g><text x="598" y="92" text-anchor="end" font-size="12" font-weight="600" fill="var(--tp)">chosen</text><text x="598" y="152" text-anchor="end" font-size="12" font-weight="600" fill="var(--fp)">rejected</text><g class="a" style="--d:2"><path d="M290 130 L370 130" stroke="var(--accent)" stroke-width="4"/><text x="330" y="122" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">gap</text></g><text class="a" style="--d:4" x="320" y="245" text-anchor="middle" font-size="13" fill="var(--fg)">The coach only measures the distance between them.</text></svg>
+    <p>DPO's loss is a coach who only measures the gap between the two runners. It never checks where either one is on the track.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Runners for the chosen and rejected answers on a track"><line x1="40" y1="70" x2="600" y2="70" stroke="var(--line)" stroke-width="2"/><line x1="40" y1="130" x2="600" y2="130" stroke="var(--line)" stroke-width="2"/><line x1="40" y1="190" x2="600" y2="190" stroke="var(--line)" stroke-width="2"/><text x="40" y="215" font-size="12" fill="var(--muted)">less likely</text><text x="600" y="215" text-anchor="end" font-size="12" fill="var(--muted)">more likely →</text><line x1="320" y1="40" x2="320" y2="200" stroke="var(--faint)" stroke-width="2" stroke-dasharray="4 4"/><text x="320" y="32" text-anchor="middle" font-size="12" fill="var(--muted)">where both started</text><g class="a" style="--d:0"><circle cx="450" cy="100" r="14" fill="var(--tp)"/><text x="450" y="105" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">C</text></g><g class="a" style="--d:1"><circle cx="230" cy="160" r="14" fill="var(--fp)"/><text x="230" y="165" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">R</text></g><text x="598" y="92" text-anchor="end" font-size="12" font-weight="600" fill="var(--tp)">chosen</text><text x="598" y="152" text-anchor="end" font-size="12" font-weight="600" fill="var(--fp)">rejected</text><g class="a" style="--d:2"><path d="M230 130 L450 130" stroke="var(--accent)" stroke-width="4"/><text x="340" y="122" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">gap</text></g><text class="a" style="--d:4" x="320" y="245" text-anchor="middle" font-size="13" fill="var(--fg)">Healthy: chosen speeds up, rejected falls back.</text></svg>
+    <p>In a healthy run, the chosen runner moves ahead and the rejected runner falls back. The gap grows and both moves are the ones you wanted.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Runners for the chosen and rejected answers on a track"><line x1="40" y1="70" x2="600" y2="70" stroke="var(--line)" stroke-width="2"/><line x1="40" y1="130" x2="600" y2="130" stroke="var(--line)" stroke-width="2"/><line x1="40" y1="190" x2="600" y2="190" stroke="var(--line)" stroke-width="2"/><text x="40" y="215" font-size="12" fill="var(--muted)">less likely</text><text x="600" y="215" text-anchor="end" font-size="12" fill="var(--muted)">more likely →</text><line x1="320" y1="40" x2="320" y2="200" stroke="var(--faint)" stroke-width="2" stroke-dasharray="4 4"/><text x="320" y="32" text-anchor="middle" font-size="12" fill="var(--muted)">where both started</text><g class="a" style="--d:0"><circle cx="250" cy="100" r="14" fill="var(--tp)"/><text x="250" y="105" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">C</text></g><g class="a" style="--d:1"><circle cx="90" cy="160" r="14" fill="var(--fp)"/><text x="90" y="165" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">R</text></g><text x="598" y="92" text-anchor="end" font-size="12" font-weight="600" fill="var(--tp)">chosen</text><text x="598" y="152" text-anchor="end" font-size="12" font-weight="600" fill="var(--fp)">rejected</text><g class="a" style="--d:2"><path d="M90 130 L250 130" stroke="var(--accent)" stroke-width="4"/><text x="170" y="122" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">gap</text></g><text class="a" style="--d:4" x="320" y="245" text-anchor="middle" font-size="13" fill="var(--fg)">Trap: both fall back. The gap still grows, and the scoreboard says 100%.</text></svg>
+    <p>The trap: both runners fall back, the rejected one faster. The gap grows just the same, so the loss falls and reward accuracy looks perfect, yet the model is now less likely to write the answer people picked.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Runners for the chosen and rejected answers on a track"><line x1="40" y1="70" x2="600" y2="70" stroke="var(--line)" stroke-width="2"/><line x1="40" y1="130" x2="600" y2="130" stroke="var(--line)" stroke-width="2"/><line x1="40" y1="190" x2="600" y2="190" stroke="var(--line)" stroke-width="2"/><text x="40" y="215" font-size="12" fill="var(--muted)">less likely</text><text x="600" y="215" text-anchor="end" font-size="12" fill="var(--muted)">more likely →</text><line x1="320" y1="40" x2="320" y2="200" stroke="var(--faint)" stroke-width="2" stroke-dasharray="4 4"/><text x="320" y="32" text-anchor="middle" font-size="12" fill="var(--muted)">where both started</text><g class="a" style="--d:0"><circle cx="250" cy="100" r="14" fill="var(--tp)"/><text x="250" y="105" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">C</text></g><g class="a" style="--d:1"><circle cx="90" cy="160" r="14" fill="var(--fp)"/><text x="90" y="165" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">R</text></g><text x="598" y="92" text-anchor="end" font-size="12" font-weight="600" fill="var(--tp)">chosen</text><text x="598" y="152" text-anchor="end" font-size="12" font-weight="600" fill="var(--fp)">rejected</text><g class="a" style="--d:2"><path d="M90 130 L250 130" stroke="var(--accent)" stroke-width="4"/><text x="170" y="122" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">gap</text></g><g class="a" style="--d:3"><circle cx="540" cy="50" r="14" fill="var(--eli5)" class="pulse"/><text x="540" y="55" text-anchor="middle" font-size="11" font-weight="700" fill="var(--surface)">?</text><text x="540" y="26" text-anchor="middle" font-size="12" fill="var(--eli5)">unlabelled answer</text></g><text class="a" style="--d:4" x="320" y="245" text-anchor="middle" font-size="13" fill="var(--fg)">The probability went to an answer nobody labelled.</text></svg>
+    <p>Probability has to go somewhere. It flows to answers that were in neither pair, which can be harmless or can be a new kind of bad output. Pal et al. (2024) and Razin et al. (2024) documented this; it is worst when the two answers are very similar.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 240" role="img" aria-label="Dashboard of what to watch during DPO training">
+      <g class="a" style="--d:0"><rect x="30" y="30" width="280" height="76" rx="12" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="50" y="62" font-size="14" font-weight="600" fill="var(--warn)">Chosen log-likelihood</text><text x="50" y="86" font-size="12" fill="var(--fg)">Should not fall steadily. Watch it first.</text></g>
+      <g class="a" style="--d:1"><rect x="330" y="30" width="280" height="76" rx="12" fill="var(--surface)" stroke="var(--line-strong)"/><text x="350" y="62" font-size="14" font-weight="600" fill="var(--fg)">Response length</text><text x="350" y="86" font-size="12" fill="var(--fg)">Creeping length is a cheap way to widen gaps</text></g>
+      <g class="a" style="--d:2"><rect x="30" y="126" width="280" height="76" rx="12" fill="var(--good-soft)" stroke="var(--good)"/><text x="50" y="158" font-size="14" font-weight="600" fill="var(--good)">Held-out win rate</text><text x="50" y="182" font-size="12" fill="var(--fg)">Length-controlled, judged independently</text></g>
+      <g class="a" style="--d:3"><rect x="330" y="126" width="280" height="76" rx="12" fill="var(--sunk)" stroke="var(--tn)" stroke-dasharray="5 4"/><text x="350" y="158" font-size="14" font-weight="600" fill="var(--muted)">Reward accuracy, margins</text><text x="350" y="182" font-size="12" fill="var(--muted)">Rise in healthy and broken runs alike</text></g>
+    </svg>
+    <p>So watch where the runners are, not just the gap: the absolute log-likelihood of chosen answers, response length, and a held-out win rate. The default dashboard metrics, reward accuracy and margins, look the same in a healthy run and a broken one.</p>
+  </div>
+</div>
+
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Winning the comparison by making both worse</span></div>
   <p>Suppose you tell a student "write more like essay A than essay B". The student can do that by improving toward A. Or by drifting away from both, as long as it drifts further from B. Both satisfy the instruction. DPO only checks the gap between the two, so sometimes it takes the second route, and the probability goes to answers that neither essay resembles.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The four ways DPO disappoints</span></div>
+  <div class="four">
+    <div class="tile"><h4>Likelihood displacement</h4><p>Chosen and rejected log-likelihoods both fall during training, while the margin and the "reward accuracy" metric look excellent. Pal et al. (2024, "Smaug", which proposed DPO-Positive) and Razin et al. (2024) documented this; it is worst when chosen and rejected responses are similar, which is exactly what careful pairwise labeling tends to produce.</p></div>
+    <div class="tile"><h4>Length exploitation</h4><p>If chosen responses are longer on average, increasing length is an easy way to widen the margin. DPO-trained models often get wordier. Length-normalized variants (SimPO) and explicit length regularization address it.</p></div>
+    <div class="tile"><h4>Off-policy data</h4><p>Pairs sampled from a different model teach the policy about someone else's mistakes. Several 2024 studies (for example Tajwar et al. 2024) found on-policy or iteratively refreshed data clearly outperforms static off-policy pairs.</p></div>
+    <div class="tile"><h4>Overfitting deterministic preferences</h4><p>If a pair is always preferred one way, Bradley–Terry implies an infinite reward gap, and DPO keeps pushing the rejected response's probability toward zero regardless of β. The leash stops working. This was the motivation for IPO.</p></div>
+  </div>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Implicit reward accuracy and margins on the training set are the metrics DPO dashboards show by default, and they are the least informative ones. They rise in healthy runs and in runs suffering likelihood displacement alike. Track the absolute log-likelihood of chosen responses, average response length, and a held-out win rate.</div></div>
 </div>
 
 <div class="widget" id="w-dp-track">
@@ -77,16 +185,6 @@ def dpo_loss(pi_logp_w, pi_logp_l, ref_logp_w, ref_logp_l, beta=0.1):
     <div class="mc"><div class="l">Mass on an unlabeled response</div><div class="v" data-o1>—</div></div>
   </div>
   <div class="readout" data-out></div>
-</div>
-
-<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The four ways DPO disappoints</span></div>
-  <ul>
-    <li><b>Likelihood displacement.</b> Chosen and rejected log-likelihoods both fall during training, while the margin and the "reward accuracy" metric look excellent. Pal et al. (2024, "Smaug", which proposed DPO-Positive) and Razin et al. (2024) documented this; it is worst when chosen and rejected responses are similar, which is exactly what careful pairwise labeling tends to produce.</li>
-    <li><b>Length exploitation.</b> If chosen responses are longer on average, increasing length is an easy way to widen the margin. DPO-trained models often get wordier. Length-normalized variants (SimPO) and explicit length regularization address it.</li>
-    <li><b>Off-policy data.</b> Pairs sampled from a different model teach the policy about someone else's mistakes. Several 2024 studies (for example Tajwar et al. 2024) found on-policy or iteratively refreshed data clearly outperforms static off-policy pairs.</li>
-    <li><b>Overfitting deterministic preferences.</b> If a pair is always preferred one way, Bradley–Terry implies an infinite reward gap, and DPO keeps pushing the rejected response's probability toward zero regardless of β. The leash stops working. This was the motivation for IPO.</li>
-  </ul>
-  <div class="callout warn"><span class="tag">Watch out</span><div>Implicit reward accuracy and margins on the training set are the metrics DPO dashboards show by default, and they are the least informative ones. They rise in healthy runs and in runs suffering likelihood displacement alike. Track the absolute log-likelihood of chosen responses, average response length, and a held-out win rate.</div></div>
 </div>
 
 <h3>The family</h3>

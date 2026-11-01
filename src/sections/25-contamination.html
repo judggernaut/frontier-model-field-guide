@@ -2,6 +2,97 @@
 <h2>Contamination and benchmark integrity: is the model reasoning or remembering?</h2>
 <p>A benchmark score means something only if the model has not seen the answers. Frontier models are trained on a large fraction of the public internet, and public benchmarks live on the public internet. This chapter covers how test items leak into training data, how to detect it, how to design benchmarks that resist it, and how to report results so a reader can judge for themselves.</p>
 
+<div class="story" id="st-ct-exam">
+  <div class="story-head"><div class="story-title">Two students and a leaked answer key</div><p class="story-sub">How changing the numbers on an exam separates memorising from understanding.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="An exam is posted online; one student memorises the answers, another studies the method">
+      <g class="a" style="--d:0"><rect x="40" y="70" width="90" height="110" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="85" y="94" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Exam</text>
+        <path d="M55 110 h60 M55 126 h60 M55 142 h45 M55 158 h55" stroke="var(--faint)" stroke-width="2"/></g>
+      <path class="a dash" style="--d:1" d="M138 125 H210" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:2"><ellipse cx="270" cy="125" rx="58" ry="34" fill="var(--sunk)" stroke="var(--line-strong)"/>
+        <text x="270" y="121" text-anchor="middle" font-size="12" fill="var(--fg)">posted online</text><text x="270" y="138" text-anchor="middle" font-size="12" fill="var(--fp)">with answers</text></g>
+      <path class="a dash" style="--d:3" d="M330 112 C380 90 400 90 430 96" stroke="var(--fp)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:3"><circle cx="450" cy="90" r="18" fill="var(--warn-soft)" stroke="var(--fp)" stroke-width="2"/><rect x="430" y="114" width="40" height="46" rx="10" fill="var(--warn-soft)" stroke="var(--fp)" stroke-width="2"/>
+        <text x="450" y="190" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Student A</text><text x="450" y="207" text-anchor="middle" font-size="12" fill="var(--muted)">memorises the key</text></g>
+      <g class="a" style="--d:4"><circle cx="570" cy="90" r="18" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><rect x="550" y="114" width="40" height="46" rx="10" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/>
+        <rect x="546" y="128" width="48" height="16" rx="2" fill="var(--eli5)"/>
+        <text x="570" y="190" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Student B</text><text x="570" y="207" text-anchor="middle" font-size="12" fill="var(--muted)">learns the method</text></g>
+      <text class="a" style="--d:5" x="320" y="244" text-anchor="middle" font-size="14" fill="var(--muted)">Benchmarks live on the internet, and so does model training data.</text>
+    </svg>
+    <p>Last year's final exam was posted online with its answers. Student A memorises the answer key. Student B learns how to solve the problems. A model trained on internet text can end up like Student A for popular benchmarks, usually by accident.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="On the original exam both students score in the nineties">
+      <line x1="120" y1="210" x2="520" y2="210" stroke="var(--line-strong)" stroke-width="2"/>
+      <g class="a" style="--d:0"><rect x="190" y="67.5" width="70" height="142.5" rx="6" fill="var(--fp)"/><text x="225" y="58" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">95%</text><text x="225" y="230" text-anchor="middle" font-size="13" fill="var(--fg)">Student A</text></g>
+      <g class="a" style="--d:1"><rect x="380" y="70.5" width="70" height="139.5" rx="6" fill="var(--tp)"/><text x="415" y="61" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">93%</text><text x="415" y="230" text-anchor="middle" font-size="13" fill="var(--fg)">Student B</text></g>
+      <text class="a" style="--d:3" x="320" y="30" text-anchor="middle" font-size="14" font-weight="600" fill="var(--muted)">Same exam as last year: they look the same</text>
+    </svg>
+    <p>On the leaked exam, both score in the nineties. From the score alone you cannot tell who understands the material. A benchmark number on a public test set has exactly this problem.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The same question with names and numbers changed">
+      <g class="a" style="--d:0"><rect x="30" y="50" width="250" height="130" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="50" y="76" font-size="12" font-weight="600" fill="var(--muted)">Original question</text>
+        <text x="50" y="104" font-size="13" fill="var(--fg)"><tspan fill="var(--accent)" font-weight="600">Ana's train</tspan> leaves at <tspan fill="var(--accent)" font-weight="600">3 pm</tspan></text>
+        <text x="50" y="126" font-size="13" fill="var(--fg)">and travels at <tspan fill="var(--accent)" font-weight="600">60 mph</tspan>.</text>
+        <text x="50" y="148" font-size="13" fill="var(--fg)">How far by <tspan fill="var(--accent)" font-weight="600">5 pm</tspan>? (120 mi)</text></g>
+      <path class="a" style="--d:1" d="M292 115 h46 m-10 -8 l10 8 l-10 8" stroke="var(--fg)" stroke-width="2.5" fill="none"/>
+      <g class="a" style="--d:2"><rect x="350" y="50" width="260" height="130" rx="10" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="370" y="76" font-size="12" font-weight="600" fill="var(--accent)">Perturbed question</text>
+        <text x="370" y="104" font-size="13" fill="var(--fg)"><tspan fill="var(--accent)" font-weight="600">Raj's bus</tspan> leaves at <tspan fill="var(--accent)" font-weight="600">4 pm</tspan></text>
+        <text x="370" y="126" font-size="13" fill="var(--fg)">and travels at <tspan fill="var(--accent)" font-weight="600">45 mph</tspan>.</text>
+        <text x="370" y="148" font-size="13" fill="var(--fg)">How far by <tspan fill="var(--accent)" font-weight="600">6 pm</tspan>? (90 mi)</text></g>
+      <text class="a" style="--d:3" x="320" y="222" text-anchor="middle" font-size="14" fill="var(--muted)">Same skill, new surface details. A memorised answer no longer fits.</text>
+    </svg>
+    <p>Now change the surface of every question: new names, new numbers, options shuffled. The skill needed is identical, so an honest score should barely move. This is a <b>perturbation test</b>.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="After the change, Student A drops forty points and Student B drops two">
+      <rect x="150" y="22" width="12" height="12" rx="2" fill="var(--line-strong)"/><text x="168" y="33" font-size="12" fill="var(--muted)">original exam</text>
+      <rect x="290" y="22" width="12" height="12" rx="2" fill="var(--accent)"/><text x="308" y="33" font-size="12" fill="var(--muted)">numbers changed</text>
+      <line x1="110" y1="210" x2="560" y2="210" stroke="var(--line-strong)" stroke-width="2"/>
+      <rect x="150" y="67.5" width="54" height="142.5" rx="5" fill="var(--line-strong)"/><text x="177" y="60" text-anchor="middle" font-size="13" fill="var(--fg)">95</text>
+      <rect class="a" style="--d:1" x="212" y="127.5" width="54" height="82.5" rx="5" fill="var(--accent)"/><text class="a" style="--d:1" x="239" y="120" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">55</text>
+      <rect x="380" y="70.5" width="54" height="139.5" rx="5" fill="var(--line-strong)"/><text x="407" y="63" text-anchor="middle" font-size="13" fill="var(--fg)">93</text>
+      <rect class="a" style="--d:2" x="442" y="73.5" width="54" height="136.5" rx="5" fill="var(--accent)"/><text class="a" style="--d:2" x="469" y="66" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">91</text>
+      <text x="208" y="232" text-anchor="middle" font-size="13" fill="var(--fg)">Student A</text><text x="438" y="232" text-anchor="middle" font-size="13" fill="var(--fg)">Student B</text>
+      <g class="a" style="--d:3"><text x="290" y="150" font-size="22" font-weight="700" fill="var(--fp)">−40</text><text x="518" y="100" font-size="22" font-weight="700" fill="var(--tp)">−2</text></g>
+    </svg>
+    <p>Student A falls from 95 to 55. Student B goes from 93 to 91. The size of the drop is the fingerprint: a big gap between original and perturbed versions says the original score was partly memory.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A number line showing the noise band around zero; B's drop is inside it, A's is far outside">
+      <rect class="a" style="--d:0" x="125.5" y="80" width="90.9" height="70" rx="6" fill="var(--sunk)" stroke="var(--line-strong)" stroke-dasharray="4 4"/>
+      <text class="a" style="--d:0" x="171" y="70" text-anchor="middle" font-size="12" fill="var(--muted)">noise band ±5</text>
+      <line x1="80" y1="150" x2="580" y2="150" stroke="var(--line-strong)" stroke-width="2"/>
+      <g font-size="11" fill="var(--faint)" text-anchor="middle"><text x="80" y="170">−10</text><text x="171" y="170">0</text><text x="262" y="170">10</text><text x="353" y="170">20</text><text x="444" y="170">30</text><text x="535" y="170">40</text></g>
+      <text x="330" y="196" text-anchor="middle" font-size="12" fill="var(--muted)">drop after changing the numbers (points)</text>
+      <g class="a" style="--d:1"><circle cx="189" cy="150" r="9" fill="var(--tp)"/><text x="189" y="128" text-anchor="middle" font-size="13" font-weight="600" fill="var(--tp)">B</text></g>
+      <g class="a" style="--d:2"><circle class="pulse" cx="535" cy="150" r="9" fill="var(--fp)"/><text x="535" y="128" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fp)">A</text></g>
+      <text class="a" style="--d:3" x="320" y="236" text-anchor="middle" font-size="14" fill="var(--fg)">On 200 questions, a 2-point drop is noise. A 40-point drop is not.</text>
+    </svg>
+    <p>Small drops happen by chance, because the perturbed questions are a fresh sample. On 200 questions the noise on a gap is roughly ±5 points, so B's 2-point drop means nothing and A's 40 is overwhelming. Always put an interval on the gap before calling something contaminated.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Three more ways to catch contamination">
+      <g class="a" style="--d:0"><rect x="20" y="40" width="180" height="160" rx="12" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <circle cx="102" cy="88" r="20" fill="none" stroke="var(--accent)" stroke-width="4"/><path d="M116 102 l16 16" stroke="var(--accent)" stroke-width="5" stroke-linecap="round"/>
+        <text x="110" y="148" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Search the data</text><text x="110" y="168" text-anchor="middle" font-size="12" fill="var(--muted)">n-gram overlap</text></g>
+      <g class="a" style="--d:1"><rect x="230" y="40" width="180" height="160" rx="12" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <path d="M290 72 h50 l16 16 l-16 16 h-50 Z" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="318" y="93" text-anchor="middle" font-size="11" fill="var(--lead)">#a3f9</text>
+        <text x="320" y="148" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Plant a canary</text><text x="320" y="168" text-anchor="middle" font-size="12" fill="var(--muted)">a unique marker string</text></g>
+      <g class="a" style="--d:2"><rect x="440" y="40" width="180" height="160" rx="12" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <rect x="505" y="64" width="50" height="50" rx="6" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><rect x="505" y="64" width="50" height="14" rx="4" fill="var(--eli5)"/><text x="530" y="102" text-anchor="middle" font-size="13" font-weight="600" fill="var(--eli5)">new</text>
+        <text x="530" y="148" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Use newer questions</text><text x="530" y="168" text-anchor="middle" font-size="12" fill="var(--muted)">written after the cutoff</text></g>
+      <text class="a" style="--d:4" x="320" y="236" text-anchor="middle" font-size="14" fill="var(--muted)">If you own the data, search it. If you do not, test the student.</text>
+    </svg>
+    <p>Perturbation is one detective. If you own the training data, search it for the test items. Benchmark authors can plant a unique canary string so leaks are findable. And questions written after the model's data cutoff cannot have been memorised.</p>
+  </div>
+</div>
+
+
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The exam that was posted online</span></div>
   <p>A teacher gives the same final exam every year. One year a student posts the questions and answers online. Next year's class scores much higher. Did they get smarter, or did they read the answers?</p>
   <p>The test for this is simple: change the exam a little. Rename the people in the word problems, swap the numbers, reorder the options. A student who understands the material does about as well as before. A student who memorised the answer key falls apart.</p>
