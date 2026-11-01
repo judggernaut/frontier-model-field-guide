@@ -88,6 +88,7 @@
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Bernoulli: formulas and code</span></div>
 <div class="eq">\[ P(X=k) = p^k(1-p)^{1-k}, \quad k \in \{0,1\} \]<br>\[ E[X] = p \qquad \operatorname{Var}(X) = p(1-p) \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>import random
 
 # GENERATE: one task result. This is the atom everything else is built from.
@@ -100,12 +101,59 @@ results = [one_task(0.7, rng) for _ in range(200)]  # 200 independent tasks
 # SUMMARISE
 n = len(results)
 k = sum(results)                                    # how many passed
-print(k / n)                                        # the pass rate, e.g. 0.705
+print(k / n)                                        # the pass rate, e.g. 0.695
 
 # NOTE the variance: p(1-p) is largest at p = 0.5 and shrinks toward the edges.
 # That is WHY a model at 50% needs more tasks to pin down than one at 95%.
 for p in (0.5, 0.7, 0.95):
     print(p, &quot;variance per task:&quot;, round(p * (1 - p), 4))</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+// GENERATE: one task result. This is the atom everything else is built from.
+fn one_task(p_pass: f64, rng: &amp;mut Rng) -&gt; u32 {
+    if rng.random() &lt; p_pass { 1 } else { 0 } // 1 = passed, 0 = failed
+}
+
+fn main() {
+    let mut rng = Rng::new(0);
+    let results: Vec&lt;u32&gt; = (0..200).map(|_| one_task(0.7, &amp;mut rng)).collect(); // 200 independent tasks
+
+    // SUMMARISE
+    let n = results.len();
+    let k: u32 = results.iter().sum(); // how many passed
+    println!("{}", k as f64 / n as f64); // the pass rate, e.g. 0.68 (Python's draws give 0.695)
+
+    // NOTE the variance: p(1-p) is largest at p = 0.5 and shrinks toward the edges.
+    // That is WHY a model at 50% needs more tasks to pin down than one at 95%.
+    for p in [0.5, 0.7, 0.95] {
+        println!("{} variance per task: {}", p, round(p * (1.0 - p), 4));
+    }
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-binomial">Binomial</h3>
@@ -118,6 +166,7 @@ for p in (0.5, 0.7, 0.95):
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Binomial: formulas and code</span></div>
 <div class="eq">\[ P(X=k) = \binom{n}{k} p^k (1-p)^{n-k} \]<br>\[ E[X] = np \qquad \operatorname{Var}(X) = np(1-p) \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 import math
 
@@ -142,6 +191,62 @@ print(wilson(124, 200))   # (0.5511, 0.6844)
 
 # THE TRAP: this is only valid if tasks are independent.
 # 200 tool calls from 25 sessions are NOT 200 independent trials.</code></pre>
+<pre class="code" data-lang="rust"><code>/// ln Gamma(x) by the Lanczos approximation (g = 7, 9 terms).
+fn ln_gamma(x: f64) -&gt; f64 {
+    const G: [f64; 9] = [
+        0.999_999_999_999_809_93, 676.520_368_121_885_1, -1259.139_216_722_402_8,
+        771.323_428_777_653_13, -176.615_029_162_140_59, 12.507_343_278_686_905,
+        -0.138_571_095_265_720_12, 9.984_369_578_019_571_6e-6, 1.505_632_735_149_311_6e-7,
+    ];
+    let pi = std::f64::consts::PI;
+    if x &lt; 0.5 {
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x); // reflection
+    }
+    let x = x - 1.0;
+    let t = x + 7.5;
+    let a = G[0] + (1..9).map(|i| G[i] / (x + i as f64)).sum::&lt;f64&gt;();
+    0.5 * (2.0 * pi).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+fn ln_choose(n: u64, k: u64) -&gt; f64 {
+    ln_gamma(n as f64 + 1.0) - ln_gamma(k as f64 + 1.0) - ln_gamma((n - k) as f64 + 1.0)
+}
+
+fn binom_pmf(k: u64, n: u64, p: f64) -&gt; f64 {
+    (ln_choose(n, k) + k as f64 * p.ln() + (n - k) as f64 * (1.0 - p).ln()).exp()
+}
+
+/// Survival function P(X &gt; k): add up the upper tail.
+fn binom_sf(k: u64, n: u64, p: f64) -&gt; f64 {
+    (k + 1..=n).map(|j| binom_pmf(j, n, p)).sum()
+}
+
+// The interval you should report for an observed rate.
+fn wilson(k: u64, n: u64, z: f64) -&gt; (f64, f64) {
+    let (k, n) = (k as f64, n as f64);
+    let p_hat = k / n;
+    let den = 1.0 + z * z / n;
+    let centre = (p_hat + z * z / (2.0 * n)) / den;
+    let half = z * (p_hat * (1.0 - p_hat) / n + z * z / (4.0 * n * n)).sqrt() / den;
+    ((centre - half).max(0.0), (centre + half).min(1.0))
+}
+
+fn main() {
+    // The count of passes out of n tasks IS binomial, if the tasks are independent.
+    let (n, p) = (200u64, 0.62);
+    println!("expected passes: {:?}", n as f64 * p);                           // 124.0
+    println!("sd of that count: {}", (n as f64 * p * (1.0 - p)).sqrt());       // 6.86
+
+    // How likely is exactly 130 passes? And 130 or more?
+    println!("{}", binom_pmf(130, n, p)); // exactly     -&gt; 0.0401
+    println!("{}", binom_sf(129, n, p));  // 130 or more -&gt; 0.2121
+
+    println!("{:?}", wilson(124, 200, 1.96)); // (0.5511, 0.6844)
+
+    // THE TRAP: this is only valid if tasks are independent.
+    // 200 tool calls from 25 sessions are NOT 200 independent trials.
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-uniform">Uniform</h3>
@@ -154,6 +259,7 @@ print(wilson(124, 200))   # (0.5511, 0.6844)
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Uniform: formulas and code</span></div>
 <div class="eq">\[ f(x) = \frac{1}{b-a}, \quad a \le x \le b \]<br>\[ E[X] = \frac{a+b}{2} \qquad \operatorname{Var}(X) = \frac{(b-a)^2}{12} \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>import random
 
 # The single most useful fact about the uniform distribution in eval work:
@@ -164,10 +270,46 @@ suite = 40                                    # benchmarks in your standing suit
 p_values = [rng.random() for _ in range(suite)]   # all nulls, no real effect
 
 false_alarms = sum(1 for p in p_values if p &lt; 0.05)
-print(false_alarms)      # about 2, every single run, purely by luck
+print(false_alarms)      # 6 with this seed; 2 on average, purely by luck
 
 # Expected number of spurious &quot;significant&quot; results:
 print(suite * 0.05)      # 2.0</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+}
+
+fn main() {
+    // The single most useful fact about the uniform distribution in eval work:
+    // p values from a TRUE NULL are uniform. That is the whole multiple
+    // comparisons problem in one line.
+    let mut rng = Rng::new(1);
+    let suite = 40; // benchmarks in your standing suite
+    let p_values: Vec&lt;f64&gt; = (0..suite).map(|_| rng.random()).collect(); // all nulls, no real effect
+
+    let false_alarms = p_values.iter().filter(|&amp;&amp;p| p &lt; 0.05).count();
+    println!("{}", false_alarms);            // 2 with these draws (Python's: 6); 2 on average, purely by luck
+
+    // Expected number of spurious "significant" results:
+    println!("{:?}", suite as f64 * 0.05);   // 2.0
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-normal-gaussian">Normal (Gaussian)</h3>
@@ -180,15 +322,16 @@ print(suite * 0.05)      # 2.0</code></pre>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Normal (Gaussian): formulas and code</span></div>
 <div class="eq">\[ f(x) = \frac{1}{\sigma\sqrt{2\pi}} \exp\!\left(-\frac{(x-\mu)^2}{2\sigma^2}\right) \]<br>\[ E[X] = \mu \qquad \operatorname{Var}(X) = \sigma^2 \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 import numpy as np
 
-# Raw eval data is almost never normal. AVERAGES of it are.
+# Raw eval data is almost never normal. AVERAGES of it get close.
 latency = stats.lognorm.rvs(0.9, scale=3, size=5000, random_state=0)  # skewed
-print(stats.skew(latency))                    # ~2.5, strongly right skewed
+print(stats.skew(latency))                    # ~4.4, strongly right skewed
 
 means = latency[:5000].reshape(-1, 50).mean(axis=1)   # averages of 50
-print(stats.skew(means))                      # ~0.35, close to symmetric
+print(stats.skew(means))                      # ~0.27 with this seed (theory ~0.67), far closer to symmetric
 
 # The 68 / 95 / 99.7 rule, for genuinely normal data:
 for k in (1, 2, 3):
@@ -196,7 +339,196 @@ for k in (1, 2, 3):
 
 # Test normality rather than assuming it. Small p = not normal.
 print(stats.shapiro(latency[:500]).pvalue)    # ~0 -&gt; definitely not normal
-print(stats.shapiro(means[:80]).pvalue)       # large -&gt; consistent with normal</code></pre>
+print(stats.shapiro(means[:80]).pvalue)       # 0.35 with this seed, but across seeds this rejects
+                                              # about half the time: closer to normal, not exactly normal</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+/// ln Gamma(x) by the Lanczos approximation (g = 7, 9 terms).
+fn ln_gamma(x: f64) -&gt; f64 {
+    const G: [f64; 9] = [
+        0.999_999_999_999_809_93, 676.520_368_121_885_1, -1259.139_216_722_402_8,
+        771.323_428_777_653_13, -176.615_029_162_140_59, 12.507_343_278_686_905,
+        -0.138_571_095_265_720_12, 9.984_369_578_019_571_6e-6, 1.505_632_735_149_311_6e-7,
+    ];
+    let pi = std::f64::consts::PI;
+    if x &lt; 0.5 {
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x); // reflection
+    }
+    let x = x - 1.0;
+    let t = x + 7.5;
+    let a = G[0] + (1..9).map(|i| G[i] / (x + i as f64)).sum::&lt;f64&gt;();
+    0.5 * (2.0 * pi).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+/// Regularized incomplete gamma functions (P, Q) = (lower, upper), P + Q = 1.
+fn gamma_pq(a: f64, x: f64) -&gt; (f64, f64) {
+    if x &lt;= 0.0 {
+        return (0.0, 1.0);
+    }
+    let front = (-x + a * x.ln() - ln_gamma(a)).exp();
+    if x &lt; a + 1.0 {
+        // power series converges fast here
+        let (mut ap, mut term) = (a, 1.0 / a);
+        let mut sum = term;
+        while term.abs() &gt; sum.abs() * 1e-16 {
+            ap += 1.0;
+            term *= x / ap;
+            sum += term;
+        }
+        let p = sum * front;
+        (p, 1.0 - p)
+    } else {
+        // continued fraction (modified Lentz) converges fast here
+        let tiny = 1e-300;
+        let (mut b, mut c) = (x + 1.0 - a, 1.0 / tiny);
+        let mut d = 1.0 / b;
+        let mut h = d;
+        for i in 1..1000 {
+            let an = -(i as f64) * (i as f64 - a);
+            b += 2.0;
+            d = an * d + b;
+            if d.abs() &lt; tiny { d = tiny; }
+            c = b + an / c;
+            if c.abs() &lt; tiny { c = tiny; }
+            d = 1.0 / d;
+            h *= d * c;
+            if (d * c - 1.0).abs() &lt; 1e-16 { break; }
+        }
+        let q = front * h;
+        (1.0 - q, q)
+    }
+}
+
+/// Standard normal CDF, via the incomplete gamma function (erf(x) = P(1/2, x^2)).
+fn norm_cdf(z: f64) -&gt; f64 {
+    let tail = 0.5 * gamma_pq(0.5, z * z / 2.0).1; // P(Z &gt; |z|), accurate far out
+    if z &gt;= 0.0 { 1.0 - tail } else { tail }
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+/// Sample skewness, as scipy.stats.skew computes it: m3 / m2^1.5.
+fn skew(x: &amp;[f64]) -&gt; f64 {
+    let m = mean(x);
+    let m2 = x.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() / x.len() as f64;
+    let m3 = x.iter().map(|v| (v - m).powi(3)).sum::&lt;f64&gt;() / x.len() as f64;
+    m3 / m2.powf(1.5)
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+/// Inverse normal CDF: Acklam's rational approximation, polished by one Newton step.
+fn norm_ppf(p: f64) -&gt; f64 {
+    let a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2,
+             1.383577518672690e2, -3.066479806614716e1, 2.506628277459239];
+    let b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2,
+             6.680131188771972e1, -1.328068155288572e1];
+    let c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838,
+             -2.549732539343734, 4.374664141464968, 2.938163982698783];
+    let d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
+    let tail = |q: f64| (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5])
+        / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0);
+    let x = if p &lt; 0.02425 {
+        tail((-2.0 * p.ln()).sqrt())
+    } else if p &gt; 1.0 - 0.02425 {
+        -tail((-2.0 * (1.0 - p).ln()).sqrt())
+    } else {
+        let q = p - 0.5;
+        let r = q * q;
+        (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q
+            / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0)
+    };
+    let pdf = (-x * x / 2.0).exp() / (2.0 * std::f64::consts::PI).sqrt();
+    x - (norm_cdf(x) - p) / pdf
+}
+
+fn poly(c: &amp;[f64], x: f64) -&gt; f64 {
+    c.iter().rev().fold(0.0, |acc, &amp;ci| acc * x + ci)
+}
+
+/// Shapiro-Wilk test (Royston's 1995 algorithm, as scipy uses), for n &gt;= 12.
+/// Returns the p value: small means "not normal".
+fn shapiro_pvalue(x: &amp;[f64]) -&gt; f64 {
+    let n = x.len();
+    let nf = n as f64;
+    let mut s = x.to_vec();
+    s.sort_by(|a, b| a.total_cmp(b));
+
+    // expected normal order statistics, and the weights built from them
+    let m: Vec&lt;f64&gt; = (1..=n).map(|i| norm_ppf((i as f64 - 0.375) / (nf + 0.25))).collect();
+    let mm: f64 = m.iter().map(|v| v * v).sum();
+    let u = 1.0 / nf.sqrt();
+    let an = m[n - 1] / mm.sqrt() + poly(&amp;[0.0, 0.221157, -0.147981, -2.071190, 4.434685, -2.706056], u);
+    let an1 = m[n - 2] / mm.sqrt() + poly(&amp;[0.0, 0.042981, -0.293762, -1.752461, 5.682633, -3.582633], u);
+    let phi = (mm - 2.0 * m[n - 1].powi(2) - 2.0 * m[n - 2].powi(2))
+        / (1.0 - 2.0 * an * an - 2.0 * an1 * an1);
+    let mut a: Vec&lt;f64&gt; = m.iter().map(|v| v / phi.sqrt()).collect();
+    (a[0], a[1], a[n - 2], a[n - 1]) = (-an, -an1, an1, an);
+
+    // W = squared correlation between the sorted data and the weights
+    let xbar = mean(&amp;s);
+    let sax: f64 = a.iter().zip(&amp;s).map(|(ai, xi)| ai * (xi - xbar)).sum();
+    let ssa: f64 = a.iter().map(|v| v * v).sum();
+    let ssx: f64 = s.iter().map(|v| (v - xbar).powi(2)).sum();
+    let w = sax * sax / (ssa * ssx);
+
+    // ln(1 - W) is close to normal; its mean and sd depend on ln n
+    let ln_n = nf.ln();
+    let mu = poly(&amp;[-1.5861, -0.31082, -0.083751, 0.0038915], ln_n);
+    let sigma = poly(&amp;[-0.4803, -0.082676, 0.0030302], ln_n).exp();
+    norm_cdf(-((1.0 - w).ln() - mu) / sigma) // upper tail
+}
+
+fn main() {
+    // Raw eval data is almost never normal. AVERAGES of it are.
+    let mut rng = Rng::new(0);
+    let latency: Vec&lt;f64&gt; = (0..5000).map(|_| 3.0 * rng.normal(0.0, 0.9).exp()).collect(); // skewed (lognormal)
+    println!("{}", skew(&amp;latency)); // 4.51, strongly right skewed
+
+    let means: Vec&lt;f64&gt; = latency.chunks(50).map(mean).collect(); // averages of 50
+    println!("{}", skew(&amp;means));   // 0.46, much closer to symmetric
+
+    // The 68 / 95 / 99.7 rule, for genuinely normal data:
+    for k in [1.0, 2.0, 3.0] {
+        println!("{} sd covers {} %", k, round(100.0 * (norm_cdf(k) - norm_cdf(-k)), 1));
+    }
+
+    // Test normality rather than assuming it. Small p = not normal.
+    println!("{:e}", shapiro_pvalue(&amp;latency[..500])); // 8.3e-35 -&gt; definitely not normal
+    println!("{}", shapiro_pvalue(&amp;means[..80]));      // 0.025 with these draws: closer to normal, not there yet
+    // (theory: a mean of 50 still has skew 4.75 / sqrt(50) = 0.67)
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-student-s-t">Student's t</h3>
@@ -209,6 +541,7 @@ print(stats.shapiro(means[:80]).pvalue)       # large -&gt; consistent with norm
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Student's t: formulas and code</span></div>
 <div class="eq">\[ f(x) \propto \left(1 + \frac{x^2}{\nu}\right)^{-\frac{\nu+1}{2}} \]<br>\[ E[X] = 0 \ (\nu > 1) \qquad \operatorname{Var}(X) = \frac{\nu}{\nu-2} \ (\nu > 2) \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 
 # t is what you use when you estimated the spread from the same small sample.
@@ -226,6 +559,148 @@ print(stats.ttest_rel(model_a, model_b))
 
 # BUT: check the differences are roughly symmetric first. On skewed data
 # this is the wrong tool no matter how fat the t tails are.</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+/// ln Gamma(x) by the Lanczos approximation (g = 7, 9 terms).
+fn ln_gamma(x: f64) -&gt; f64 {
+    const G: [f64; 9] = [
+        0.999_999_999_999_809_93, 676.520_368_121_885_1, -1259.139_216_722_402_8,
+        771.323_428_777_653_13, -176.615_029_162_140_59, 12.507_343_278_686_905,
+        -0.138_571_095_265_720_12, 9.984_369_578_019_571_6e-6, 1.505_632_735_149_311_6e-7,
+    ];
+    let pi = std::f64::consts::PI;
+    if x &lt; 0.5 {
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x); // reflection
+    }
+    let x = x - 1.0;
+    let t = x + 7.5;
+    let a = G[0] + (1..9).map(|i| G[i] / (x + i as f64)).sum::&lt;f64&gt;();
+    0.5 * (2.0 * pi).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+/// Regularized incomplete beta I_x(a, b), by continued fraction (modified Lentz).
+fn beta_inc(a: f64, b: f64, x: f64) -&gt; f64 {
+    if x &lt;= 0.0 {
+        return 0.0;
+    }
+    if x &gt;= 1.0 {
+        return 1.0;
+    }
+    let front = (ln_gamma(a + b) - ln_gamma(a) - ln_gamma(b) + a * x.ln() + b * (1.0 - x).ln()).exp();
+    // the fraction converges fast on one side of the mean; use symmetry for the other
+    if x &lt; (a + 1.0) / (a + b + 2.0) {
+        front * beta_cf(a, b, x) / a
+    } else {
+        1.0 - front * beta_cf(b, a, 1.0 - x) / b
+    }
+}
+
+fn beta_cf(a: f64, b: f64, x: f64) -&gt; f64 {
+    let tiny = 1e-300;
+    let clamp = |v: f64| if v.abs() &lt; tiny { tiny } else { v };
+    let mut c = 1.0;
+    let mut d = 1.0 / clamp(1.0 - (a + b) * x / (a + 1.0));
+    let mut h = d;
+    for m in 1..1000 {
+        let m = m as f64;
+        let even = m * (b - m) * x / ((a + 2.0 * m - 1.0) * (a + 2.0 * m));
+        d = 1.0 / clamp(1.0 + even * d);
+        c = clamp(1.0 + even / c);
+        h *= d * c;
+        let odd = -(a + m) * (a + b + m) * x / ((a + 2.0 * m) * (a + 2.0 * m + 1.0));
+        d = 1.0 / clamp(1.0 + odd * d);
+        c = clamp(1.0 + odd / c);
+        h *= d * c;
+        if (d * c - 1.0).abs() &lt; 1e-16 {
+            break;
+        }
+    }
+    h
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+/// Student t CDF with df degrees of freedom, via the incomplete beta function.
+fn t_cdf(t: f64, df: f64) -&gt; f64 {
+    let tail = 0.5 * beta_inc(df / 2.0, 0.5, df / (df + t * t)); // P(T &gt; |t|)
+    if t &gt;= 0.0 { 1.0 - tail } else { tail }
+}
+
+/// Inverse t CDF by bisection: the CDF only goes up, so halve the bracket.
+fn t_ppf(p: f64, df: f64) -&gt; f64 {
+    let (mut lo, mut hi) = (-100.0, 100.0);
+    for _ in 0..200 {
+        let mid = 0.5 * (lo + hi);
+        if t_cdf(mid, df) &lt; p { lo = mid } else { hi = mid }
+    }
+    0.5 * (lo + hi)
+}
+
+#[derive(Debug)]
+struct TtestResult {
+    statistic: f64,
+    pvalue: f64,
+    df: usize,
+}
+
+/// Paired t test: a one-sample t test on the per-task differences.
+fn ttest_rel(a: &amp;[f64], b: &amp;[f64]) -&gt; TtestResult {
+    let d: Vec&lt;f64&gt; = a.iter().zip(b).map(|(x, y)| x - y).collect();
+    let n = d.len() as f64;
+    let m = d.iter().sum::&lt;f64&gt;() / n;
+    let sd = (d.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() / (n - 1.0)).sqrt();
+    let t = m / (sd / n.sqrt());
+    let pvalue = 2.0 * (1.0 - t_cdf(t.abs(), n - 1.0)); // two sided
+    TtestResult { statistic: t, pvalue, df: d.len() - 1 }
+}
+
+fn main() {
+    // t is what you use when you estimated the spread from the same small sample.
+    // Compare the critical value at 95% as the sample grows:
+    for df in [5, 10, 30, 100, 1000] {
+        println!("{} {}", df, round(t_ppf(0.975, df as f64), 3));
+    }
+    // 5 -&gt; 2.571,  30 -&gt; 2.042,  1000 -&gt; 1.962.  It converges on the normal 1.96.
+
+    // A paired t test on per task score differences:
+    let mut rng = Rng::new(0);
+    let model_a: Vec&lt;f64&gt; = (0..40).map(|_| rng.normal(0.62, 0.20)).collect();
+    let model_b: Vec&lt;f64&gt; = (0..40).map(|_| rng.normal(0.58, 0.20)).collect();
+    println!("{:?}", ttest_rel(&amp;model_a, &amp;model_b));
+    // with these draws: statistic 1.398, pvalue 0.170, df 39
+
+    // BUT: check the differences are roughly symmetric first. On skewed data
+    // this is the wrong tool no matter how fat the t tails are.
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-lognormal">Lognormal</h3>
@@ -238,6 +713,7 @@ print(stats.ttest_rel(model_a, model_b))
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Lognormal: formulas and code</span></div>
 <div class="eq">\[ f(x) = \frac{1}{x\sigma\sqrt{2\pi}} \exp\!\left(-\frac{(\ln x-\mu)^2}{2\sigma^2}\right) \]<br>\[ E[X] = e^{\mu+\sigma^2/2} \qquad \text{median} = e^{\mu} \qquad \operatorname{Var}(X) = \left(e^{\sigma^2}-1\right)e^{2\mu+\sigma^2} \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>import numpy as np
 from scipy import stats
 
@@ -255,11 +731,93 @@ print(&quot;log data is symmetric:&quot;, round(stats.skew(logs), 3))   # 0.037
 
 # The geometric mean is the natural centre, and it recovers the median.
 geo = np.exp(logs.mean())
-print(&quot;geometric mean:&quot;, geo)                  # 2.42, matches the median exactly
+print(&quot;geometric mean:&quot;, geo)                  # 2.42, matches the median closely
 
 # Fit and read off the parameters:
 shape, loc, scale = stats.lognorm.fit(lat, floc=0)
 print(&quot;sigma:&quot;, shape, &quot; median:&quot;, scale)      # 0.846, 2.42 - recovered</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+/// Linear-interpolation quantile of SORTED data (numpy's default method).
+fn quantile(sorted: &amp;[f64], q: f64) -&gt; f64 {
+    let h = (sorted.len() - 1) as f64 * q;
+    let lo = h.floor() as usize;
+    let hi = (lo + 1).min(sorted.len() - 1);
+    let (a, b, t) = (sorted[lo], sorted[hi], h - lo as f64);
+    if t &gt;= 0.5 { b - (b - a) * (1.0 - t) } else { a + (b - a) * t }
+}
+
+/// Sample skewness, as scipy.stats.skew computes it: m3 / m2^1.5.
+fn skew(x: &amp;[f64]) -&gt; f64 {
+    let m = mean(x);
+    let m2 = x.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() / x.len() as f64;
+    let m3 = x.iter().map(|v| (v - m).powi(3)).sum::&lt;f64&gt;() / x.len() as f64;
+    m3 / m2.powf(1.5)
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+fn main() {
+    // lognormal(sigma 0.85, median 2.5): exp of a normal
+    let mut rng = Rng::new(3);
+    let lat: Vec&lt;f64&gt; = (0..5000).map(|_| 2.5 * rng.normal(0.0, 0.85).exp()).collect();
+    let mut sorted = lat.clone();
+    sorted.sort_by(|a, b| a.total_cmp(b));
+
+    // WRONG: the arithmetic mean sits between the median and p95 and
+    // describes nobody's actual experience.
+    println!("mean   {}", mean(&amp;lat));                  // 3.52
+    println!("median {}", quantile(&amp;sorted, 0.5));      // 2.53
+    println!("p95    {}", quantile(&amp;sorted, 0.95));     // 9.75
+
+    // RIGHT: work on the log scale, where it is symmetric.
+    let logs: Vec&lt;f64&gt; = lat.iter().map(|v| v.ln()).collect();
+    println!("log data is symmetric: {}", round(skew(&amp;logs), 3)); // -0.021
+
+    // The geometric mean is the natural centre, and it recovers the median.
+    let geo = mean(&amp;logs).exp();
+    println!("geometric mean: {}", geo);                // 2.47, close to the median
+
+    // Fit and read off the parameters. With loc fixed at 0 the maximum likelihood
+    // fit is closed form: sigma = sd of the logs (dividing by n), median = geo.
+    let mu = mean(&amp;logs);
+    let shape = (logs.iter().map(|v| (v - mu).powi(2)).sum::&lt;f64&gt;() / logs.len() as f64).sqrt();
+    let scale = mu.exp();
+    println!("sigma: {}  median: {}", shape, scale);    // 0.845, 2.47 - recovered
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-exponential">Exponential</h3>
@@ -272,6 +830,7 @@ print(&quot;sigma:&quot;, shape, &quot; median:&quot;, scale)      # 0.846, 2.42
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Exponential: formulas and code</span></div>
 <div class="eq">\[ f(x) = \lambda e^{-\lambda x}, \quad x \ge 0 \]<br>\[ E[X] = \frac{1}{\lambda} \qquad \operatorname{Var}(X) = \frac{1}{\lambda^2} \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 import numpy as np
 
@@ -281,14 +840,69 @@ gaps = stats.expon.rvs(scale=4.0, size=4000, random_state=1)  # mean 4 seconds
 # Memorylessness, demonstrated. Among requests that already waited 5 seconds,
 # the REMAINING wait still averages 4 seconds. Waiting tells you nothing.
 already = gaps[gaps &gt; 5] - 5
-print(gaps.mean(), already.mean())     # 4.0  vs  4.0
+print(gaps.mean(), already.mean())     # 3.98  vs  3.91
 
 # THE TEST: is your data actually memoryless? Compare the mean and sd.
 # For an exponential they are equal.
-print(gaps.mean(), gaps.std())         # 4.0, 4.0 -&gt; consistent
+print(gaps.mean(), gaps.std())         # 3.98, 3.90 -&gt; consistent
 
 lat = stats.lognorm.rvs(0.9, scale=3, size=4000, random_state=1)
-print(lat.mean(), lat.std())           # 4.5, 4.9 -&gt; not exponential</code></pre>
+print(lat.mean(), lat.std())           # 4.56, 5.28 -&gt; not exponential</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+/// Population standard deviation (ddof = 0, numpy's default).
+fn std(x: &amp;[f64]) -&gt; f64 {
+    let m = mean(x);
+    (x.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() / x.len() as f64).sqrt()
+}
+
+fn main() {
+    // Waiting time with a CONSTANT hazard rate.
+    let mut rng = Rng::new(1);
+    let gaps: Vec&lt;f64&gt; = (0..4000).map(|_| -4.0 * (1.0 - rng.random()).ln()).collect(); // mean 4 seconds
+
+    // Memorylessness, demonstrated. Among requests that already waited 5 seconds,
+    // the REMAINING wait still averages 4 seconds. Waiting tells you nothing.
+    let already: Vec&lt;f64&gt; = gaps.iter().filter(|&amp;&amp;g| g &gt; 5.0).map(|g| g - 5.0).collect();
+    println!("{} {}", mean(&amp;gaps), mean(&amp;already)); // 3.91  vs  4.13
+
+    // THE TEST: is your data actually memoryless? Compare the mean and sd.
+    // For an exponential they are equal.
+    println!("{} {}", mean(&amp;gaps), std(&amp;gaps));     // 3.91, 4.03 -&gt; consistent
+
+    let lat: Vec&lt;f64&gt; = (0..4000).map(|_| 3.0 * rng.normal(0.0, 0.9).exp()).collect(); // lognormal
+    println!("{} {}", mean(&amp;lat), std(&amp;lat));       // 4.44, 5.04 -&gt; not exponential
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-gamma">Gamma</h3>
@@ -301,6 +915,7 @@ print(lat.mean(), lat.std())           # 4.5, 4.9 -&gt; not exponential</code></
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Gamma: formulas and code</span></div>
 <div class="eq">\[ f(x) = \frac{\lambda^k x^{k-1} e^{-\lambda x}}{\Gamma(k)} \]<br>\[ E[X] = \frac{k}{\lambda} \qquad \operatorname{Var}(X) = \frac{k}{\lambda^2} \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 import numpy as np
 
@@ -316,7 +931,110 @@ print(stats.gamma.fit(total, floc=0)[0])          # recovers shape ~3
 # Shape 1 IS exponential; large shape approaches normal.
 for k in (1, 3, 20):
     print(k, round(stats.skew(stats.gamma.rvs(k, size=20000, random_state=1)), 2))
-# 1 -&gt; 2.0 (very skewed),  3 -&gt; 1.15,  20 -&gt; 0.44 (nearly symmetric)</code></pre>
+# 1 -&gt; 1.93 (very skewed),  3 -&gt; 1.18,  20 -&gt; 0.45 (nearly symmetric)
+# theory, 2 / sqrt(k): 2.0, 1.15, 0.45</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+impl Rng {
+    /// Gamma(shape, scale) draw, Marsaglia-Tsang method (shape &gt;= 1).
+    fn gamma(&amp;mut self, shape: f64, scale: f64) -&gt; f64 {
+        let d = shape - 1.0 / 3.0;
+        let c = 1.0 / (9.0 * d).sqrt();
+        loop {
+            let z = self.normal(0.0, 1.0);
+            let v = (1.0 + c * z).powi(3);
+            if v &gt; 0.0 &amp;&amp; self.random().ln() &lt; 0.5 * z * z + d - d * v + d * v.ln() {
+                return d * v * scale;
+            }
+        }
+    }
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+/// Sample skewness, as scipy.stats.skew computes it: m3 / m2^1.5.
+fn skew(x: &amp;[f64]) -&gt; f64 {
+    let m = mean(x);
+    let m2 = x.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() / x.len() as f64;
+    let m3 = x.iter().map(|v| (v - m).powi(3)).sum::&lt;f64&gt;() / x.len() as f64;
+    m3 / m2.powf(1.5)
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+fn digamma(mut x: f64) -&gt; f64 {
+    let mut r = 0.0;
+    while x &lt; 6.0 {
+        r -= 1.0 / x; // psi(x) = psi(x + 1) - 1/x
+        x += 1.0;
+    }
+    let f = 1.0 / (x * x); // asymptotic series for large x
+    r + x.ln() - 0.5 / x - f * (1.0 / 12.0 - f * (1.0 / 120.0 - f * (1.0 / 252.0 - f / 240.0)))
+}
+
+/// Maximum likelihood gamma shape with loc fixed at 0:
+/// solve ln(k) - digamma(k) = ln(mean) - mean(ln x). The left side falls as k grows.
+fn gamma_fit_shape(x: &amp;[f64]) -&gt; f64 {
+    let s = mean(x).ln() - x.iter().map(|v| v.ln()).sum::&lt;f64&gt;() / x.len() as f64;
+    let (mut lo, mut hi) = (1e-3_f64, 1e3_f64);
+    for _ in 0..200 {
+        let mid = (lo * hi).sqrt();
+        if mid.ln() - digamma(mid) &gt; s { lo = mid } else { hi = mid }
+    }
+    (lo * hi).sqrt()
+}
+
+fn main() {
+    // Total time through a pipeline of k independent stages.
+    // Sum of k exponentials with the same rate IS a gamma with shape k.
+    let mut rng = Rng::new(0);
+    let total: Vec&lt;f64&gt; = (0..5000)
+        .map(|_| (0..3).map(|_| -2.0 * (1.0 - rng.random()).ln()).sum()) // 3 stages, mean 2s each
+        .collect();
+
+    println!("{} {:?}", mean(&amp;total), 3.0 * 2.0); // 5.97 - matches k/lambda
+    println!("{}", gamma_fit_shape(&amp;total));      // recovers shape ~3 (3.04)
+
+    // Shape 1 IS exponential; large shape approaches normal.
+    let mut rng = Rng::new(1);
+    for k in [1, 3, 20] {
+        let draws: Vec&lt;f64&gt; = (0..20000).map(|_| rng.gamma(k as f64, 1.0)).collect();
+        println!("{} {}", k, round(skew(&amp;draws), 2));
+    }
+    // 1 -&gt; 1.93 (very skewed),  3 -&gt; 1.13,  20 -&gt; 0.48 (nearly symmetric)
+    // theory, 2 / sqrt(k): 2.0, 1.15, 0.45
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-poisson">Poisson</h3>
@@ -329,6 +1047,7 @@ for k in (1, 3, 20):
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Poisson: formulas and code</span></div>
 <div class="eq">\[ P(X=k) = \frac{\lambda^k e^{-\lambda}}{k!} \]<br>\[ E[X] = \lambda \qquad \operatorname{Var}(X) = \lambda \qquad \frac{\operatorname{Var}}{E} = 1 \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 import numpy as np
 
@@ -349,7 +1068,73 @@ print(dispersion_test(counts))                    # Poisson ok
 # Real agent data almost never passes this.
 real = np.concatenate([stats.poisson.rvs(2, size=1000, random_state=1),
                        stats.poisson.rvs(15, size=1000, random_state=2)])
-print(dispersion_test(real))                      # ratio ~4.5, OVERDISPERSED</code></pre>
+print(dispersion_test(real))                      # ratio ~5.9, OVERDISPERSED</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+}
+
+impl Rng {
+    /// Poisson draw: multiply uniforms until the product drops below e^-lambda.
+    fn poisson(&amp;mut self, lambda: f64) -&gt; u64 {
+        let limit = (-lambda).exp();
+        let (mut k, mut prod) = (0, self.random());
+        while prod &gt; limit {
+            k += 1;
+            prod *= self.random();
+        }
+        k
+    }
+}
+
+#[derive(Debug)]
+struct Dispersion {
+    mean: f64,
+    var: f64,
+    ratio: f64,
+    verdict: &amp;'static str,
+}
+
+fn dispersion_test(counts: &amp;[u64]) -&gt; Dispersion {
+    let n = counts.len() as f64;
+    let m = counts.iter().sum::&lt;u64&gt;() as f64 / n;
+    let v = counts.iter().map(|&amp;c| (c as f64 - m).powi(2)).sum::&lt;f64&gt;() / (n - 1.0);
+    let ratio = if m != 0.0 { v / m } else { f64::INFINITY };
+    Dispersion { mean: m, var: v, ratio, verdict: if ratio &lt; 1.5 { "Poisson ok" } else { "OVERDISPERSED" } }
+}
+
+fn main() {
+    // THE defining property: variance equals the mean. Test this FIRST,
+    // before you use any Poisson based interval.
+    let mut rng = Rng::new(0);
+    let counts: Vec&lt;u64&gt; = (0..3000).map(|_| rng.poisson(6.0)).collect();
+    let d = dispersion_test(&amp;counts);
+    println!("{} {}", d.mean, d.var);         // 5.97, 5.73 -&gt; ratio 0.96
+
+    println!("{:?}", d);                      // Poisson ok
+
+    // Real agent data almost never passes this.
+    let mut real: Vec&lt;u64&gt; = (0..1000).map(|_| rng.poisson(2.0)).collect();
+    real.extend((0..1000).map(|_| rng.poisson(15.0)));
+    println!("{:?}", dispersion_test(&amp;real)); // ratio ~6.0, OVERDISPERSED
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-negative-binomial">Negative binomial</h3>
@@ -362,6 +1147,7 @@ print(dispersion_test(real))                      # ratio ~4.5, OVERDISPERSED</c
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Negative binomial: formulas and code</span></div>
 <div class="eq">\[ P(X=k) = \binom{k+r-1}{k}(1-p)^k p^r \]<br>\[ E[X] = \mu \qquad \operatorname{Var}(X) = \mu + \frac{\mu^2}{r} \;>\; \mu \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 import numpy as np
 
@@ -383,6 +1169,116 @@ print(&quot;dispersion r:&quot;, r)             # 1.94, recovering the gamma sha
 print(&quot;Poisson says: &quot;, stats.poisson.sf(19, mu))            # 7.3e-06 (absurd)
 print(&quot;NegBinom says:&quot;, stats.nbinom.sf(19, r, r / (r + mu)))  # 0.022 (real)
 # The Poisson model would flag a routine session as a once-in-a-million event.</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+impl Rng {
+    /// Gamma(shape, scale) draw, Marsaglia-Tsang method (shape &gt;= 1).
+    fn gamma(&amp;mut self, shape: f64, scale: f64) -&gt; f64 {
+        let d = shape - 1.0 / 3.0;
+        let c = 1.0 / (9.0 * d).sqrt();
+        loop {
+            let z = self.normal(0.0, 1.0);
+            let v = (1.0 + c * z).powi(3);
+            if v &gt; 0.0 &amp;&amp; self.random().ln() &lt; 0.5 * z * z + d - d * v + d * v.ln() {
+                return d * v * scale;
+            }
+        }
+    }
+}
+
+impl Rng {
+    /// Poisson draw: multiply uniforms until the product drops below e^-lambda.
+    fn poisson(&amp;mut self, lambda: f64) -&gt; u64 {
+        let limit = (-lambda).exp();
+        let (mut k, mut prod) = (0, self.random());
+        while prod &gt; limit {
+            k += 1;
+            prod *= self.random();
+        }
+        k
+    }
+}
+
+/// ln Gamma(x) by the Lanczos approximation (g = 7, 9 terms).
+fn ln_gamma(x: f64) -&gt; f64 {
+    const G: [f64; 9] = [
+        0.999_999_999_999_809_93, 676.520_368_121_885_1, -1259.139_216_722_402_8,
+        771.323_428_777_653_13, -176.615_029_162_140_59, 12.507_343_278_686_905,
+        -0.138_571_095_265_720_12, 9.984_369_578_019_571_6e-6, 1.505_632_735_149_311_6e-7,
+    ];
+    let pi = std::f64::consts::PI;
+    if x &lt; 0.5 {
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x); // reflection
+    }
+    let x = x - 1.0;
+    let t = x + 7.5;
+    let a = G[0] + (1..9).map(|i| G[i] / (x + i as f64)).sum::&lt;f64&gt;();
+    0.5 * (2.0 * pi).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+fn poisson_pmf(k: u64, mu: f64) -&gt; f64 {
+    (k as f64 * mu.ln() - mu - ln_gamma(k as f64 + 1.0)).exp()
+}
+
+/// Negative binomial pmf: failures before the r-th success, success chance p.
+fn nbinom_pmf(k: u64, r: f64, p: f64) -&gt; f64 {
+    let k = k as f64;
+    (ln_gamma(k + r) - ln_gamma(r) - ln_gamma(k + 1.0) + r * p.ln() + k * (1.0 - p).ln()).exp()
+}
+
+/// Survival function P(X &gt; k): add up the upper tail (far enough that the rest is negligible).
+fn sf(pmf: impl Fn(u64) -&gt; f64, k: u64) -&gt; f64 {
+    (k + 1..k + 2000).map(pmf).sum()
+}
+
+fn main() {
+    // A mixture of Poissons with DIFFERENT rates is a negative binomial.
+    // That is exactly what varied task difficulty produces.
+    let mut rng = Rng::new(0);
+    let rates: Vec&lt;f64&gt; = (0..4000).map(|_| rng.gamma(2.0, 3.0)).collect();  // difficulty varies
+    let calls: Vec&lt;f64&gt; = rates.iter().map(|&amp;r| rng.poisson(r) as f64).collect(); // tool calls per session
+
+    let n = calls.len() as f64;
+    let m = calls.iter().sum::&lt;f64&gt;() / n;
+    let v = calls.iter().map(|c| (c - m).powi(2)).sum::&lt;f64&gt;() / (n - 1.0);
+    println!("{} {} {}", m, v, v / m); // 5.94, 23.5, ratio 3.95 -&gt; not Poisson
+
+    // Fit: parameterise by mean and dispersion r. Var = mu + mu^2 / r.
+    let mu = m;
+    let r = mu * mu / (v - mu);        // method of moments estimate
+    println!("dispersion r: {}", r);   // 2.01, recovering the gamma shape of 2.0
+
+    // Compare what each model says about seeing 20+ calls in a session:
+    println!("Poisson says:  {:e}", sf(|k| poisson_pmf(k, mu), 19));           // 4.4e-6 (absurd)
+    println!("NegBinom says: {}", sf(|k| nbinom_pmf(k, r, r / (r + mu)), 19)); // 0.018 (real)
+    // The Poisson model would flag a routine session as a once-in-a-million event.
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-geometric">Geometric</h3>
@@ -395,6 +1291,7 @@ print(&quot;NegBinom says:&quot;, stats.nbinom.sf(19, r, r / (r + mu)))  # 0.022
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Geometric: formulas and code</span></div>
 <div class="eq">\[ P(X=k) = (1-p)^{k-1}p, \quad k = 1, 2, \ldots \]<br>\[ E[X] = \frac{1}{p} \qquad \operatorname{Var}(X) = \frac{1-p}{p^2} \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 import numpy as np
 
@@ -414,6 +1311,63 @@ for k in (1, 2, 3, 4):
 
 # ASSUMPTION CHECK: this needs a constant success chance per attempt.
 # If a retry succeeds because a cache warmed up, the model does not hold.</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+fn main() {
+    // Attempts until the first success. Directly models harness retries.
+    let p_success = 0.7;
+    let mut rng = Rng::new(0);
+    let attempts: Vec&lt;u32&gt; = (0..5000)
+        .map(|_| {
+            let mut k = 1;
+            while rng.random() &gt;= p_success {
+                k += 1;
+            }
+            k
+        })
+        .collect();
+
+    let n = attempts.len() as f64;
+    let mean = attempts.iter().sum::&lt;u32&gt;() as f64 / n;
+    println!("mean attempts: {}  theory: {}", mean, 1.0 / p_success); // 1.428 vs 1.43
+
+    // What fraction of tasks need more than one attempt?
+    println!("{}", attempts.iter().filter(|&amp;&amp;a| a &gt; 1).count() as f64 / n); // 0.30, i.e. 1 - p
+
+    // Retry budget: what share of tasks are still unfinished after k attempts?
+    for k in 1..=4 {
+        println!("{} attempts leaves {} unfinished", k, round((1.0 - p_success).powi(k), 4));
+    }
+    // 4 attempts leaves 0.8% - that residue is your silently dropped tasks.
+
+    // ASSUMPTION CHECK: this needs a constant success chance per attempt.
+    // If a retry succeeds because a cache warmed up, the model does not hold.
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-beta">Beta</h3>
@@ -426,6 +1380,7 @@ for k in (1, 2, 3, 4):
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Beta: formulas and code</span></div>
 <div class="eq">\[ f(x) = \frac{x^{\alpha-1}(1-x)^{\beta-1}}{B(\alpha,\beta)}, \quad 0 \le x \le 1 \]<br>\[ E[X] = \frac{\alpha}{\alpha+\beta} \qquad \operatorname{Var}(X) = \frac{\alpha\beta}{(\alpha+\beta)^2(\alpha+\beta+1)} \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 
 # Beta describes your BELIEF about a rate, not the data itself.
@@ -446,6 +1401,116 @@ for n in (12, 50, 200, 1000):
 
 # Probability model A truly beats a 0.60 baseline, given the data:
 print(1 - stats.beta(1 + 8, 1 + 4).cdf(0.60))     # 0.647 - genuinely unsure</code></pre>
+<pre class="code" data-lang="rust"><code>/// ln Gamma(x) by the Lanczos approximation (g = 7, 9 terms).
+fn ln_gamma(x: f64) -&gt; f64 {
+    const G: [f64; 9] = [
+        0.999_999_999_999_809_93, 676.520_368_121_885_1, -1259.139_216_722_402_8,
+        771.323_428_777_653_13, -176.615_029_162_140_59, 12.507_343_278_686_905,
+        -0.138_571_095_265_720_12, 9.984_369_578_019_571_6e-6, 1.505_632_735_149_311_6e-7,
+    ];
+    let pi = std::f64::consts::PI;
+    if x &lt; 0.5 {
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x); // reflection
+    }
+    let x = x - 1.0;
+    let t = x + 7.5;
+    let a = G[0] + (1..9).map(|i| G[i] / (x + i as f64)).sum::&lt;f64&gt;();
+    0.5 * (2.0 * pi).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+/// Regularized incomplete beta I_x(a, b), by continued fraction (modified Lentz).
+fn beta_inc(a: f64, b: f64, x: f64) -&gt; f64 {
+    if x &lt;= 0.0 {
+        return 0.0;
+    }
+    if x &gt;= 1.0 {
+        return 1.0;
+    }
+    let front = (ln_gamma(a + b) - ln_gamma(a) - ln_gamma(b) + a * x.ln() + b * (1.0 - x).ln()).exp();
+    // the fraction converges fast on one side of the mean; use symmetry for the other
+    if x &lt; (a + 1.0) / (a + b + 2.0) {
+        front * beta_cf(a, b, x) / a
+    } else {
+        1.0 - front * beta_cf(b, a, 1.0 - x) / b
+    }
+}
+
+fn beta_cf(a: f64, b: f64, x: f64) -&gt; f64 {
+    let tiny = 1e-300;
+    let clamp = |v: f64| if v.abs() &lt; tiny { tiny } else { v };
+    let mut c = 1.0;
+    let mut d = 1.0 / clamp(1.0 - (a + b) * x / (a + 1.0));
+    let mut h = d;
+    for m in 1..1000 {
+        let m = m as f64;
+        let even = m * (b - m) * x / ((a + 2.0 * m - 1.0) * (a + 2.0 * m));
+        d = 1.0 / clamp(1.0 + even * d);
+        c = clamp(1.0 + even / c);
+        h *= d * c;
+        let odd = -(a + m) * (a + b + m) * x / ((a + 2.0 * m) * (a + 2.0 * m + 1.0));
+        d = 1.0 / clamp(1.0 + odd * d);
+        c = clamp(1.0 + odd / c);
+        h *= d * c;
+        if (d * c - 1.0).abs() &lt; 1e-16 {
+            break;
+        }
+    }
+    h
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+struct Beta {
+    a: f64,
+    b: f64,
+}
+
+impl Beta {
+    fn mean(&amp;self) -&gt; f64 {
+        self.a / (self.a + self.b)
+    }
+    fn cdf(&amp;self, x: f64) -&gt; f64 {
+        beta_inc(self.a, self.b, x)
+    }
+    /// Inverse CDF by bisection: the CDF only goes up, so halve the bracket.
+    fn ppf(&amp;self, p: f64) -&gt; f64 {
+        let (mut lo, mut hi) = (0.0, 1.0);
+        for _ in 0..100 {
+            let mid = 0.5 * (lo + hi);
+            if self.cdf(mid) &lt; p { lo = mid } else { hi = mid }
+        }
+        0.5 * (lo + hi)
+    }
+    /// Central interval holding `level` of the probability.
+    fn interval(&amp;self, level: f64) -&gt; (f64, f64) {
+        (self.ppf((1.0 - level) / 2.0), self.ppf((1.0 + level) / 2.0))
+    }
+}
+
+fn main() {
+    // Beta describes your BELIEF about a rate, not the data itself.
+    // Start with no information, then add evidence.
+    let (passes, fails) = (8.0, 4.0);
+    let post = Beta { a: 1.0 + passes, b: 1.0 + fails }; // uniform prior + evidence
+
+    println!("best guess: {}", post.mean());                       // 0.643
+    println!("95% credible interval: {:?}", post.interval(0.95));  // (0.386, 0.861)
+
+    // With only 12 tasks the interval is enormous. Watch it tighten:
+    for n in [12, 50, 200, 1000] {
+        let k = (0.65 * n as f64).round_ties_even(); // Python's round() sends halves to even
+        let (lo, hi) = Beta { a: 1.0 + k, b: 1.0 + n as f64 - k }.interval(0.95);
+        println!("{} tasks -&gt; {} wide", n, round(hi - lo, 3));
+    }
+    // 12 -&gt; 0.476,  200 -&gt; 0.131,  1000 -&gt; 0.059
+
+    // Probability model A truly beats a 0.60 baseline, given the data:
+    println!("{}", 1.0 - Beta { a: 1.0 + 8.0, b: 1.0 + 4.0 }.cdf(0.60)); // 0.647 - genuinely unsure
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-chi-square">Chi square</h3>
@@ -458,6 +1523,7 @@ print(1 - stats.beta(1 + 8, 1 + 4).cdf(0.60))     # 0.647 - genuinely unsure</co
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Chi square: formulas and code</span></div>
 <div class="eq">\[ X = \sum_{i=1}^{k} Z_i^2, \quad Z_i \sim \mathcal{N}(0,1) \]<br>\[ E[X] = k \qquad \operatorname{Var}(X) = 2k \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 import numpy as np
 
@@ -466,13 +1532,123 @@ import numpy as np
 observed = np.array([[42, 31, 27],       # model A: timeout / wrong / crash
                      [18, 55, 29]])      # model B
 chi2, p, dof, expected = stats.chi2_contingency(observed)
-print(chi2, p, dof)                      # 19.3, 6.5e-05, 2
+print(chi2, p, dof)                      # 16.4, 2.8e-04, 2
 
 # THE ASSUMPTION nobody checks: every expected count should exceed ~5.
-print(expected.min())                    # 22.6 -&gt; fine here
+print(expected.min())                    # 27.7 -&gt; fine here
 # If it is below 5, the chi square approximation is unreliable.
 # Use an exact test or a permutation test instead:
 print(stats.fisher_exact(observed[:, :2]))</code></pre>
+<pre class="code" data-lang="rust"><code>/// ln Gamma(x) by the Lanczos approximation (g = 7, 9 terms).
+fn ln_gamma(x: f64) -&gt; f64 {
+    const G: [f64; 9] = [
+        0.999_999_999_999_809_93, 676.520_368_121_885_1, -1259.139_216_722_402_8,
+        771.323_428_777_653_13, -176.615_029_162_140_59, 12.507_343_278_686_905,
+        -0.138_571_095_265_720_12, 9.984_369_578_019_571_6e-6, 1.505_632_735_149_311_6e-7,
+    ];
+    let pi = std::f64::consts::PI;
+    if x &lt; 0.5 {
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x); // reflection
+    }
+    let x = x - 1.0;
+    let t = x + 7.5;
+    let a = G[0] + (1..9).map(|i| G[i] / (x + i as f64)).sum::&lt;f64&gt;();
+    0.5 * (2.0 * pi).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+/// Regularized incomplete gamma functions (P, Q) = (lower, upper), P + Q = 1.
+fn gamma_pq(a: f64, x: f64) -&gt; (f64, f64) {
+    if x &lt;= 0.0 {
+        return (0.0, 1.0);
+    }
+    let front = (-x + a * x.ln() - ln_gamma(a)).exp();
+    if x &lt; a + 1.0 {
+        // power series converges fast here
+        let (mut ap, mut term) = (a, 1.0 / a);
+        let mut sum = term;
+        while term.abs() &gt; sum.abs() * 1e-16 {
+            ap += 1.0;
+            term *= x / ap;
+            sum += term;
+        }
+        let p = sum * front;
+        (p, 1.0 - p)
+    } else {
+        // continued fraction (modified Lentz) converges fast here
+        let tiny = 1e-300;
+        let (mut b, mut c) = (x + 1.0 - a, 1.0 / tiny);
+        let mut d = 1.0 / b;
+        let mut h = d;
+        for i in 1..1000 {
+            let an = -(i as f64) * (i as f64 - a);
+            b += 2.0;
+            d = an * d + b;
+            if d.abs() &lt; tiny { d = tiny; }
+            c = b + an / c;
+            if c.abs() &lt; tiny { c = tiny; }
+            d = 1.0 / d;
+            h *= d * c;
+            if (d * c - 1.0).abs() &lt; 1e-16 { break; }
+        }
+        let q = front * h;
+        (1.0 - q, q)
+    }
+}
+
+fn ln_choose(n: u64, k: u64) -&gt; f64 {
+    ln_gamma(n as f64 + 1.0) - ln_gamma(k as f64 + 1.0) - ln_gamma((n - k) as f64 + 1.0)
+}
+
+/// Chi square test of independence on an r x c table of counts.
+/// Returns (statistic, p value, degrees of freedom, expected counts).
+fn chi2_contingency(observed: &amp;[Vec&lt;f64&gt;]) -&gt; (f64, f64, usize, Vec&lt;Vec&lt;f64&gt;&gt;) {
+    let row: Vec&lt;f64&gt; = observed.iter().map(|r| r.iter().sum()).collect();
+    let col: Vec&lt;f64&gt; = (0..observed[0].len()).map(|j| observed.iter().map(|r| r[j]).sum()).collect();
+    let total: f64 = row.iter().sum();
+    let expected: Vec&lt;Vec&lt;f64&gt;&gt; = row.iter().map(|ri| col.iter().map(|cj| ri * cj / total).collect()).collect();
+    let chi2: f64 = observed.iter().flatten().zip(expected.iter().flatten())
+        .map(|(o, e)| (o - e).powi(2) / e)
+        .sum();
+    let dof = (row.len() - 1) * (col.len() - 1);
+    let p = gamma_pq(dof as f64 / 2.0, chi2 / 2.0).1; // chi square upper tail
+    (chi2, p, dof, expected)
+}
+
+#[derive(Debug)]
+struct SignificanceResult {
+    statistic: f64, // the sample odds ratio
+    pvalue: f64,
+}
+
+/// Two-sided Fisher exact test on [[a, b], [c, d]]: add up every table with the
+/// same margins that is no more likely than the one observed.
+fn fisher_exact(t: [[u64; 2]; 2]) -&gt; SignificanceResult {
+    let [[a, b], [c, d]] = t;
+    let (row1, col1, n) = (a + b, a + c, a + b + c + d);
+    let ln_pmf = |x: u64| ln_choose(row1, x) + ln_choose(n - row1, col1 - x) - ln_choose(n, col1);
+    let cutoff = ln_pmf(a) + 1e-7_f64.ln_1p(); // small tolerance for rounding
+    let lo = col1.saturating_sub(n - row1);
+    let hi = row1.min(col1);
+    let p: f64 = (lo..=hi).map(ln_pmf).filter(|&amp;l| l &lt;= cutoff).map(f64::exp).sum();
+    SignificanceResult { statistic: (a * d) as f64 / (b * c) as f64, pvalue: p.min(1.0) }
+}
+
+fn main() {
+    // You rarely MEASURE something chi square. You compute a statistic that follows it.
+    // Example: are failure reasons distributed the same across two models?
+    let observed = vec![vec![42.0, 31.0, 27.0],  // model A: timeout / wrong / crash
+                        vec![18.0, 55.0, 29.0]]; // model B
+    let (chi2, p, dof, expected) = chi2_contingency(&amp;observed);
+    println!("{} {} {}", chi2, p, dof); // 16.4, 2.8e-04, 2
+
+    // THE ASSUMPTION nobody checks: every expected count should exceed ~5.
+    let min_expected = expected.iter().flatten().cloned().fold(f64::INFINITY, f64::min);
+    println!("{}", min_expected);       // 27.7 -&gt; fine here
+    // If it is below 5, the chi square approximation is unreliable.
+    // Use an exact test or a permutation test instead:
+    println!("{:?}", fisher_exact([[42, 31], [18, 55]]));
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-f">F</h3>
@@ -485,6 +1661,7 @@ print(stats.fisher_exact(observed[:, :2]))</code></pre>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">F: formulas and code</span></div>
 <div class="eq">\[ F = \frac{\chi^2_{d_1}/d_1}{\chi^2_{d_2}/d_2} = \frac{\text{MS}_{\text{between}}}{\text{MS}_{\text{within}}} \]<br>\[ E[F] = \frac{d_2}{d_2-2} \quad (d_2 > 2) \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from scipy import stats
 import numpy as np
 
@@ -495,17 +1672,219 @@ config_b = rng.normal(2.1, 0.4, 60)
 config_c = rng.normal(2.6, 0.4, 60)
 
 F, p = stats.f_oneway(config_a, config_b, config_c)
-print(F, p)                              # 34.5, 4e-13
+print(F, p)                              # 32.8, 7.5e-13
 
 # ALWAYS report the effect size next to F. Eta squared = share of variance explained.
 groups = [config_a, config_b, config_c]
 allv = np.concatenate(groups)
 ss_between = sum(len(g) * (g.mean() - allv.mean()) ** 2 for g in groups)
 ss_total = ((allv - allv.mean()) ** 2).sum()
-print(&quot;eta squared:&quot;, ss_between / ss_total)     # 0.28
+print(&quot;eta squared:&quot;, ss_between / ss_total)     # 0.27
 
 # On skewed data (latency usually is), prefer the rank based version:
 print(stats.kruskal(config_a, config_b, config_c))</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+/// ln Gamma(x) by the Lanczos approximation (g = 7, 9 terms).
+fn ln_gamma(x: f64) -&gt; f64 {
+    const G: [f64; 9] = [
+        0.999_999_999_999_809_93, 676.520_368_121_885_1, -1259.139_216_722_402_8,
+        771.323_428_777_653_13, -176.615_029_162_140_59, 12.507_343_278_686_905,
+        -0.138_571_095_265_720_12, 9.984_369_578_019_571_6e-6, 1.505_632_735_149_311_6e-7,
+    ];
+    let pi = std::f64::consts::PI;
+    if x &lt; 0.5 {
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x); // reflection
+    }
+    let x = x - 1.0;
+    let t = x + 7.5;
+    let a = G[0] + (1..9).map(|i| G[i] / (x + i as f64)).sum::&lt;f64&gt;();
+    0.5 * (2.0 * pi).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+/// Regularized incomplete gamma functions (P, Q) = (lower, upper), P + Q = 1.
+fn gamma_pq(a: f64, x: f64) -&gt; (f64, f64) {
+    if x &lt;= 0.0 {
+        return (0.0, 1.0);
+    }
+    let front = (-x + a * x.ln() - ln_gamma(a)).exp();
+    if x &lt; a + 1.0 {
+        // power series converges fast here
+        let (mut ap, mut term) = (a, 1.0 / a);
+        let mut sum = term;
+        while term.abs() &gt; sum.abs() * 1e-16 {
+            ap += 1.0;
+            term *= x / ap;
+            sum += term;
+        }
+        let p = sum * front;
+        (p, 1.0 - p)
+    } else {
+        // continued fraction (modified Lentz) converges fast here
+        let tiny = 1e-300;
+        let (mut b, mut c) = (x + 1.0 - a, 1.0 / tiny);
+        let mut d = 1.0 / b;
+        let mut h = d;
+        for i in 1..1000 {
+            let an = -(i as f64) * (i as f64 - a);
+            b += 2.0;
+            d = an * d + b;
+            if d.abs() &lt; tiny { d = tiny; }
+            c = b + an / c;
+            if c.abs() &lt; tiny { c = tiny; }
+            d = 1.0 / d;
+            h *= d * c;
+            if (d * c - 1.0).abs() &lt; 1e-16 { break; }
+        }
+        let q = front * h;
+        (1.0 - q, q)
+    }
+}
+
+/// Regularized incomplete beta I_x(a, b), by continued fraction (modified Lentz).
+fn beta_inc(a: f64, b: f64, x: f64) -&gt; f64 {
+    if x &lt;= 0.0 {
+        return 0.0;
+    }
+    if x &gt;= 1.0 {
+        return 1.0;
+    }
+    let front = (ln_gamma(a + b) - ln_gamma(a) - ln_gamma(b) + a * x.ln() + b * (1.0 - x).ln()).exp();
+    // the fraction converges fast on one side of the mean; use symmetry for the other
+    if x &lt; (a + 1.0) / (a + b + 2.0) {
+        front * beta_cf(a, b, x) / a
+    } else {
+        1.0 - front * beta_cf(b, a, 1.0 - x) / b
+    }
+}
+
+fn beta_cf(a: f64, b: f64, x: f64) -&gt; f64 {
+    let tiny = 1e-300;
+    let clamp = |v: f64| if v.abs() &lt; tiny { tiny } else { v };
+    let mut c = 1.0;
+    let mut d = 1.0 / clamp(1.0 - (a + b) * x / (a + 1.0));
+    let mut h = d;
+    for m in 1..1000 {
+        let m = m as f64;
+        let even = m * (b - m) * x / ((a + 2.0 * m - 1.0) * (a + 2.0 * m));
+        d = 1.0 / clamp(1.0 + even * d);
+        c = clamp(1.0 + even / c);
+        h *= d * c;
+        let odd = -(a + m) * (a + b + m) * x / ((a + 2.0 * m) * (a + 2.0 * m + 1.0));
+        d = 1.0 / clamp(1.0 + odd * d);
+        c = clamp(1.0 + odd / c);
+        h *= d * c;
+        if (d * c - 1.0).abs() &lt; 1e-16 {
+            break;
+        }
+    }
+    h
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+/// One-way ANOVA. Returns (F, p value).
+fn f_oneway(groups: &amp;[&amp;[f64]]) -&gt; (f64, f64) {
+    let all: Vec&lt;f64&gt; = groups.concat();
+    let grand = mean(&amp;all);
+    let ss_between: f64 = groups.iter().map(|g| g.len() as f64 * (mean(g) - grand).powi(2)).sum();
+    let ss_within: f64 = groups.iter()
+        .map(|g| { let m = mean(g); g.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() })
+        .sum();
+    let (df_b, df_w) = ((groups.len() - 1) as f64, (all.len() - groups.len()) as f64);
+    let f = (ss_between / df_b) / (ss_within / df_w);
+    let p = beta_inc(df_w / 2.0, df_b / 2.0, df_w / (df_w + df_b * f)); // F upper tail
+    (f, p)
+}
+
+#[derive(Debug)]
+struct KruskalResult {
+    statistic: f64,
+    pvalue: f64,
+}
+
+/// Kruskal-Wallis H test: ANOVA on ranks, so skew and outliers do not matter.
+fn kruskal(groups: &amp;[&amp;[f64]]) -&gt; KruskalResult {
+    // pool, sort, and give tied values their average rank
+    let mut pooled: Vec&lt;(f64, usize)&gt; = groups.iter().enumerate()
+        .flat_map(|(gi, g)| g.iter().map(move |&amp;v| (v, gi)))
+        .collect();
+    pooled.sort_by(|a, b| a.0.total_cmp(&amp;b.0));
+    let n = pooled.len() as f64;
+    let mut rank_sum = vec![0.0; groups.len()];
+    let mut ties = 0.0; // for the tie correction
+    let mut i = 0;
+    while i &lt; pooled.len() {
+        let mut j = i;
+        while j + 1 &lt; pooled.len() &amp;&amp; pooled[j + 1].0 == pooled[i].0 {
+            j += 1;
+        }
+        let avg_rank = (i + j) as f64 / 2.0 + 1.0;
+        for item in &amp;pooled[i..=j] {
+            rank_sum[item.1] += avg_rank;
+        }
+        let t = (j - i + 1) as f64;
+        ties += t * t * t - t;
+        i = j + 1;
+    }
+    let h: f64 = 12.0 / (n * (n + 1.0))
+        * groups.iter().zip(&amp;rank_sum).map(|(g, r)| r * r / g.len() as f64).sum::&lt;f64&gt;()
+        - 3.0 * (n + 1.0);
+    let h = h / (1.0 - ties / (n * n * n - n));
+    let df = (groups.len() - 1) as f64;
+    KruskalResult { statistic: h, pvalue: gamma_pq(df / 2.0, h / 2.0).1 } // chi square upper tail
+}
+
+fn main() {
+    // F is a ratio of variances: between-group signal over within-group noise.
+    let mut rng = Rng::new(0);
+    let config_a: Vec&lt;f64&gt; = (0..60).map(|_| rng.normal(2.0, 0.4)).collect(); // latency under three serving configs
+    let config_b: Vec&lt;f64&gt; = (0..60).map(|_| rng.normal(2.1, 0.4)).collect();
+    let config_c: Vec&lt;f64&gt; = (0..60).map(|_| rng.normal(2.6, 0.4)).collect();
+    let groups: [&amp;[f64]; 3] = [&amp;config_a, &amp;config_b, &amp;config_c];
+
+    let (f, p) = f_oneway(&amp;groups);
+    println!("{} {:e}", f, p); // 38.9, 1e-14 (Python's draws: 32.8, 7.5e-13)
+
+    // ALWAYS report the effect size next to F. Eta squared = share of variance explained.
+    let allv: Vec&lt;f64&gt; = groups.concat();
+    let grand = mean(&amp;allv);
+    let ss_between: f64 = groups.iter().map(|g| g.len() as f64 * (mean(g) - grand).powi(2)).sum();
+    let ss_total: f64 = allv.iter().map(|v| (v - grand).powi(2)).sum();
+    println!("eta squared: {}", ss_between / ss_total); // 0.31
+
+    // On skewed data (latency usually is), prefer the rank based version:
+    println!("{:?}", kruskal(&amp;groups));
+    // with these draws: statistic 53.9, pvalue 2.0e-12
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-pareto-power-law">Pareto / power law</h3>
@@ -518,6 +1897,7 @@ print(stats.kruskal(config_a, config_b, config_c))</code></pre>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Pareto / power law: formulas and code</span></div>
 <div class="eq">\[ P(X > x) = \left(\frac{x_m}{x}\right)^{\alpha} \]<br>\[ E[X] = \frac{\alpha x_m}{\alpha-1} \ \ (\alpha > 1), \ \text{ else undefined} \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>import numpy as np
 from scipy import stats
 
@@ -528,8 +1908,8 @@ mild = stats.lognorm.rvs(1.0, scale=3, size=200000, random_state=0)
 for n in (1000, 10000, 100000, 200000):
     print(n, &quot;power law mean:&quot;, round(heavy[:n].mean(), 1),
              &quot; lognormal mean:&quot;, round(mild[:n].mean(), 2))
-# lognormal: 4.67 -&gt; 4.94 -&gt; 4.95, settling down.
-# power law: 5.7 -&gt; 5.4 -&gt; 5.9, still wandering at 200,000 samples.
+# lognormal: 4.67 -&gt; 4.81 -&gt; 4.94 -&gt; 4.95, settling down.
+# power law: 5.7 -&gt; 6.7 -&gt; 5.4 -&gt; 5.9, still wandering at 200,000 samples.
 
 # Estimate the tail index. alpha &lt;= 1 means the mean does not exist at all.
 def hill_estimator(x, k=500):
@@ -538,6 +1918,66 @@ def hill_estimator(x, k=500):
 
 print(&quot;alpha:&quot;, hill_estimator(heavy))     # 1.135, close to the true 1.2
 # alpha &lt; 2 -&gt; infinite variance. Never report a mean or an sd.</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+// Estimate the tail index. alpha &lt;= 1 means the mean does not exist at all.
+fn hill_estimator(x: &amp;[f64], k: usize) -&gt; f64 {
+    let mut s = x.to_vec();
+    s.sort_by(|a, b| b.total_cmp(a)); // largest first
+    1.0 / (s[..k].iter().map(|v| (v / s[k]).ln()).sum::&lt;f64&gt;() / k as f64)
+}
+
+fn main() {
+    // The test that separates a power law from a lognormal: does the MEAN settle?
+    let mut rng = Rng::new(0);
+    let heavy: Vec&lt;f64&gt; = (0..200_000).map(|_| (1.0 - rng.random()).powf(-1.0 / 1.2)).collect(); // power law (Pareto, alpha 1.2)
+    let mild: Vec&lt;f64&gt; = (0..200_000).map(|_| 3.0 * rng.normal(0.0, 1.0).exp()).collect();      // lognormal
+
+    for n in [1000, 10000, 100000, 200000] {
+        println!("{} power law mean: {:?}  lognormal mean: {:?}",
+                 n, round(mean(&amp;heavy[..n]), 1), round(mean(&amp;mild[..n]), 2));
+    }
+    // lognormal: 4.82 -&gt; 5.08 -&gt; 4.96 -&gt; 4.95, settling down.
+    // power law: 4.0 -&gt; 5.2 -&gt; 5.2 -&gt; 5.3, still drifting (the true mean is 6).
+
+    println!("alpha: {}", hill_estimator(&amp;heavy, 500)); // 1.23, close to the true 1.2
+    // alpha &lt; 2 -&gt; infinite variance. Never report a mean or an sd.
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-categorical-multinomial">Categorical / multinomial</h3>
@@ -550,6 +1990,7 @@ print(&quot;alpha:&quot;, hill_estimator(heavy))     # 1.135, close to the true 
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Categorical / multinomial: formulas and code</span></div>
 <div class="eq">\[ P(X=i) = p_i, \qquad \sum_{i=1}^{k} p_i = 1 \]<br>\[ E[\text{count}_i] = np_i \qquad \operatorname{Cov}(n_i, n_j) = -np_ip_j \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>from collections import Counter
 from scipy import stats
 import numpy as np
@@ -572,6 +2013,104 @@ print(&quot;cov(fix_bug, refactor):&quot;, -n * p[0] * p[1])    # negative, by c
 before = np.array([340, 220, 190, 150, 100])
 after = np.array([290, 260, 185, 165, 100])
 print(stats.chisquare(after, f_exp=before * after.sum() / before.sum()))</code></pre>
+<pre class="code" data-lang="rust"><code>/// ln Gamma(x) by the Lanczos approximation (g = 7, 9 terms).
+fn ln_gamma(x: f64) -&gt; f64 {
+    const G: [f64; 9] = [
+        0.999_999_999_999_809_93, 676.520_368_121_885_1, -1259.139_216_722_402_8,
+        771.323_428_777_653_13, -176.615_029_162_140_59, 12.507_343_278_686_905,
+        -0.138_571_095_265_720_12, 9.984_369_578_019_571_6e-6, 1.505_632_735_149_311_6e-7,
+    ];
+    let pi = std::f64::consts::PI;
+    if x &lt; 0.5 {
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x); // reflection
+    }
+    let x = x - 1.0;
+    let t = x + 7.5;
+    let a = G[0] + (1..9).map(|i| G[i] / (x + i as f64)).sum::&lt;f64&gt;();
+    0.5 * (2.0 * pi).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+/// Regularized incomplete gamma functions (P, Q) = (lower, upper), P + Q = 1.
+fn gamma_pq(a: f64, x: f64) -&gt; (f64, f64) {
+    if x &lt;= 0.0 {
+        return (0.0, 1.0);
+    }
+    let front = (-x + a * x.ln() - ln_gamma(a)).exp();
+    if x &lt; a + 1.0 {
+        // power series converges fast here
+        let (mut ap, mut term) = (a, 1.0 / a);
+        let mut sum = term;
+        while term.abs() &gt; sum.abs() * 1e-16 {
+            ap += 1.0;
+            term *= x / ap;
+            sum += term;
+        }
+        let p = sum * front;
+        (p, 1.0 - p)
+    } else {
+        // continued fraction (modified Lentz) converges fast here
+        let tiny = 1e-300;
+        let (mut b, mut c) = (x + 1.0 - a, 1.0 / tiny);
+        let mut d = 1.0 / b;
+        let mut h = d;
+        for i in 1..1000 {
+            let an = -(i as f64) * (i as f64 - a);
+            b += 2.0;
+            d = an * d + b;
+            if d.abs() &lt; tiny { d = tiny; }
+            c = b + an / c;
+            if c.abs() &lt; tiny { c = tiny; }
+            d = 1.0 / d;
+            h *= d * c;
+            if (d * c - 1.0).abs() &lt; 1e-16 { break; }
+        }
+        let q = front * h;
+        (1.0 - q, q)
+    }
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+#[derive(Debug)]
+struct PowerDivergenceResult {
+    statistic: f64,
+    pvalue: f64,
+}
+
+/// Chi square goodness of fit: observed counts against expected counts.
+fn chisquare(observed: &amp;[f64], expected: &amp;[f64]) -&gt; PowerDivergenceResult {
+    let statistic: f64 = observed.iter().zip(expected).map(|(o, e)| (o - e).powi(2) / e).sum();
+    let dof = (observed.len() - 1) as f64;
+    PowerDivergenceResult { statistic, pvalue: gamma_pq(dof / 2.0, statistic / 2.0).1 }
+}
+
+fn main() {
+    // Intent classification: each session gets exactly one label.
+    let labels = ["fix_bug", "refactor", "explain", "add_test", "docs"];
+    let counts = [340.0, 220.0, 190.0, 150.0, 100.0];
+    let n: f64 = counts.iter().sum();
+
+    for (lab, c) in labels.iter().zip(&amp;counts) {
+        println!("{} {}", lab, round(c / n, 3));
+    }
+
+    // THE CONSTRAINT people forget: shares must sum to 1, so they are NOT
+    // independent. Pushing one class up pulls the others down, and the
+    // covariance between two class counts is negative.
+    let p: Vec&lt;f64&gt; = counts.iter().map(|c| c / n).collect();
+    println!("cov(fix_bug, refactor): {}", -n * p[0] * p[1]); // negative, by construction
+
+    // Did the intent mix shift between two releases?
+    let before = [340.0, 220.0, 190.0, 150.0, 100.0];
+    let after = [290.0, 260.0, 185.0, 165.0, 100.0];
+    let scale = after.iter().sum::&lt;f64&gt;() / before.iter().sum::&lt;f64&gt;();
+    let f_exp: Vec&lt;f64&gt; = before.iter().map(|b| b * scale).collect();
+    println!("{:?}", chisquare(&amp;after, &amp;f_exp));
+}</code></pre>
+</div>
 </div>
 
 <h3 id="zoo-mixture">Mixture</h3>
@@ -584,6 +2123,7 @@ print(stats.chisquare(after, f_exp=before * after.sum() / before.sum()))</code><
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Mixture: formulas and code</span></div>
 <div class="eq">\[ f(x) = \sum_j w_j f_j(x), \qquad \sum_j w_j = 1 \]<br>\[ E[X] = \sum_j w_j \mu_j \quad \text{(but the mean may describe nobody)} \]</div>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>import numpy as np
 from sklearn.mixture import GaussianMixture   # or fit by hand
 
@@ -600,10 +2140,113 @@ print(&quot;BIC one component:&quot;, round(one.bic(logs)))     # higher = worse
 print(&quot;BIC two components:&quot;, round(two.bic(logs)))    # much lower -&gt; mixture
 
 # Why the median is dangerous here:
-print(&quot;median:&quot;, np.median(lat))          # 1.45 - describes the fast group only
-print(&quot;mean:  &quot;, lat.mean())              # 2.61 - describes nobody
+print(&quot;median:&quot;, np.median(lat))          # 1.33 - describes the fast group only
+print(&quot;mean:  &quot;, lat.mean())              # 2.58 - describes nobody
 
 # THE RIGHT MOVE: stop modelling and go find the variable that splits them.
 # Then report each segment separately, with its own share of traffic.</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+fn median(x: &amp;[f64]) -&gt; f64 {
+    let mut s = x.to_vec();
+    s.sort_by(|a, b| a.total_cmp(b));
+    let n = s.len();
+    if n % 2 == 1 { s[n / 2] } else { (s[n / 2 - 1] + s[n / 2]) / 2.0 }
+}
+
+fn normal_pdf(x: f64, mu: f64, var: f64) -&gt; f64 {
+    (-(x - mu).powi(2) / (2.0 * var)).exp() / (2.0 * std::f64::consts::PI * var).sqrt()
+}
+
+/// Fit a 1-D Gaussian mixture with k components by EM (fitting by hand).
+/// Returns the BIC: -2 log likelihood + parameters * ln n. Lower is better.
+fn gmm_bic(x: &amp;[f64], k: usize) -&gt; f64 {
+    let n = x.len();
+    let mut s = x.to_vec();
+    s.sort_by(|a, b| a.total_cmp(b));
+    // start the means spread across the data, each component with the overall variance
+    let mut mu: Vec&lt;f64&gt; = (0..k).map(|j| s[(2 * j + 1) * n / (2 * k)]).collect();
+    let m = mean(x);
+    let mut var = vec![x.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() / n as f64; k];
+    let mut w = vec![1.0 / k as f64; k];
+    let mut resp = vec![vec![0.0; k]; n];
+    let mut loglik = f64::NEG_INFINITY;
+
+    for _ in 0..500 {
+        // E step: how much each component "owns" each point
+        let mut ll = 0.0;
+        for (i, &amp;xi) in x.iter().enumerate() {
+            let dens: Vec&lt;f64&gt; = (0..k).map(|j| w[j] * normal_pdf(xi, mu[j], var[j])).collect();
+            let total: f64 = dens.iter().sum();
+            ll += total.ln();
+            for j in 0..k {
+                resp[i][j] = dens[j] / total;
+            }
+        }
+        // M step: refit each component to the points it owns
+        for j in 0..k {
+            let nj: f64 = resp.iter().map(|r| r[j]).sum();
+            w[j] = nj / n as f64;
+            mu[j] = x.iter().zip(&amp;resp).map(|(xi, r)| r[j] * xi).sum::&lt;f64&gt;() / nj;
+            var[j] = x.iter().zip(&amp;resp).map(|(xi, r)| r[j] * (xi - mu[j]).powi(2)).sum::&lt;f64&gt;() / nj + 1e-6;
+        }
+        let done = (ll - loglik).abs() / (n as f64) &lt; 1e-6; // average log likelihood has settled
+        loglik = ll;
+        if done {
+            break;
+        }
+    }
+    let params = (3 * k - 1) as f64; // k means, k variances, k - 1 free weights
+    -2.0 * loglik + params * (n as f64).ln()
+}
+
+fn main() {
+    let mut rng0 = Rng::new(0);
+    let mut rng1 = Rng::new(1);
+    let mut lat: Vec&lt;f64&gt; = (0..2200).map(|_| rng0.normal(1.2, 0.3)).collect(); // cached
+    lat.extend((0..800).map(|_| rng1.normal(6.5, 1.5)));                       // cold start
+
+    // DIAGNOSIS, not a model. Two components fit far better than one?
+    let logs: Vec&lt;f64&gt; = lat.iter().map(|v| v.ln()).collect();
+    println!("BIC one component: {}", gmm_bic(&amp;logs, 1).round());  // higher = worse
+    println!("BIC two components: {}", gmm_bic(&amp;logs, 2).round()); // much lower -&gt; mixture
+
+    // Why the median is dangerous here:
+    println!("median: {}", median(&amp;lat)); // 1.34 - describes the fast group only
+    println!("mean:   {}", mean(&amp;lat));   // 2.62 - describes nobody
+
+    // THE RIGHT MOVE: stop modelling and go find the variable that splits them.
+    // Then report each segment separately, with its own share of traffic.
+}</code></pre>
+</div>
 </div>
 </section>

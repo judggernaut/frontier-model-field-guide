@@ -61,7 +61,8 @@
 <div class="callout key"><span class="tag">Key idea</span><div>Because standard error shrinks as one over the square root of n, <b>quadrupling your sample halves your error bar</b>. Not doubling, quadrupling. That single fact explains why every sample size answer feels so unsatisfying and why chasing small effects gets expensive so fast.</div></div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The square-root law, in code</span></div>
   <div class="eq">\[ \text{SE} = \frac{s}{\sqrt{n}} \qquad\qquad \text{SE} \propto n^{-1/2} \;\Rightarrow\; 4n \text{ gives half the error bar} \]</div>
-  <pre class="code" data-lang="python"><code>import numpy as np
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import numpy as np
 
 rng = np.random.default_rng(0)
 population_sd = 12.0
@@ -75,13 +76,76 @@ for n in (25, 100, 400, 1600):
     print(n, "sd:", round(sd, 2), " se:", round(se, 3),
           " 95% CI half width:", round(1.96 * se, 3))
 
-# n=25   sd 11.5   se 2.303   CI half width 4.514
-# n=100  sd 12.1   se 1.211   CI half width 2.373
-# n=400  sd 11.9   se 0.596   CI half width 1.169
-# n=1600 sd 12.0   se 0.301   CI half width 0.589
+# n=25   sd 10.47  se 2.095   CI half width 4.106
+# n=100  sd 11.68  se 1.168   CI half width 2.29
+# n=400  sd 12.35  se 0.617   CI half width 1.21
+# n=1600 sd 11.97  se 0.299   CI half width 0.587
 #
 # The sd column does not move. More data does not make users more alike.
 # The se column halves every time n quadruples. That is the whole story.</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+/// Sample standard deviation (ddof = 1).
+fn sample_sd(x: &amp;[f64]) -&gt; f64 {
+    let n = x.len() as f64;
+    let m = x.iter().sum::&lt;f64&gt;() / n;
+    (x.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() / (n - 1.0)).sqrt()
+}
+
+fn main() {
+    let mut rng = Rng::new(0);
+    let population_sd = 12.0;
+
+    for n in [25, 100, 400, 1600] {
+        let sample: Vec&lt;f64&gt; = (0..n).map(|_| rng.normal(60.0, population_sd)).collect();
+
+        let sd = sample_sd(&amp;sample);    // spread of the MEASUREMENTS
+        let se = sd / (n as f64).sqrt(); // spread of the ESTIMATE of their mean
+
+        println!("{} sd: {}  se: {}  95% CI half width: {}",
+                 n, round(sd, 2), round(se, 3), round(1.96 * se, 3));
+    }
+
+    // SplitMix64 draws, so the numbers differ from numpy's; the pattern is the same:
+    // n=25   sd 11.56  se 2.313  CI half width 4.533
+    // n=100  sd 11.12  se 1.112  CI half width 2.179
+    // n=400  sd 11.85  se 0.592  CI half width 1.161
+    // n=1600 sd 12.02  se 0.3    CI half width 0.589
+    //
+    // The sd column does not move. More data does not make users more alike.
+    // The se column halves every time n quadruples. That is the whole story.
+}</code></pre>
+</div>
 </div>
 
 <h3>What a confidence interval actually means</h3>
@@ -108,7 +172,8 @@ for n in (25, 100, 400, 1600):
 <div class="callout eli5"><span class="tag">In plain words</span><div>A 95% confidence interval is produced by a procedure that captures the true value 95 times out of 100. It is <b>not</b> a 95% chance the truth is inside the one interval in front of you. The truth is a fixed number; the interval is the thing that moves from experiment to experiment.</div></div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The textbook interval and the Wilson interval</span></div>
   <div class="eq">\[ \bar{x} \;\pm\; 1.96 \cdot \frac{s}{\sqrt{n}} \qquad\qquad \frac{\hat{p} + \frac{z^2}{2n} \;\pm\; z\sqrt{\frac{\hat{p}(1-\hat{p})}{n} + \frac{z^2}{4n^2}}}{1 + \frac{z^2}{n}} \]<span class="eqcap">Left: the textbook interval for a mean. Right: Wilson, for a proportion \(\hat p = k/n\). Use Wilson for pass rates: the textbook version breaks near 0 and 1, and can hand you an upper bound above 100 percent.</span></div>
-  <pre class="code" data-lang="python"><code>import math
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
 
 def wilson(k: int, n: int, z: float = 1.96):
     """Interval for a pass rate. k passed out of n."""
@@ -132,6 +197,34 @@ def naive(k, n, z=1.96):
 
 print(wilson(49, 50))    # (0.8950, 0.9965)  stays inside [0, 1]
 print(naive(49, 50))     # (0.9412, 1.0188)  claims a rate above 100%</code></pre>
+<pre class="code" data-lang="rust"><code>/// Interval for a pass rate. k passed out of n.
+fn wilson(k: u32, n: u32, z: f64) -&gt; (f64, f64) {
+    if n == 0 {
+        return (0.0, 1.0);
+    }
+    let (k, n) = (k as f64, n as f64);
+    let p = k / n;
+    let den = 1.0 + z * z / n; // shrink factor, -&gt; 1 as n grows
+
+    // The centre is NOT p. It is pulled toward 0.5 by z^2/(2n), and that pull
+    // is what keeps the interval inside [0, 1] at extreme rates.
+    let centre = (p + z * z / (2.0 * n)) / den;
+
+    let half = z * (p * (1.0 - p) / n + z * z / (4.0 * n * n)).sqrt() / den;
+    ((centre - half).max(0.0), (centre + half).min(1.0))
+}
+
+fn naive(k: u32, n: u32, z: f64) -&gt; (f64, f64) {
+    let p = k as f64 / n as f64;
+    let h = z * (p * (1.0 - p) / n as f64).sqrt();
+    (p - h, p + h) // note: no clamping
+}
+
+fn main() {
+    println!("{:?}", wilson(49, 50, 1.96)); // (0.8950, 0.9965)  stays inside [0, 1]
+    println!("{:?}", naive(49, 50, 1.96));  // (0.9412, 1.0188)  claims a rate above 100%
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-fci"><div class="wtitle">Sixty experiments, sixty intervals</div>
@@ -153,14 +246,15 @@ print(naive(49, 50))     # (0.9412, 1.0188)  claims a rate above 100%</code></pr
 </ul>
 <div class="callout key"><span class="tag">Key idea</span><div>Always report the effect size next to the p value. "Model B is better, p = 0.003" is nearly useless on its own. "Model B passes 4.2 points more, 95% CI [1.1, 7.3], p = 0.003" tells someone whether to ship.</div></div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A useless effect becomes "significant" with enough data</span></div>
-  <pre class="code" data-lang="python"><code>import numpy as np
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import numpy as np
 from scipy import stats
 
 rng = np.random.default_rng(0)
 
-# A tiny, useless difference. 0.2 percentage points.
+# A tiny, useless difference. 0.5 percentage points.
 def experiment(n):
-    a = rng.random(n) &lt; 0.602
+    a = rng.random(n) &lt; 0.605
     b = rng.random(n) &lt; 0.600
     return stats.fisher_exact([[a.sum(), n - a.sum()],
                                [b.sum(), n - b.sum()]]).pvalue
@@ -171,6 +265,88 @@ for n in (200, 2_000, 20_000, 200_000):
 # The effect never changes. Only n does. With enough data a difference
 # nobody could notice becomes "statistically significant".
 # THIS is why a p value alone tells you nothing about whether to ship.</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+}
+
+/// ln Gamma(x) by the Lanczos approximation (g = 7, 9 terms).
+fn ln_gamma(x: f64) -&gt; f64 {
+    const G: [f64; 9] = [
+        0.999_999_999_999_809_93, 676.520_368_121_885_1, -1259.139_216_722_402_8,
+        771.323_428_777_653_13, -176.615_029_162_140_59, 12.507_343_278_686_905,
+        -0.138_571_095_265_720_12, 9.984_369_578_019_571_6e-6, 1.505_632_735_149_311_6e-7,
+    ];
+    let pi = std::f64::consts::PI;
+    if x &lt; 0.5 {
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x); // reflection
+    }
+    let x = x - 1.0;
+    let t = x + 7.5;
+    let a = G[0] + (1..9).map(|i| G[i] / (x + i as f64)).sum::&lt;f64&gt;();
+    0.5 * (2.0 * pi).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+fn ln_choose(n: u64, k: u64) -&gt; f64 {
+    ln_gamma(n as f64 + 1.0) - ln_gamma(k as f64 + 1.0) - ln_gamma((n - k) as f64 + 1.0)
+}
+
+/// Two-sided Fisher exact test on [[a, b], [c, d]]: add up every table with the
+/// same margins that is no more likely than the one observed.
+fn fisher_exact(t: [[u64; 2]; 2]) -&gt; f64 {
+    let [[a, b], [c, d]] = t;
+    let (row1, col1, n) = (a + b, a + c, a + b + c + d);
+    let ln_pmf = |x: u64| ln_choose(row1, x) + ln_choose(n - row1, col1 - x) - ln_choose(n, col1);
+    let cutoff = ln_pmf(a) + 1e-7_f64.ln_1p(); // small tolerance for rounding
+    let lo = col1.saturating_sub(n - row1);
+    let hi = row1.min(col1);
+    let p: f64 = (lo..=hi).map(ln_pmf).filter(|&amp;l| l &lt;= cutoff).map(f64::exp).sum();
+    p.min(1.0)
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+// A tiny, useless difference. 0.5 percentage points.
+fn experiment(rng: &amp;mut Rng, n: u64) -&gt; f64 {
+    let a = (0..n).filter(|_| rng.random() &lt; 0.605).count() as u64;
+    let b = (0..n).filter(|_| rng.random() &lt; 0.600).count() as u64;
+    fisher_exact([[a, n - a], [b, n - b]])
+}
+
+fn main() {
+    let mut rng = Rng::new(0);
+    for n in [200, 2_000, 20_000, 200_000] {
+        println!("{} {}", n, round(experiment(&amp;mut rng, n), 4));
+    }
+    // 200 0.2518 | 2000 0.3487 | 20000 0.0521 | 200000 0.0029  (SplitMix64 draws;
+    // numpy's give 0.6869, 0.1832, 0.2365, 0.0001). Small samples wander at random;
+    // at 200,000 per arm a 0.5 point gap is about 3 standard errors, so p &lt; 0.05
+    // is the typical outcome.
+
+    // The effect never changes. Only n does. With enough data a difference
+    // nobody could notice becomes "statistically significant".
+    // THIS is why a p value alone tells you nothing about whether to ship.
+}</code></pre>
+</div>
 </div>
 
 <div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What these two ideas let you demand</span></div>

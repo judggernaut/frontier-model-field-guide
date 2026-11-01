@@ -45,7 +45,8 @@
 </ol>
 <div class="eq">\[ \frac{s^2}{\bar{x}} \approx 1 \;\Rightarrow\; \text{Poisson}; \qquad\qquad \frac{s^2}{\bar{x}} \gg 1 \;\Rightarrow\; \text{overdispersed} \]<span class="eqcap">The dispersion check for count data: variance divided by mean.</span></div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The checklist as a function</span></div>
-  <pre class="code" data-lang="python"><code>import numpy as np
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import numpy as np
 from scipy import stats
 
 def diagnose(x):
@@ -85,8 +86,122 @@ def diagnose(x):
 lat = stats.lognorm.rvs(0.9, scale=3, size=4000, random_state=0)
 for k, v in diagnose(lat).items():
     print(k, v)
-# skew_ratio 1.51 -&gt; right skewed, do not report the mean
+# skew_ratio 1.49 -&gt; right skewed, do not report the mean
 # log_helps True  -&gt; it is lognormal, analyse on the log scale</code></pre>
+<pre class="code" data-lang="rust"><code>// A tiny inline PRNG (SplitMix64) so the snippet needs no crates.
+// Its draws differ from numpy's, so the random numbers below differ from the Python's.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -&gt; Self {
+        Rng(seed)
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    /// Uniform on [0, 1).
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    /// Normal draw by Box-Muller.
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let u1 = 1.0 - self.random(); // in (0, 1], safe for ln
+        let u2 = self.random();
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+fn sorted(x: &amp;[f64]) -&gt; Vec&lt;f64&gt; {
+    let mut s = x.to_vec();
+    s.sort_by(|a, b| a.total_cmp(b));
+    s
+}
+
+/// Linear-interpolation quantile (numpy's default method).
+fn quantile(x: &amp;[f64], q: f64) -&gt; f64 {
+    let s = sorted(x);
+    let h = (s.len() - 1) as f64 * q;
+    let lo = h.floor() as usize;
+    let hi = (lo + 1).min(s.len() - 1);
+    let (a, b, t) = (s[lo], s[hi], h - lo as f64);
+    if t &gt;= 0.5 { b - (b - a) * (1.0 - t) } else { a + (b - a) * t }
+}
+
+/// Sample skewness, as scipy.stats.skew computes it: m3 / m2^1.5.
+fn skew(x: &amp;[f64]) -&gt; f64 {
+    let m = mean(x);
+    let m2 = x.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() / x.len() as f64;
+    let m3 = x.iter().map(|v| (v - m).powi(3)).sum::&lt;f64&gt;() / x.len() as f64;
+    m3 / m2.powf(1.5)
+}
+
+/// Run this before choosing any method. Takes two seconds, catches most errors.
+fn diagnose(x: &amp;[f64]) -&gt; Vec&lt;(&amp;'static str, String)&gt; {
+    let n = x.len();
+    let (m, med) = (mean(x), quantile(x, 0.5));
+    let var = x.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() / (n as f64 - 1.0);
+    let min = x.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max = x.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+    let mut out: Vec&lt;(&amp;'static str, String)&gt; = vec![
+        ("n", n.to_string()),
+        ("mean", m.to_string()),
+        ("median", med.to_string()),
+        ("skew_ratio", (if med != 0.0 { m / med } else { f64::INFINITY }).to_string()), // &gt;1.2 = right skewed
+        ("var_over_mean", (if m != 0.0 { var / m } else { f64::INFINITY }).to_string()), // ~1 = Poisson-like
+        ("whole_numbers", x.iter().all(|v| (v - v.round()).abs() &lt; 1e-9).to_string()),
+        ("min", min.to_string()),
+        ("max", max.to_string()),
+        ("zeros", x.iter().filter(|&amp;&amp;v| v == 0.0).count().to_string()), // blocks a log transform
+    ];
+
+    // Does a log transform fix the skew? Only meaningful for positive data.
+    if min &gt; 0.0 {
+        let logs: Vec&lt;f64&gt; = x.iter().map(|v| v.ln()).collect();
+        let (skew_raw, skew_logged) = (skew(x), skew(&amp;logs));
+        out.push(("skew_raw", skew_raw.to_string()));
+        out.push(("skew_logged", skew_logged.to_string()));
+        out.push(("log_helps", (skew_logged.abs() &lt; skew_raw.abs() / 2.0).to_string()));
+    }
+
+    // CENSORING CHECK: is there a pile-up at a single value near the max?
+    let q98 = quantile(x, 0.98);
+    let top: Vec&lt;f64&gt; = x.iter().filter(|&amp;&amp;v| v &gt;= q98).map(|v| (v * 1e6).round() / 1e6).collect();
+    if !top.is_empty() {
+        // the most common value; ties go to the smallest, as scipy.stats.mode does
+        let top = sorted(&amp;top);
+        let (mut mode, mut count) = (top[0], 0);
+        for run in top.chunk_by(|a, b| a == b) {
+            if run.len() &gt; count {
+                (mode, count) = (run[0], run.len());
+            }
+        }
+        out.push(("censoring_suspect", (count as f64 &gt; 0.01 * n as f64).to_string()));
+        out.push(("suspect_value", mode.to_string()));
+    }
+
+    out
+}
+
+fn main() {
+    // lognormal(sigma 0.9, median 3): exp of a normal
+    let mut rng = Rng::new(0);
+    let lat: Vec&lt;f64&gt; = (0..4000).map(|_| 3.0 * rng.normal(0.0, 0.9).exp()).collect();
+    for (k, v) in diagnose(&amp;lat) {
+        println!("{} {}", k, v);
+    }
+    // skew_ratio 1.47 -&gt; right skewed, do not report the mean
+    // log_helps true -&gt; it is lognormal, analyse on the log scale
+}</code></pre>
+</div>
 </div>
 
 <h3>The log scale check</h3>
