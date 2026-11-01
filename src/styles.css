@@ -380,6 +380,8 @@ footer.site{margin-top:40px;padding:24px 0 0;border-top:1px solid var(--border);
   .ltabs>.tl .hint{display:none}
   .ltabs>.tl button{padding:0 9px;font-size:13px}
   .story .stage{margin:10px 12px 0}
+  .story .step{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .story .step svg{min-width:520px}
   .story>.story-head,.story .nav{padding-left:14px;padding-right:14px}
   .story .step>p,.story .cap{padding-left:14px;padding-right:14px}
 }
