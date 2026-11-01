@@ -93,6 +93,10 @@ nav.rail a span{font-family:var(--font-mono);font-size:11px;color:var(--faint);m
 nav.rail a:hover{background:var(--accent-bg);color:var(--foreground)}
 nav.rail a.on{background:var(--accent-bg);color:var(--foreground);font-weight:500}
 nav.rail a.on span{color:var(--accent)}
+nav.rail .subs{display:none;margin:2px 0 6px 26px;border-left:1px solid var(--border)}
+nav.rail a.on + .subs{display:block}
+nav.rail a.sub{display:block;font-size:13px;padding:4px 10px;margin-left:-1px;border-left:2px solid transparent;border-radius:0;color:var(--muted-foreground)}
+nav.rail a.sub:hover{color:var(--foreground);background:transparent;border-left-color:var(--line-strong)}
 main{min-width:0;padding:40px max(16px,env(safe-area-inset-right,0px)) 120px 56px;max-width:980px}
 
 /* ---------- hero ---------- */

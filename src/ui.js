@@ -211,6 +211,19 @@
   });
   var sb = document.getElementById('searchbtn'); if (sb) sb.addEventListener('click', open);
 
+  /* ---------- sidebar: topics of the current chapter ---------- */
+  $$('nav.rail a').forEach(function (a) {
+    var sec = document.querySelector(a.getAttribute('href')); if (!sec || sec.tagName !== 'SECTION') return;
+    var hs = $$('h3', sec); if (!hs.length) return;
+    var box = document.createElement('div'); box.className = 'subs';
+    hs.forEach(function (h) {
+      var l = document.createElement('a'); l.href = '#' + h.id; l.className = 'sub'; l.textContent = h.textContent.trim();
+      l.addEventListener('click', function (e) { e.preventDefault(); h.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+      box.appendChild(l);
+    });
+    a.parentNode.insertBefore(box, a.nextSibling);
+  });
+
   /* ---------- scroll spy and progress ---------- */
   var secs = $$('main section[id], main .part-head[id]');
   var links = $$('nav.rail a');
