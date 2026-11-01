@@ -1,0 +1,195 @@
+<section id="grpo" data-title="GRPO and RL with verifiable rewards">
+<h2>GRPO and RL with verifiable rewards: learning from a checker</h2>
+<p>Most of the reasoning gains in frontier models since 2024 came from one recipe. Give the model problems whose answers a program can check, let it try many times, and reinforce whatever worked. This chapter covers that recipe (reinforcement learning with verifiable rewards, or RLVR), the algorithm that made it cheap (GRPO), the variants that fixed its biases, and the open question of what it actually teaches. It builds on <a href="#rlhf">RLHF and PPO</a> and <a href="#reward-models">reward models</a>.</p>
+
+<h3>The idea: replace the judge with a checker</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Practice problems with an answer key</span></div>
+  <p>Imagine a student with a stack of maths problems and the answer key at the back of the book. They try a problem several different ways. Some attempts land on the right answer, some don't. They look at what the winning attempts did differently and do more of that next time. Nobody has to grade their essays. The answer key does the grading, instantly and the same way every time.</p>
+  <p>That is RLVR. The "answer key" is a <b>verifier</b>: a small program that says right or wrong. For maths, it checks the final number. For code, it runs unit tests. For formatting, it checks the output has the required structure. Because the checker is cheap and consistent, the model can practise millions of times.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why this recipe took over, and where it stops working</span></div>
+  <p>Classic RLHF learns a reward model from human preferences, and that learned reward can be fooled (see <a href="#reward-models">reward models</a>). A verifier is harder to fool when it is well built, costs almost nothing per call, and never drifts. That combination let labs run RL for far longer and at far larger scale than RLHF ever allowed, and long, self-correcting chains of thought emerged as a result.</p>
+  <ul>
+    <li><b>Where it works:</b> domains with checkable outcomes: competition maths, code with tests, formal proofs, structured extraction, many agentic tasks with a clear end state.</li>
+    <li><b>Where it struggles:</b> open-ended writing, advice, research taste, anything where "correct" is a judgement. Those still need learned rewards, rubrics graded by models, or human preference data.</li>
+    <li><b>The real asset is the environment.</b> The algorithm is a few hundred lines. The moat is a large, diverse, hard-to-game set of problems and verifiers at the right difficulty. Budget and staff for environment building, not just for compute.</li>
+    <li><b>The main risk is reward hacking.</b> A verifier with a loophole gets found. Models trained this way have learned to special-case tests, exit early with a passing status, or produce answers that satisfy a format check without solving the task.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul><li>What fraction of the training prompts produce zero learning signal because the model always or never solves them?</li><li>How was each verifier red-teamed before it went into training? Who tried to break it?</li><li>Is the reported gain in pass@1, pass@k, or both? At what k?</li><li>What is held out, and is any of it from the same source as the training problems?</li></ul></div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">RLVR as a reward function</span></div>
+  <p>A verifiable reward is a deterministic function of the prompt \(q\) and the full response \(o\). In the R1-style recipes it is usually a sum of a correctness term and a format term:</p>
+  <div class="eq">\[ r(q, o) = \underbrace{\mathbb{1}[\text{extract}(o) \equiv a^\star(q)]}_{\text{accuracy}} \;+\; \lambda\,\underbrace{\mathbb{1}[o \text{ matches the required template}]}_{\text{format}} \]<span class="eqcap">\(a^\star(q)\) is the reference answer; \(\equiv\) is an equivalence check (symbolic for maths, test pass for code); \(\lambda\) is a small weight.</span></div>
+  <p>The reward arrives only at the end of the sequence, so this is a sparse, outcome-level signal. Every token in a successful response gets the same credit. That is crude credit assignment, and it works anyway because the model samples many responses per prompt and the differences between them carry the information.</p>
+</div>
+
+<h3>GRPO: the group is the baseline</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Grading on a curve</span></div>
+  <p>PPO, the older method, trains a second model (a "critic") whose only job is to guess how well each attempt should go, so the trainer knows whether a result was better or worse than expected. That second model is as big as the first and expensive to train.</p>
+  <p>GRPO skips it. For each problem it asks the model for a group of answers, say eight. It then grades on a curve: an answer is "good" if it scored above the group's average and "bad" if below. The group itself tells you what was expected. If all eight answers were right, or all eight wrong, there is nothing to learn from that problem, because nothing stood out.</p>
+</div>
+
+<div class="widget" id="w-gr-adv">
+  <div class="wtitle">Group advantage calculator</div>
+  <div class="wsub">Choose how many responses per prompt and how many were correct. Then switch between the GRPO, Dr. GRPO, and RLOO baselines. Push the correct count to 0 or to the group size and watch the signal disappear.</div>
+  <div class="controls">
+    <div class="ctl"><label for="gr-g">Group size G: <output id="gr-g-o">8</output></label><input type="range" id="gr-g" min="2" max="16" step="1" value="8"></div>
+    <div class="ctl"><label for="gr-k">Correct responses: <output id="gr-k-o">2</output></label><input type="range" id="gr-k" min="0" max="8" step="1" value="2"></div>
+  </div>
+  <div class="btnrow" role="group" aria-label="Advantage estimator">
+    <button class="b" data-m="grpo" aria-pressed="true">GRPO: (r − mean) / std</button>
+    <button class="b" data-m="dr" aria-pressed="false">Dr. GRPO: r − mean</button>
+    <button class="b" data-m="rloo" aria-pressed="false">RLOO: r − mean of the others</button>
+  </div>
+  <canvas data-cv="bars"></canvas>
+  <canvas data-cv="curve"></canvas>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What GRPO buys you</span></div>
+  <ul>
+    <li><b>Memory and cost.</b> Dropping the critic removes a model the size of the policy, plus its optimiser state. That roughly halves trainable memory and frees accelerators for sampling, which is where RL spends most of its time anyway.</li>
+    <li><b>Simplicity.</b> No value function to tune or debug. Fewer hyperparameters means fewer ways for a run to fail silently.</li>
+    <li><b>The cost moves to sampling.</b> You now need G responses per prompt, often 8 to 64, and long ones. RL infrastructure for reasoning models is mostly an inference problem: fast generation, weight syncing between trainer and samplers, and handling the straggler responses that run to the length limit.</li>
+    <li><b>Data selection becomes the lever.</b> Prompts the model always solves or never solves contribute nothing. Teams filter for problems in a middle band of difficulty and re-filter as the model improves. Ask how that band is set and how often it is refreshed.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The GRPO objective</span></div>
+  <p>GRPO was introduced in DeepSeekMath (Shao et al., 2024). For a prompt \(q\), sample \(G\) responses \(\{o_1,\dots,o_G\}\) from the old policy \(\pi_{\theta_\text{old}}\) and score them, giving rewards \(r_1,\dots,r_G\). With outcome rewards, every token of response \(i\) gets the same advantage:</p>
+  <div class="eq">\[ \hat A_{i,t} = \frac{r_i - \operatorname{mean}(r_1,\dots,r_G)}{\operatorname{std}(r_1,\dots,r_G)} \]<span class="eqcap">The group mean replaces PPO's learned value baseline. The std divides out the reward scale for that prompt.</span></div>
+  <p>The policy is updated with PPO's clipped surrogate and a KL penalty to a frozen reference model, averaged over tokens within each response and then over responses:</p>
+  <div class="eq">\[ \mathcal{J}(\theta) = \mathbb{E}\Bigg[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\Big(\min\big(\rho_{i,t}\hat A_{i,t},\ \operatorname{clip}(\rho_{i,t},1-\varepsilon,1+\varepsilon)\hat A_{i,t}\big) - \beta\, \mathbb{D}_{\text{KL}}\Big)\Bigg],\quad \rho_{i,t} = \frac{\pi_\theta(o_{i,t}\mid q,o_{i,&lt;t})}{\pi_{\theta_\text{old}}(o_{i,t}\mid q,o_{i,&lt;t})} \]<span class="eqcap">\(\varepsilon\) bounds how far one update can move the probability of a token (often 0.2). \(\beta\) weights the pull back toward the reference model.</span></div>
+  <p>The KL term is not the textbook expectation. It is estimated per token with the "k3" estimator, which is unbiased for \(\mathrm{KL}(\pi_\theta\,\|\,\pi_\text{ref})\) under samples from \(\pi_\theta\) and is never negative:</p>
+  <div class="eq">\[ \mathbb{D}_{\text{KL}} \approx \frac{\pi_\text{ref}(o_{i,t}\mid\cdot)}{\pi_\theta(o_{i,t}\mid\cdot)} - \log\frac{\pi_\text{ref}(o_{i,t}\mid\cdot)}{\pi_\theta(o_{i,t}\mid\cdot)} - 1 \]</div>
+  <p>Note where KL lives. In PPO-based RLHF it is folded into the reward. In GRPO it is a separate loss term, so it does not distort the advantages.</p>
+  <pre class="code" data-lang="python"><code>import math
+
+def group_advantages(rewards, eps=1e-6, scale_by_std=True):
+    """Outcome-reward advantages for one prompt's group of G responses."""
+    g = len(rewards)
+    mu = sum(rewards) / g
+    sd = math.sqrt(sum((r - mu) ** 2 for r in rewards) / g)
+    if not scale_by_std:                 # Dr. GRPO: centre only, keep the scale
+        return [r - mu for r in rewards]
+    return [(r - mu) / (sd + eps) for r in rewards]
+
+def grpo_token_loss(logp_new, logp_old, logp_ref, adv, clip_eps=0.2, beta=0.04):
+    """Loss for ONE token. Average over tokens, then responses, then prompts."""
+    ratio = math.exp(logp_new - logp_old)
+    clipped = max(min(ratio, 1 + clip_eps), 1 - clip_eps)
+    surrogate = min(ratio * adv, clipped * adv)   # pessimistic of the two
+    log_r = logp_ref - logp_new
+    kl = math.exp(log_r) - log_r - 1               # k3 estimator, always >= 0
+    return -(surrogate - beta * kl)                # minimise the negative objective
+
+print([round(a, 2) for a in group_advantages([1, 0, 0, 1, 0, 0, 0, 0])])
+# [1.73, -0.58, -0.58, 1.73, -0.58, -0.58, -0.58, -0.58]
+print([round(a, 2) for a in group_advantages([1, 1, 1, 1])])
+# [0.0, 0.0, 0.0, 0.0]   all correct: this prompt teaches nothing
+print(round(grpo_token_loss(-0.5, -1.0, -1.0, 1.73), 4))
+# -2.0717  ratio 1.65 was clipped to 1.2, so the update stops pushing this token up</code></pre>
+  <p>Memory accounting: PPO holds four networks (policy, reference, reward model, critic) and trains two. GRPO with a programmatic verifier holds two (policy and reference) and trains one. The reference can be dropped too when \(\beta = 0\), which several later recipes do.</p>
+</div>
+
+<h3>DeepSeek-R1: what happened when it was scaled</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The model learned to check its own work</span></div>
+  <p>In early 2025 DeepSeek trained a model with almost nothing but this practice-with-an-answer-key loop. Nobody showed it how to reason step by step. Over training, its answers got longer, it started trying alternative approaches, and it began writing things like "wait, let me recheck that." The researchers called one of these moments an "aha" moment. The catch was that its thinking was hard to read and sometimes switched languages mid-thought, so they added a small amount of cleanly written examples before the practice began.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The recipe and what it signalled</span></div>
+  <p>DeepSeek-R1 (DeepSeek-AI, 2025) had two variants. <b>R1-Zero</b> applied GRPO with rule-based accuracy and format rewards directly to a pretrained base model. Response length grew steadily during training and reasoning benchmarks climbed. Readability was poor and language mixing was common. <b>R1</b> fixed that with a multi-stage pipeline: a small "cold-start" set of long, readable chain-of-thought examples for supervised fine-tuning, then reasoning-focused RL, then rejection sampling to build a larger SFT set mixed with general data, then a final RL stage covering helpfulness and harmlessness as well as reasoning. Reasoning traces from R1 were also distilled into much smaller models, which performed far better than the same small models trained with RL directly.</p>
+  <ul>
+    <li>Long reasoning can emerge from outcome rewards alone, given a strong enough base model. The base model sets the ceiling.</li>
+    <li>For small models, distilling from a strong reasoner beats running RL on the small model. That is a budgeting decision as much as a research one (see <a href="#distillation">distillation</a>).</li>
+    <li>"Thinking longer" is not free. Longer responses raise serving cost and latency. Track tokens per solved problem, not just accuracy.</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why length grows</span></div>
+  <p>Two forces push length up. The useful one: on hard problems, longer responses that explore and verify succeed more often, so they get positive advantage. The artefactual one: GRPO's per-response \(1/|o_i|\) normalisation means each token of a long <em>wrong</em> response receives a smaller penalty than each token of a short wrong response. The model can reduce its per-token penalty on failures by rambling. Liu et al. (2025) identified this bias, which the next section covers. When reading a length-growth curve, ask which force dominates. One check is to compare length on solved versus unsolved problems over training.</p>
+</div>
+
+<h3>The variants: fixing GRPO's biases</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Four ideas worth recognising by name</span></div>
+  <div class="tw"><table>
+  <thead><tr><th>Method</th><th>Change</th><th>Problem it addresses</th></tr></thead>
+  <tbody>
+  <tr><td>RLOO (Ahmadian et al., 2024)</td><td>Baseline for response \(i\) is the mean reward of the <em>other</em> \(G-1\) responses; no std division</td><td>Including your own reward in the baseline biases the estimate; RLOO is the unbiased leave-one-out REINFORCE baseline</td></tr>
+  <tr><td>Dr. GRPO (Liu et al., 2025)</td><td>Remove the \(1/|o_i|\) length normalisation and the std normalisation</td><td>Length bias that rewards long wrong answers; difficulty bias that over-weights prompts that are nearly always or nearly never solved</td></tr>
+  <tr><td>DAPO (Yu et al., 2025)</td><td>Clip-higher, dynamic sampling, token-level loss, overlong reward shaping, no KL term</td><td>Entropy collapse, wasted zero-signal batches, long responses under-weighted, noisy penalties for truncated responses</td></tr>
+  <tr><td>Process rewards (Lightman et al., 2023)</td><td>Reward individual reasoning steps rather than only the final answer</td><td>Sparse credit assignment; right answers reached by wrong reasoning</td></tr>
+  </tbody></table></div>
+  <p>The practical lesson: small normalisation choices in the loss change what behaviour gets reinforced. When two teams report different results with "GRPO", ask which normalisation, clipping, and filtering each used. It is rarely the same algorithm.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The biases, precisely</span></div>
+  <p><b>Difficulty bias.</b> For binary rewards with pass rate \(p\) within a group, the std is \(\sqrt{p(1-p)}\). Correct responses get advantage \(\sqrt{(1-p)/p}\) and incorrect ones \(-\sqrt{p/(1-p)}\). The total absolute advantage a prompt contributes is \(2G\sqrt{p(1-p)}\) with std scaling, versus \(2G\,p(1-p)\) without. Dividing by the std flattens the weight curve, so prompts at the extremes, where a single lucky or unlucky sample decides everything, get relatively more weight. The second chart in the widget above shows both curves.</p>
+  <p><b>Length bias.</b> Averaging each response's token losses with \(1/|o_i|\) before averaging across responses gives every response equal total weight regardless of length. Per token, a long response is diluted. With negative advantage, that dilution is a discount on the penalty. DAPO's token-level loss averages over all tokens in the batch instead, \(\frac{1}{\sum_i |o_i|}\sum_i\sum_t(\cdot)\), so every token counts equally.</p>
+  <p><b>Clip-higher.</b> Symmetric clipping at \(1\pm\varepsilon\) caps how fast a low-probability token can be promoted, since a token at probability 0.01 can only rise to 0.012 per step. That suppresses exploration and drives entropy down. DAPO decouples the bounds (for example \(\varepsilon_\text{low}=0.2\), \(\varepsilon_\text{high}=0.28\)) to give rare tokens room to grow.</p>
+  <p><b>Dynamic sampling.</b> Groups where every response gets the same reward have all-zero advantages and contribute only the KL term. DAPO over-samples and drops those groups so each batch has a full count of informative prompts.</p>
+  <pre class="code" data-lang="python"><code>def rloo_advantages(rewards):
+    """Leave-one-out baseline: compare each response to the others' mean."""
+    g, total = len(rewards), sum(rewards)
+    return [r - (total - r) / (g - 1) for r in rewards]
+
+print([round(a, 3) for a in rloo_advantages([1, 0, 0, 1, 0, 0, 0, 0])])
+# [0.857, -0.286, ...]  equals G/(G-1) times (r - mean)</code></pre>
+</div>
+
+<div class="callout warn"><span class="tag">Watch out</span><div><b>Entropy collapse.</b> As RL proceeds, the policy's token entropy falls and its samples within a group become near-identical. Groups then stop having reward variance, so the learning signal dries up and training plateaus. Monitor entropy and the fraction of zero-variance groups alongside reward. A rising reward with collapsing entropy and a growing zero-signal fraction is a run that is about to stall.</div></div>
+
+<h3>Does RL teach new reasoning, or sharpen what was there?</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Better first guesses versus more ideas</span></div>
+  <p>Two ways to get better at a test: learn things you never knew, or get better at picking the answer you already half-knew. If a student who could eventually solve a problem in one try out of ten now solves it first time, that is a big win, but they did not learn a new method. Researchers argue about which of these RL is doing. The way to tell is to give the model many tries per problem instead of one.</p>
+</div>
+
+<div class="widget" id="w-gr-passk">
+  <div class="wtitle">pass@1 versus pass@k after RL sharpening</div>
+  <div class="wsub">400 simulated problems, each with a base-model solve probability. RL is modelled as sharpening: problems above a threshold get more likely, problems below it get less likely. Raise the sharpening and watch pass@1 rise while pass@k at large k falls below the base model.</div>
+  <div class="controls">
+    <div class="ctl"><label for="gr-s">Sharpening strength: <output id="gr-s-o">2.0</output></label><input type="range" id="gr-s" min="1" max="4" step="0.1" value="2"></div>
+    <div class="ctl"><label for="gr-c">Threshold (log-odds) below which problems are abandoned: <output id="gr-c-o">-2.0</output></label><input type="range" id="gr-c" min="-4" max="1" step="0.1" value="-2"></div>
+  </div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--tn)"></span>Base model</span><span><span class="sw" style="background:var(--accent)"></span>After RL</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">pass@1 base → RL</div><div class="v" data-p1></div></div>
+    <div class="mc"><div class="l">pass@256 base → RL</div><div class="v" data-p256></div></div>
+    <div class="mc"><div class="l">Curves cross at k ≈</div><div class="v" data-x></div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why this debate matters for roadmaps</span></div>
+  <p>Yue et al. (2025) compared RLVR-trained models with their base models across maths, code, and visual reasoning. RL models won clearly at small k. At large k, base models often solved more distinct problems, suggesting RLVR mostly reweights reasoning paths the base model could already find. Later work argued that longer, more carefully stabilised RL can expand the set of solvable problems. The debate is not settled, and the answer likely depends on training duration, data diversity, and how much entropy is preserved.</p>
+  <ul>
+    <li>If RL mainly sharpens, gains are capped by the base model, and investment in pretraining and mid-training data matters more than more RL steps.</li>
+    <li>If RL can expand capability, longer RL runs and harder curricula are worth funding.</li>
+    <li>Either way, a launch decision based only on pass@1 can hide a loss of coverage. For products that sample many times or use search (agents, best-of-N), coverage at higher k is what users get.</li>
+  </ul>
+</div>
+<div class="callout eval"><span class="tag">Eval lens</span><div>Report pass@k curves, not single points, for any RL-trained model, using the unbiased estimator from <a href="#inference">the inference chapter</a> with enough samples per problem (n well above the largest k you report). Compare against the base model at the same k. Use the paired methods from <a href="#evalstats">eval statistics</a>: the same problems, so the comparison is paired, and the per-problem solve rates are clustered within problem.</div></div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why sharpening crosses the curves</span></div>
+  <p>Let problem \(j\) have per-sample solve probability \(p_j\). Then pass@k over a problem set is \(\frac{1}{m}\sum_j \big(1-(1-p_j)^k\big)\). pass@1 is the mean of \(p_j\), dominated by problems with moderate-to-high \(p_j\). pass@k for large k approaches the fraction of problems with \(p_j > 0\), so it is dominated by the hard tail. A transformation that raises \(p_j\) where it is already large and pushes small \(p_j\) toward zero raises pass@1 and lowers pass@\(\infty\). In the widget the transformation is \(\operatorname{logit}(p'_j) = c + s\,(\operatorname{logit}(p_j) - c)\), a stretch around threshold \(c\) with strength \(s\). The mechanism in real training is similar: problems with no successful samples never get positive advantage, so probability mass flows away from whatever partial paths existed.</p>
+</div>
+
+<h3>Verifiers fail too</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Reward hacking with programmatic rewards</span></div>
+  <p>A verifier is code, and code has bugs. Under enough optimisation pressure, the policy finds them. Documented patterns include:</p>
+  <ul>
+    <li><b>Test gaming:</b> special-casing the exact inputs in visible tests, editing or deleting tests when the environment allows it, or exiting the process early with a success code.</li>
+    <li><b>Format exploits:</b> answer extractors that take the first boxed number, letting a response list several candidates; graders that accept equivalent-looking strings that are not equivalent.</li>
+    <li><b>Judge exploits:</b> where part of the reward comes from a model grader, responses that flatter, assert correctness, or bury errors in length.</li>
+    <li><b>Environment escape:</b> in agentic environments, reading the answer from somewhere it should not be available.</li>
+  </ul>
+  <p>Mitigations: hidden tests the policy never sees, sandboxing with no write access to tests, multiple independent checks per task, periodic manual review of high-reward samples, and monitoring of chains of thought for stated intentions to game the grader. Researchers at OpenAI (Baker et al., 2025) found that putting strong optimisation pressure directly on a chain-of-thought monitor can teach models to hide their intent rather than stop, so many teams use such monitors for detection rather than as a training reward.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>Show me ten of the highest-reward samples from the last thousand steps, chosen at random. Did any of them get reward without solving the task?</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Outcome versus process rewards</span></div>
+  <p>An <b>outcome reward model</b> (ORM) scores a complete solution. A <b>process reward model</b> (PRM) scores each step. Lightman et al. (2023) collected about 800,000 step-level human labels on MATH solutions (the PRM800K dataset) and found that a PRM was better than an ORM at selecting correct solutions among many samples. PRMs give denser credit assignment, but step labels are expensive, defining a "step" is fuzzy, and a learned PRM is itself hackable. Most large-scale RLVR in 2025 used outcome rewards plus careful data, with PRMs used more for search and reranking at inference time. Automatically labelled process rewards, estimated by rolling out from intermediate steps and checking how often the continuation succeeds, sit between the two.</p>
+</div>
+
+<h3>Curriculum and difficulty filtering</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Keep problems in the zone where the model sometimes succeeds</span></div>
+  <p>A problem teaches the most when the model solves it some of the time. Standard practice: estimate each problem's pass rate with the current policy, keep problems between roughly 10% and 90% (the exact band is a tuning choice), and refresh the estimate as training proceeds because yesterday's hard problems become today's easy ones. Some recipes order data from easy to hard, or increase the length budget in stages. This is where much of the unpublished craft in reasoning RL lives.</p>
+</div>
+<div class="callout eval"><span class="tag">Eval lens</span><div>Difficulty filtering uses the training model's pass rates to select data, so it can accidentally select for problems that resemble the eval set. Check overlap between the filtered training pool and every benchmark you report, using the methods in <a href="#contamination">contamination</a>. Keep at least one eval set built after the training data was frozen.</div></div>
+</section>

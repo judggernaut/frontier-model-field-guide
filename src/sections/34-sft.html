@@ -1,0 +1,168 @@
+<section id="sft" data-title="Supervised fine-tuning">
+<h2>Supervised fine-tuning: teaching the format</h2>
+<p>A pretrained model has read a large slice of the internet and can continue any text. It doesn't yet know that it is supposed to be an assistant. Supervised fine-tuning (SFT) shows it thousands of example conversations and trains it, with the same next-token loss used in <a href="#pretraining">pretraining</a>, to produce the assistant's side. It is the first step of post-training and the base that preference tuning and RL build on.</p>
+
+<h3>What SFT actually changes</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A well-read intern learning the house style</span></div>
+  <p>Picture a new hire who has read every book in the library but has never worked in an office. Ask them a question and they might answer, or they might write the next page of a novel, or ask you a question back. They know a lot. They just don't know the job.</p>
+  <p>SFT is the training binder: "Here is a question a customer asked. Here is exactly how we answer." After a few thousand of these, the intern answers in the right format, in the right tone, and knows when to say "I can't help with that." The binder teaches very little new knowledge. Mostly it teaches how to use the knowledge they already have.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">SFT shapes behaviour cheaply. It rarely adds capability.</span></div>
+  <p>The LIMA paper (Zhou et al., 2023) fine-tuned a 65B model on only 1,000 carefully chosen examples and got responses that humans often preferred to those of much larger tuning efforts. The authors called this the <b>superficial alignment hypothesis</b>: almost all knowledge comes from pretraining, and SFT mostly selects which style and format to use. Later work showed it is only partly true. Format and persona do come cheaply. Reliable gains on hard skills such as math, code, and tool use need much more data, often hundreds of thousands to millions of examples, and usually RL afterwards.</p>
+  <div class="four">
+    <div class="tile"><h4>Cheap to change with SFT</h4><p>Response format, tone, persona, refusal style, following a chat template, calling tools in the right syntax.</p></div>
+    <div class="tile"><h4>Expensive to change with SFT</h4><p>Factual knowledge, deep reasoning, robustness on hard problems. SFT can teach a model to <i>sound</i> like it reasons without reasoning better.</p></div>
+    <div class="tile"><h4>Usually the bottleneck</h4><p>Data quality and coverage, not compute. A single SFT run on a frontier model is small next to pretraining.</p></div>
+    <div class="tile"><h4>The real risk</h4><p>Quietly damaging capabilities the base model had. You only see it if you measure it.</p></div>
+  </div>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul>
+    <li>What behaviour is this SFT run supposed to change, and which eval shows that change?</li>
+    <li>Which capabilities could it break, and is there a regression suite for them?</li>
+    <li>Who wrote the data, how was quality checked, and what fraction did a human actually read?</li>
+    <li>Are we teaching a skill, or teaching the model to imitate the surface of a skill?</li>
+  </ul></div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Same loss, different data, a masked sum</span></div>
+  <p>SFT minimises the conditional negative log likelihood of the response \(y\) given the prompt \(x\), over a dataset of demonstrations \(\mathcal{D}\):</p>
+  <div class="eq">\[ \mathcal{L}_{\text{SFT}}(\theta) = -\,\mathbb{E}_{(x,y)\sim\mathcal{D}} \left[ \frac{1}{|y|}\sum_{t=1}^{|y|} \log p_\theta\!\left(y_t \mid x, y_{&lt;t}\right) \right] \]<span class="eqcap">Identical to the pretraining objective, except the sum runs only over response tokens \(y_t\). The prompt \(x\) is context, not a target.</span></div>
+  <p>Viewed as imitation learning, SFT is behaviour cloning: the model learns to copy the demonstrator's action at each step, always conditioned on the demonstrator's own previous tokens. That is called <b>teacher forcing</b>. At inference the model conditions on its <i>own</i> previous tokens, so small errors can compound into states the training data never covered. This exposure bias is one reason on-policy methods (<a href="#grpo">RL</a>, <a href="#distillation">on-policy distillation</a>) often help after SFT.</p>
+</div>
+
+<h3>Chat templates and special tokens</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Stage directions in a script</span></div>
+  <p>A play script marks who is speaking: <i>HAMLET:</i>, <i>OPHELIA:</i>. A chat model needs the same thing. Special markers wrap each turn so the model knows where the user stops, where it should start talking, and when to stop. Get the markers wrong and the model gets confused, like an actor reading someone else's lines.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Template mismatches cause silent, expensive bugs</span></div>
+  <p>The template is a contract between training, serving, and evaluation. If the eval harness formats prompts differently from training (a missing system turn, a different end-of-turn token, an extra newline), scores can drop several points with no change to the model. It is one of the first things to check when an eval result looks wrong.</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Common template bugs: the end-of-turn token is never trained, so the model rambles past its answer; the tokenizer adds a second beginning-of-sequence token; tool-call turns use a role the serving stack doesn't know; the eval harness applies the base model's template to the chat model.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">What a formatted conversation looks like</span></div>
+  <p>Templates differ by model family. A ChatML-style layout (illustrative) looks like this:</p>
+<pre class="code" data-lang="text" style="font-variant-ligatures:none"><code>&lt;|im_start|&gt;system
+You are a concise assistant.&lt;|im_end|&gt;
+&lt;|im_start|&gt;user
+What is 17 * 3?&lt;|im_end|&gt;
+&lt;|im_start|&gt;assistant
+51&lt;|im_end|&gt;</code></pre>
+  <p>The special markers are single tokens added to the vocabulary, with embeddings learned in SFT. In Hugging Face tooling the template is stored with the tokenizer as a Jinja string and applied with <code>tokenizer.apply_chat_template</code>. Use the same function in training, serving, and the eval harness, and check a rendered example in each by eye.</p>
+</div>
+
+<h3>Loss masking: which tokens teach</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Grade the answer, not the question</span></div>
+  <p>When you mark a student's exam you grade what they wrote, not the printed questions. SFT works the same way. The model reads the whole conversation, but it is only graded on the assistant's words. Otherwise it would spend effort learning to write user questions, which isn't its job.</p>
+</div>
+<div class="widget" id="w-sf-mask">
+  <div class="wtitle">Loss-masking visualizer</div>
+  <div class="wsub">Each box is a token. Coloured tokens add to the loss; grey ones are context only. Switch schemes and watch how much of the batch actually teaches.</div>
+  <div class="btnrow">
+    <button class="b" data-scheme="all" aria-pressed="false">Train on everything</button>
+    <button class="b" data-scheme="asst" aria-pressed="true">Assistant turns only</button>
+    <button class="b" data-scheme="last" aria-pressed="false">Final assistant turn only</button>
+    <button class="b" data-scheme="tool" aria-pressed="false">Assistant only, mask tool output</button>
+  </div>
+  <div data-tokens style="display:flex;flex-direction:column;gap:6px;margin:6px 0 4px"></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Tokens in example</div><div class="v" data-tot>—</div></div>
+    <div class="mc"><div class="l">Tokens in the loss</div><div class="v" data-in>—</div></div>
+    <div class="mc"><div class="l">Share of tokens that teach</div><div class="v" data-share>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">A one-line choice that changes what the model learns</span></div>
+  <p>Masking decides what behaviour you are paying to teach. Training on user turns teaches the model to imitate users, which can leak into answers that start interviewing the user back. Training on tool outputs teaches it to hallucinate tool results instead of waiting for them. Training only on the final turn of a multi-turn conversation wastes most of the data. Most teams default to "all assistant turns, never tool or environment output," and treat any change as an experiment with its own eval.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Labels of -100</span></div>
+  <p>In PyTorch, <code>CrossEntropyLoss</code> ignores label positions set to <code>-100</code> by default. Masking is done by copying the input ids into labels and overwriting non-target spans:</p>
+<pre class="code" data-lang="python"><code>import torch
+
+IGNORE = -100  # CrossEntropyLoss(ignore_index=-100) skips these positions
+
+def build_labels(input_ids, spans):
+    """spans: list of (start, end, role) over token positions.
+    Only assistant tokens, including the end-of-turn token, become targets."""
+    labels = torch.full_like(input_ids, IGNORE)
+    for start, end, role in spans:
+        if role == "assistant":
+            labels[start:end] = input_ids[start:end]
+    return labels
+
+ids = torch.arange(12)                       # stand-in token ids
+spans = [(0, 4, "system"), (4, 7, "user"), (7, 12, "assistant")]
+print(build_labels(ids, spans))
+# tensor([-100, -100, -100, -100, -100, -100, -100,    7,    8,    9,   10,   11])</code></pre>
+  <p>One detail with real consequences: the loss is usually averaged over target tokens in the batch. Long responses then get more total weight than short ones. Some recipes average per sequence first, so every example counts equally. Neither is wrong, but changing it shifts the model toward or away from long answers.</p>
+</div>
+
+<h3>Packing and attention masking</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Filling the moving van</span></div>
+  <p>GPUs process fixed-length rows. Short conversations leave most of a row empty, like a moving van carrying one chair. Packing puts several conversations end to end in one row so nothing is wasted. The catch: you have to put up walls between them so one conversation can't peek at another.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Throughput versus correctness</span></div>
+  <p>Packing can cut SFT compute by 2× or more when examples vary in length. Without proper attention masking, though, tokens in conversation B can attend to conversation A. That is a subtle form of contamination inside the training batch, and it can teach the model to draw on context that won't exist at inference. Ask whether the training stack uses per-document attention masks (often done with variable-length attention kernels) and resets position ids per document.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Block-diagonal causal masks</span></div>
+  <p>With packing, the attention mask becomes block diagonal: causal within each document, zero across documents. Implementations pass cumulative sequence lengths (for example <code>cu_seqlens</code> in FlashAttention's variable-length API) instead of materialising a full mask. Position ids restart at 0 for each document so rotary embeddings see the same positions they would without packing.</p>
+</div>
+
+<h3>Data: quality, quantity, and mix</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">You become what you imitate</span></div>
+  <p>The model will copy whatever is in the examples, including mistakes, padding, and bad habits. A thousand excellent examples can beat a hundred thousand sloppy ones. And if every example is about cooking, the model gets worse at everything else.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Where SFT budgets actually go</span></div>
+  <ul>
+    <li><b>Quality filtering</b> often beats collecting more. Remove wrong answers, refusals of fine requests, and answers that hedge or pad. Each one teaches a habit.</li>
+    <li><b>Diversity</b> of tasks, formats, and difficulty matters more than raw count. Open recipes such as Tülu 3 (Lambert et al., 2024) mix general chat, math, code, safety, multilingual, and instruction-following sets, and tune the mixture against a broad eval suite.</li>
+    <li><b>Mixture weights</b> are hyperparameters. Upweighting one skill steals capacity from others. Run ablations, not intuition.</li>
+    <li><b>Human versus synthetic data.</b> Most modern SFT data is model-generated and filtered (see <a href="#distillation">distillation and synthetic data</a>). Human data stays essential for the hardest tasks, for safety, and for checking that synthetic data isn't drifting.</li>
+    <li><b>Multi-turn and tool-use data</b> must include realistic failures: tool errors, ambiguous requests, users changing their minds. A model trained only on clean single-turn data breaks in real agent traces.</li>
+  </ul>
+  <div class="callout warn"><span class="tag">Watch out</span><div>SFT data written by a stronger model teaches the student to sound like that model, confidence included. If the teacher states things it can't verify, the student learns to hallucinate in the same voice. Fluency goes up faster than accuracy, and judge-based evals reward fluency.</div></div>
+</div>
+
+<h3>Epochs, overfitting, and forgetting</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Memorising the binder, forgetting the library</span></div>
+  <p>Read the training binder once and you learn the style. Read it ten times and you start reciting the exact examples word for word, which doesn't help with new questions. Worse, if the binder only covers a few topics, the intern can start forgetting things they knew before. That is <b>catastrophic forgetting</b>.</p>
+</div>
+<div class="widget" id="w-sf-curves">
+  <div class="wtitle">Overfitting and forgetting over epochs</div>
+  <div class="wsub">Illustrative curves from a simple model, not a real run. Shrink the dataset or lower its diversity and watch validation loss turn up and the general benchmark fall.</div>
+  <div class="controls">
+    <div class="ctl"><label for="sf-n">Dataset size: <output id="sf-n-o">20K</output> examples</label><input type="range" id="sf-n" min="0" max="100" step="1" value="50"></div>
+    <div class="ctl"><label for="sf-d">Data diversity: <output id="sf-d-o">0.50</output></label><input type="range" id="sf-d" min="0" max="1" step="0.05" value="0.5"></div>
+    <div class="ctl"><label for="sf-lr">Learning rate (relative): <output id="sf-lr-o">1.0×</output></label><input type="range" id="sf-lr" min="0.25" max="4" step="0.25" value="1"></div>
+  </div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--accent)"></span>Train loss</span><span><span class="sw" style="background:var(--fp)"></span>Validation loss</span><span><span class="sw" style="background:var(--tp)"></span>General benchmark (right axis)</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Best epoch by validation</div><div class="v" data-best>—</div></div>
+    <div class="mc"><div class="l">Benchmark at best epoch</div><div class="v" data-bench>—</div></div>
+    <div class="mc"><div class="l">Benchmark after 8 epochs</div><div class="v" data-end>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Pick checkpoints with evals, not loss</span></div>
+  <p>Typical SFT runs 1 to 3 epochs. Validation loss often starts rising after the first or second epoch while downstream scores keep improving for a while, because the model gets more decisive about format. So validation loss alone is a poor stopping rule. Teams save several checkpoints and choose with a broad eval suite.</p>
+  <p>Forgetting is the cost leaders most often miss. Narrow SFT, such as a single domain or one customer's format, can reduce general reasoning, safety behaviour, or multilingual ability. Standard mitigations are mixing in general instruction data (replay), lower learning rates, fewer epochs, and <a href="#peft">LoRA</a>, which tends to forget less because it changes fewer directions in weight space.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why validation loss and quality diverge</span></div>
+  <p>Cross-entropy on a held-out set penalises confident wrong tokens heavily. As SFT sharpens the output distribution (lower entropy), a few confidently wrong tokens on held-out examples can raise the average loss even while greedy outputs get better. Loss measures calibration of the whole distribution; quality metrics usually look at one sampled or greedy answer. Report both and expect them to disagree after the first epoch.</p>
+  <p>To detect forgetting, evaluate the base model and every candidate checkpoint on the same frozen general suite, and test the difference with a paired method from Part II, since the items are shared.</p>
+</div>
+
+<h3>Evaluating an SFT run</h3>
+<div class="callout eval"><span class="tag">Eval lens</span><div>
+  <p>Held-out loss is necessary but not enough. A credible SFT evaluation has four parts:</p>
+  <ol class="steps">
+    <li><div><b>Target behaviour.</b> The thing the run was meant to change: format adherence, tool-call validity, refusal accuracy, domain task pass rate. Measure it with intervals.</div></li>
+    <li><div><b>Capability regression suite.</b> A fixed, broad set (reasoning, code, math, knowledge, multilingual, safety) compared against the parent checkpoint with paired tests. Any drop beyond noise is a finding.</div></li>
+    <li><div><b>Pairwise win rate</b> against the previous model on realistic prompts, judged by humans or a validated <a href="#judges">LLM judge</a>, with position swapping and length control.</div></li>
+    <li><div><b>Contamination check.</b> Synthetic SFT data can contain benchmark items the teacher saw. Run n-gram and embedding overlap against every eval set (see <a href="#contamination">contamination</a>).</div></li>
+  </ol>
+</div></div>
+<div class="callout ask"><span class="tag">Principal asks</span><div><ul>
+  <li>What did the base model score on the regression suite, and what is the paired delta with an interval?</li>
+  <li>Did win rate go up because answers got better, or because they got longer?</li>
+  <li>Which checkpoint did we pick, and was it chosen on the same data we are now reporting? (If so, the number is optimistically biased.)</li>
+  <li>If we removed the 10% lowest-quality examples, would the result change?</li>
+</ul></div></div>
+</section>

@@ -1,0 +1,150 @@
+<section id="judges" data-title="LLM as judge">
+<style>#w-jd-roc svg{max-width:400px;margin:0 auto}#w-jd-roc svg text{font-family:var(--font-body)}</style>
+<h2>LLM as judge: a classifier you have to measure</h2>
+<p>An LLM judge reads a model's output and returns a verdict: pass or fail, better or worse, safe or unsafe. That makes it two things at once. It is a classifier, so everything in <a href="#classification">the previous chapter</a> applies. And it is a measuring instrument, so every number you publish inherits its errors. This chapter covers how to validate a judge, the biases to control, how to get more out of a yes/no judge, and how to run judges responsibly at scale.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A teacher grading a thousand essays</span></div>
+  <p>Imagine hiring a teacher to grade a thousand essays. Before you trust their grades, you would grade a few yourself and compare. You would check whether they always prefer longer essays, or whichever essay they read first. You would notice if they grade everything a little too kindly. An LLM judge is that teacher. It is fast and cheap, but you only know whether its grades mean anything by checking it against people.</p>
+</div>
+
+<h3>A yes/no judge gives you one dot, not a curve</h3>
+<p>Most judges answer "Pass" or "Fail." There is no score, so there is no threshold to slide. You get exactly one dot on the ROC chart from the previous chapter.</p>
+<div class="widget" id="w-jd-roc">
+  <div class="wtitle">What a binary judge looks like on an ROC chart</div>
+  <div class="wsub">Switch between the three views. The middle one is the trap most teams fall into when they iterate on judge prompts.</div>
+  <div class="btnrow"><button class="b" data-mode="a" aria-pressed="true">Binary judge only</button><button class="b" data-mode="b" aria-pressed="false">Three prompt versions</button><button class="b" data-mode="c" aria-pressed="false">With a score (logprobs)</button></div>
+  <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,200px)">
+    <svg viewBox="0 0 300 285" width="100%" role="img" aria-label="ROC chart for an LLM judge"></svg>
+    <div data-side></div>
+  </div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Reading the three views</span></div>
+  <p><b>Binary judge only.</b> Precision, recall, and F1 still work, because you can still fill in the confusion matrix. AUC barely makes sense. Forced onto one dot, it is the area under two straight lines, which equals the average of "bad items caught" and "good items left alone" (balanced accuracy). It adds nothing new.</p>
+  <p><b>The prompt becomes your threshold.</b> "Only fail clear violations" moves the dot down and left: fewer false alarms, more misses. "Fail anything suspicious" moves it up and right. Rewording slides the dot along the same curve. A real improvement is the green dot: up and left at once. When you test a new prompt, check whether both numbers improved or one gained at the other's expense.</p>
+  <p><b>Getting the curve back.</b> If your API exposes token probabilities (logprobs), read how confident the judge was in the word "Fail," like 0.97 or 0.52. That turns one dot into a full curve. You can pick any threshold without rewriting the prompt, and compute real ROC-AUC and PR-AUC. Without logprobs, run the judge 5 to 10 times per item and use the share of "Fail" votes as the score.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Single-point AUC and scores from logprobs</span></div>
+  <p>With one operating point \((\mathrm{FPR}, \mathrm{TPR})\), the ROC "curve" is two segments through \((0,0)\), the point, and \((1,1)\). Its area is</p>
+  <div class="eq">\[ \mathrm{AUC}_{\text{1 point}}=\tfrac12\,\mathrm{TPR}\cdot\mathrm{FPR}+\tfrac12(1-\mathrm{FPR})(1+\mathrm{TPR}) = \frac{\mathrm{TPR}+(1-\mathrm{FPR})}{2} \]<span class="eqcap">Exactly balanced accuracy. With TPR 0.8 and FPR 0.1, that is 0.85.</span></div>
+  <p>A continuous score from a single call: renormalise the probability of the two verdict tokens at the answer position.</p>
+  <div class="eq">\[ s=\frac{p(\texttt{Fail}\mid \text{prompt})}{p(\texttt{Fail}\mid \text{prompt})+p(\texttt{Pass}\mid \text{prompt})} \]<span class="eqcap">Check that the verdict token appears where you read it (put the verdict last, after reasoning, in a fixed format). The renormalised score is usually miscalibrated; that is fine for ranking and AUC, and fixable with temperature scaling if you need calibrated probabilities.</span></div>
+  <pre class="code" data-lang="python"><code>import math
+
+def judge_score(top_logprobs, pos="Fail", neg="Pass"):
+    """top_logprobs: {token: logprob} at the verdict position."""
+    lp_pos = top_logprobs.get(pos, -50.0)   # treat a missing token as near-zero mass
+    lp_neg = top_logprobs.get(neg, -50.0)
+    a, b = math.exp(lp_pos), math.exp(lp_neg)
+    return a / (a + b)
+
+def vote_score(verdicts):
+    """Fallback without logprobs: share of 'Fail' over k samples at temperature > 0."""
+    return sum(v == "Fail" for v in verdicts) / len(verdicts)</code></pre>
+</div>
+
+<h3>Agreement with humans</h3>
+<p>The first question about any judge is how well it agrees with people. Raw agreement is the wrong summary: two raters agree a lot by luck when one label is common. Use Cohen's kappa, and always check the pass-rate gap.</p>
+
+<div class="callout example"><span class="tag">Worked problem</span><div>
+  <p><b>Validate a judge against 200 human labels.</b> Judge and human agree on 158 items. Is the judge good enough to ship?</p>
+  <div class="tw"><table><thead><tr><th>Metric</th><th>Value</th><th>Reading</th></tr></thead><tbody>
+    <tr><td>Agreement</td><td class="n">0.790</td><td>Looks acceptable</td></tr>
+    <tr><td>Cohen's kappa</td><td class="n">0.580</td><td>Moderate once you discount luck</td></tr>
+    <tr><td>Precision (judge "pass")</td><td class="n">0.738</td><td>About a quarter of its passes are wrong</td></tr>
+    <tr><td>Recall (judge "pass")</td><td class="n">0.900</td><td>It catches most real passes</td></tr>
+    <tr><td><b>Judge pass rate</b></td><td class="n"><b>0.610</b></td><td></td></tr>
+    <tr><td><b>Human pass rate</b></td><td class="n"><b>0.500</b></td><td><b>The judge is 11 points generous</b></td></tr>
+  </tbody></table></div>
+  <p>The confusion matrix behind this is TP 90, FP 32, FN 10, TN 68. The finding is invisible if you only look at agreement: the judge <b>ranks</b> models fine, but every <b>absolute</b> number it produces is inflated by about 11 points. That is acceptable for comparing two models and unacceptable for reporting how good either one is. Next step: have a second human label 100 of the items and compute human-to-human kappa. If two humans only reach 0.65, a judge at 0.58 is close to as good as the task allows.</p>
+</div></div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Kappa and the judge report</span></div>
+  <div class="eq">\[ \kappa=\frac{p_o-p_e}{1-p_e},\qquad p_e=\sum_{\ell} p_A(\ell)\,p_B(\ell) \]<span class="eqcap">\(p_o\) is observed agreement; \(p_e\) is the agreement expected if each rater labelled independently at their own rates. In the worked problem, \(p_o=0.79\) and \(p_e=0.61\cdot0.5+0.39\cdot0.5=0.5\), so \(\kappa=0.58\).</span></div>
+  <pre class="code" data-lang="python"><code>def cohens_kappa(a, b):
+    n = len(a)
+    labels = set(a) | set(b)
+    po = sum(x == y for x, y in zip(a, b)) / n
+    pe = sum((a.count(l) / n) * (b.count(l) / n) for l in labels)
+    return 1.0 if pe == 1 else (po - pe) / (1 - pe)
+
+def judge_report(judge, human):
+    """The numbers to put next to any judge you ship (1 = pass)."""
+    tp = sum(j == 1 and h == 1 for j, h in zip(judge, human))
+    fp = sum(j == 1 and h == 0 for j, h in zip(judge, human))
+    fn = sum(j == 0 and h == 1 for j, h in zip(judge, human))
+    n = len(judge)
+    return {
+        "agreement": sum(j == h for j, h in zip(judge, human)) / n,
+        "kappa": cohens_kappa(judge, human),
+        "precision": tp / (tp + fp) if tp + fp else 0.0,
+        "recall": tp / (tp + fn) if tp + fn else 0.0,
+        # these two lines are the point: good agreement can hide a generous judge
+        "judge_pass_rate": (tp + fp) / n,
+        "human_pass_rate": (tp + fn) / n,
+    }</code></pre>
+  <p>Put a confidence interval on kappa too. On 200 items, a bootstrap interval on \(\kappa=0.58\) is roughly ±0.11, which matters when comparing two judge prompts. See <a href="#intervals">intervals and the bootstrap</a>.</p>
+</div>
+
+<h3>The biases you have to control for</h3>
+<div class="tw"><table>
+  <thead><tr><th>Bias</th><th>What it does</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Position</td><td>Prefers whichever response is shown first (or second) in a pairwise comparison</td><td>Run both orders, average, and report the disagreement rate as a bias estimate</td></tr>
+    <tr><td>Length</td><td>Scores longer answers higher regardless of quality</td><td>Check score against token count; add length-matched controls or a length-controlled win rate</td></tr>
+    <tr><td>Self-preference</td><td>A model judging its own family scores it higher</td><td>Use a judge from a different family, or measure the effect and report it</td></tr>
+    <tr><td>Style over substance</td><td>Confident formatting reads as correctness</td><td>Rubrics that force a claim-by-claim verdict instead of a global score</td></tr>
+    <tr><td>Score compression</td><td>Everything lands on 7 or 8 out of 10</td><td>Binary or three-point scales, or forced pairwise comparison</td></tr>
+  </tbody>
+</table></div>
+<div class="widget" id="w-judge"><div class="wtitle">Judge bias simulator</div><div class="wsub">A judge with position bias, length bias and finite skill. Toggle order swapping and watch the win rate return toward 0.5 while agreement barely moves. The bias was inflating confidence, not accuracy.</div><div class="controls"><div class="ctl"><label data-l1>position bias</label><input type="range" data-pos min="0.0" max="0.8" step="0.05" value="0.35"></div><div class="ctl"><label data-l2>length bias</label><input type="range" data-len min="0.0" max="0.8" step="0.05" value="0.25"></div><div class="ctl"><label data-l3>judge skill</label><input type="range" data-skill min="0.0" max="1.5" step="0.05" value="0.7"></div><div class="ctl"><label>mitigation</label><label style="font-size:13px;color:var(--ink)"><input type="checkbox" data-swap> run both orderings</label></div></div><canvas></canvas><div class="readout" data-out></div></div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Debiased pairwise judging</span></div>
+  <pre class="code" data-lang="python"><code>async def judge_pairwise_debiased(judge_fn, task, resp_a, resp_b):
+    """Run both orderings; treat disagreement as a bias signal, not a verdict."""
+    fwd = await judge_fn(task, first=resp_a, second=resp_b)   # "first" | "second" | "tie"
+    rev = await judge_fn(task, first=resp_b, second=resp_a)
+    fwd_w = {"first": "a", "second": "b", "tie": "tie"}[fwd]
+    rev_w = {"first": "b", "second": "a", "tie": "tie"}[rev]
+    if fwd_w == rev_w:
+        return {"winner": fwd_w, "consistent": True}
+    return {"winner": "tie", "consistent": False}   # order flipped the verdict</code></pre>
+  <p>The inconsistency rate across a batch is itself a useful number: it estimates how much of the judge's verdict is position rather than content. Track it per judge version.</p>
+</div>
+<div class="callout ask"><span class="tag">Principal asks</span><div>Judges are often used to catch models gaming a task: editing the test instead of the implementation, hard-coding an expected output, or reading a solution left in the environment. Expect to be asked for a concrete instance, then for how you detect the <i>class</i> of exploit rather than the one instance, and what changed in the harness so it cannot recur.</div></div>
+
+<h3>Validating a judge before you trust it</h3>
+<ol class="steps">
+  <li><div>Sample 150 to 300 items across the score range, not just the disputed ones.</div></li>
+  <li><div>Get two human labels per item and measure human-to-human agreement first. That is your ceiling. If humans agree at kappa 0.6, the judge cannot do meaningfully better.</div></li>
+  <li><div>Measure judge-to-human agreement on a held-out slice the judge prompt was not tuned on.</div></li>
+  <li><div>Check the pass-rate gap. A judge with good agreement but a higher pass rate biases every absolute number while still ranking models correctly.</div></li>
+  <li><div>Recheck after any change on the judge side. A judge is a model, so a judge upgrade is a silent measurement change.</div></li>
+</ol>
+
+<h3>When the dot will not move up and left</h3>
+<ol class="steps">
+  <li><div><b>Read your mistakes.</b> Pull 20 false positives and 20 false negatives. There is usually a pattern, like "fails anything that mentions a competitor." Fix the rubric for exactly those cases.</div></li>
+  <li><div><b>Tighten the definition.</b> Fuzzy criteria are the most common cause of overlap. Borderline cases land randomly on either side.</div></li>
+  <li><div><b>Split one judgment into several.</b> Separate yes/no checks (is it factually correct? does it follow the format? does it answer the question?) usually separate the classes better than one holistic verdict.</div></li>
+  <li><div><b>Show hard examples.</b> Few-shot examples from the overlap zone, labelled with the reason, teach the judge where the line is. Easy examples do not help much.</div></li>
+  <li><div><b>Reason first, verdict last.</b> Asking for reasoning through the criteria before the answer helps on borderline cases, and makes the verdict token easy to read logprobs from.</div></li>
+  <li><div><b>Check the human ceiling.</b> If humans agree only 80% of the time, the judge will not beat that. Fix the labelling guidelines first.</div></li>
+</ol>
+<p>A stronger judge model, or several judges voting (different prompts or model families), can also push the humps further apart.</p>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Judge governance: treat the judge as production infrastructure</span></div>
+  <p>Once a judge feeds dashboards and launch decisions, it is measurement infrastructure, and it needs the same discipline as any other production system.</p>
+  <div class="four">
+    <div class="tile"><h4>Version and pin it</h4><p>Pin the judge model, prompt, and decoding settings. Record them with every result. A judge upgrade changes every historical comparison, so re-baseline when it changes.</p></div>
+    <div class="tile"><h4>Validate on a cadence</h4><p>Keep a fixed human-labelled set (a few hundred items) and re-score it on every judge change and on a schedule. Alert on kappa drops and pass-rate drift.</p></div>
+    <div class="tile"><h4>Know the ceiling</h4><p>Report human-to-human kappa next to judge-to-human kappa. Chasing a judge past the human ceiling is chasing noise in the labels.</p></div>
+    <div class="tile"><h4>Control the biases</h4><p>Both orderings for pairwise judges, length checks, a different model family from the model being judged. Publish the inconsistency rate.</p></div>
+    <div class="tile"><h4>Know what you need</h4><p>Ranking two models needs consistency. Reporting an absolute quality number needs calibration to humans. Most judges are good enough for the first and not the second.</p></div>
+    <div class="tile"><h4>Budget it</h4><p>Judge calls can rival the cost of the eval itself. Use a cheaper judge for broad coverage with a stronger judge or humans auditing a random sample, and track the audit disagreement.</p></div>
+  </div>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul><li>What is the judge's kappa against humans, and what is the human-to-human kappa on the same items?</li><li>Is the judge more lenient than humans? By how much, and does that matter for this claim?</li><li>Has the judge model or prompt changed since the baseline we are comparing against?</li><li>Is the judge from the same model family as the system it is grading?</li></ul></div></div>
+</div>
+
+<div class="callout eval"><span class="tag">Eval lens</span><div>A judge-based pass rate has two layers of uncertainty: sampling error from the finite task set, and judge error relative to humans. The first shrinks with more tasks; the second does not. Report both, or at least state the judge's validated agreement next to any number it produced.</div></div>
+</section>

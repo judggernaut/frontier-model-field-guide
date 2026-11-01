@@ -1,0 +1,275 @@
+<section id="harness" data-title="Building the eval harness">
+<h2>Building the eval harness: the machine that produces every number</h2>
+<p>Every statistic in Part II is computed from results that a harness produced. If the harness drops tasks, retries silently, caches stale outputs, or reports a bare pass rate, the statistics on top are wrong no matter how careful they are. This chapter builds a harness in four passes, each with an acceptance test, and shows where measurement errors hide in the engineering.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A fair exam room</span></div>
+  <p>Think of the harness as the exam room. It hands each question to the model, collects the answer, marks it, and writes down the result. A good exam room treats every student the same: same time limit, same number of attempts, same marking rules. If one student's pen breaks, you note it and carry on; you do not cancel the exam.</p>
+  <p>Most harness bugs are unfairness bugs. One question gets two attempts while another gets one. A crashed question disappears from the results instead of counting. Yesterday's answers get reused after the questions changed. Each of these quietly changes the score.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Treat the harness as measurement infrastructure</span></div>
+  <p>Teams under-invest in harnesses because they look like plumbing. They are the measuring instrument. A harness bug that inflates scores by two points is as damaging as a training bug, and much harder to notice, because nobody complains when numbers go up.</p>
+  <p>What a mature harness guarantees:</p>
+  <ul>
+    <li><b>No silent loss.</b> Every task produces a result row, including errors.</li>
+    <li><b>Equal treatment.</b> Attempts, timeouts, and sampling parameters are identical across tasks and models, and recorded.</li>
+    <li><b>Reproducibility.</b> A result can be traced to model id, prompt hash, parameters, harness version, and judge version.</li>
+    <li><b>Honest reporting.</b> The summary cannot be produced without n, a confidence interval, the error count, and the retry count.</li>
+    <li><b>Flakiness control.</b> Tasks whose scores vary run to run at fixed settings are quarantined, not averaged in.</li>
+  </ul>
+  <p>What to fund: a small, dedicated owner for the harness, versioned like a product, with its own regression tests. The return is every downstream decision.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>
+    <ul>
+      <li>How many tasks errored in this run, and are they excluded from the denominator?</li>
+      <li>How many tasks were retried, and what is the score with retried tasks removed?</li>
+      <li>Did anything other than the model change between these two runs: harness, judge, prompt template, timeouts, task set?</li>
+      <li>Which tasks are quarantined as flaky, and how was flakiness measured?</li>
+    </ul></div></div>
+</div>
+
+<h3>Version one: make it work</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">One question at a time, and never stop the exam</span></div>
+  <p>The first version is simple: loop over the tasks, ask the model, mark the answer. The one rule that matters is that a failed task is written down as a failure and the loop keeps going.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A sequential runner that records errors as data</span></div>
+  <pre class="code" data-lang="python"><code>from dataclasses import dataclass, field
+from typing import Callable, Any
+import time, json
+
+@dataclass
+class Task:
+    task_id: str
+    prompt: str
+    reference: dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class Result:
+    task_id: str
+    output: str | None = None
+    score: float | None = None
+    error: str | None = None
+    attempts: int = 0
+    latency_s: float = 0.0
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+def run_sync(tasks: list[Task], model_fn: Callable[[str], str],
+             score_fn: Callable[[Task, str], float]) -> list[Result]:
+    results = []
+    for t in tasks:
+        started = time.perf_counter()
+        try:
+            out = model_fn(t.prompt)
+            results.append(Result(t.task_id, out, score_fn(t, out),
+                                  attempts=1,
+                                  latency_s=time.perf_counter() - started))
+        except Exception as e:                 # a failed task is DATA, not a crash
+            results.append(Result(t.task_id, None, None, error=repr(e),
+                                  attempts=1,
+                                  latency_s=time.perf_counter() - started))
+    return results</code></pre>
+  <div class="callout example"><span class="tag">Worked problem</span><div>
+    <p><b>Acceptance test.</b> Feed the runner ten tasks where the third raises an exception. The run must complete, return 10 results, and record the error on task three.</p>
+    <p>The most common first-attempt failure is letting the exception escape the loop, which kills the run and loses the other nine results. Catch per task, record the error, keep going.</p>
+  </div></div>
+</div>
+
+<h3>Version two: concurrency, retries, timeouts</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Many questions at once, and a fair retry rule</span></div>
+  <p>Real suites have thousands of tasks, so the harness asks many at once. Model servers sometimes time out or say "too busy", so the harness waits and tries again. The danger is that retrying can give some tasks more chances than others. A fair harness records how many tries each task took, so you can check.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">asyncio, a semaphore, and exponential backoff with full jitter</span></div>
+  <p>The backoff before attempt \(k\) is drawn uniformly from \([0, \min(\text{cap}, \text{base}\cdot 2^k)]\). The exponential envelope spaces retries out; the jitter stops a burst of failures from retrying in lockstep and knocking the endpoint over again.</p>
+  <pre class="code" data-lang="python"><code>import asyncio, random, time
+
+class RetryPolicy:
+    def __init__(self, max_attempts: int = 4, base: float = 0.5, cap: float = 20.0):
+        self.max_attempts, self.base, self.cap = max_attempts, base, cap
+
+    def backoff(self, attempt: int) -> float:
+        """Exponential with FULL JITTER."""
+        # base * 2**attempt is the exponential envelope; min() caps it so a late
+        # attempt does not sleep for minutes. uniform(0, ...) is the jitter:
+        # without it, every request from a failure burst retries at the same
+        # instant and re-overloads the endpoint you just knocked over.
+        return random.uniform(0, min(self.cap, self.base * 2 ** attempt))
+
+    def retryable(self, exc: Exception) -> bool:
+        """Only retry TRANSIENT failures."""
+        # Retrying a genuine 400 or an assertion error just burns quota and
+        # delays the real answer. Match on the message rather than the type
+        # because SDKs wrap errors differently.
+        msg = repr(exc).lower()
+        return any(s in msg for s in
+                   ("timeout", "rate", "429", "500", "502", "503", "connection"))
+
+
+async def run_one(task: Task, model_fn, score_fn, policy: RetryPolicy,
+                  timeout_s: float, sem: asyncio.Semaphore) -> Result:
+    started = time.perf_counter()      # wall clock for THIS task, retries included
+    last_exc: Exception | None = None
+
+    for attempt in range(policy.max_attempts):
+        try:
+            # The semaphore caps how many requests are in flight across the
+            # whole suite. Acquire it INSIDE the loop so a sleeping retry
+            # releases its slot instead of blocking other tasks.
+            async with sem:
+                out = await asyncio.wait_for(model_fn(task.prompt),
+                                             timeout=timeout_s)
+            return Result(task.task_id, out, score_fn(task, out),
+                          attempts=attempt + 1,          # RECORD attempts
+                          latency_s=time.perf_counter() - started)
+
+        except Exception as e:
+            last_exc = e
+            # Two ways to stop: the error is not worth retrying, or we are out
+            # of attempts. Checking both here keeps the exit conditions in one place.
+            if not policy.retryable(e) or attempt == policy.max_attempts - 1:
+                break
+            await asyncio.sleep(policy.backoff(attempt))
+
+    # A task that never succeeded is still DATA. Return a Result carrying the
+    # error rather than raising, so one bad task cannot kill a 2000 task run.
+    return Result(task.task_id, None, None, error=repr(last_exc),
+                  attempts=attempt + 1,
+                  latency_s=time.perf_counter() - started)
+
+
+async def run_suite(tasks: list[Task], model_fn, score_fn,
+                    concurrency: int = 16, timeout_s: float = 120.0) -> list[Result]:
+    sem = asyncio.Semaphore(concurrency)   # one shared limiter for every task
+    policy = RetryPolicy()
+    coros = [run_one(t, model_fn, score_fn, policy, timeout_s, sem) for t in tasks]
+    # gather runs them all concurrently, bounded by the semaphore, and returns
+    # results in the ORIGINAL task order regardless of completion order.
+    return await asyncio.gather(*coros)</code></pre>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Retries are a measurement decision, not just an engineering one</span></div>
+  <p>Retrying is harmless when a failure happens before the model produced anything and is unrelated to the task: a dropped connection, a rate limit. It inflates scores when the "transient" failure is correlated with the answer. Common cases: a timeout that cuts off long, rambling, wrong generations; a parse error on malformed output that triggers a fresh sample; a sandbox crash during test execution that reruns the task. In each case the retried task gets another draw at the answer, so it is scored more like pass@k than pass@1. Insist that attempts are recorded per task and that reports show the score with and without retried tasks.</p>
+</div>
+
+<div class="widget" id="w-harness"><div class="wtitle">Harness simulator: retries, concurrency, dropped tasks</div><div class="wsub">The true per attempt pass rate is fixed at 0.600. Raise the failure rate and the retry budget and watch your harness report something higher, because a retried task quietly got more than one shot at the answer.</div><div class="controls"><div class="ctl"><label data-l1>concurrency</label><input type="range" data-conc min="1" max="128" step="1" value="16"></div><div class="ctl"><label data-l2>failure rate</label><input type="range" data-fail min="0.0" max="0.6" step="0.02" value="0.15"></div><div class="ctl"><label data-l3>max attempts</label><input type="range" data-retry min="1" max="6" step="1" value="4"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+
+<div class="callout example"><span class="tag">Worked problem</span><div>
+  <p><b>Acceptance test.</b> 1,000 tasks, 15% transient failure rate, up to 4 attempts, true per-attempt pass rate 0.600. The simulator above treats each failed attempt as an extra draw at the answer, the worst case described in the leader layer. What does the harness report?</p>
+  <p>Measured answer: <b>about 0.63</b>. A 1,000-task Python run gave 0.626 with 144 tasks retried; the simulator above, with its own random seed, shows 0.630 with 163. Either way the harness reports an improvement of roughly 3 points that does not exist, because each retried task got more than one shot. Without an <code>attempts</code> field per result you cannot even detect this. The fix is to record attempts and report the score with and without retried tasks. If the two numbers differ by more than the confidence interval, the retry policy is changing the measurement.</p>
+</div></div>
+<div class="callout key"><span class="tag">Key idea</span><div>Push concurrency up in the simulator. Wall clock falls at first, then rises as coordination overhead outweighs parallelism. Separately, any task that exhausts its attempts drops out of the scored denominator. If failures correlate with difficulty, which they usually do, dropping them biases the score upward.</div></div>
+
+<h3>Version three: caching, checkpointing, quarantine</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Remember answers, but only for the exact same question</span></div>
+  <p>Model calls are expensive, so the harness saves every answer. If the run crashes halfway, it picks up where it left off. The rule is strict: reuse a saved answer only if the question, the model, and every setting are exactly the same. If anything changed, ask again.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Cache keys over everything that can change the output, and an append-only log</span></div>
+  <pre class="code" data-lang="python"><code>import hashlib, json, pathlib
+
+def cache_key(task: Task, model_id: str, params: dict) -> str:
+    """Key on EVERYTHING that can change the output."""
+    payload = json.dumps({
+        "task": task.task_id,
+        # Hash the prompt itself, not just the id. If someone edits a task's
+        # text without renaming it, the hash changes and the stale cached
+        # result is correctly missed.
+        "prompt_hash": hashlib.sha256(task.prompt.encode()).hexdigest(),
+        "model": model_id,
+        # sorted() so {"temp":0,"top_p":1} and {"top_p":1,"temp":0} produce the
+        # same key. Without it you get silent cache misses on every run.
+        "params": dict(sorted(params.items())),
+    }, sort_keys=True)   # sort_keys again for the outer dict, same reason
+
+    # 20 hex chars is ~80 bits: collision risk is negligible at eval scale and
+    # the keys stay short enough to read in a directory listing.
+    return hashlib.sha256(payload.encode()).hexdigest()[:20]
+
+
+class ResultStore:
+    """Append only JSONL. Restartable."""
+
+    def __init__(self, path: str):
+        self.path = pathlib.Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)   # no crash on first run
+        self.seen: dict[str, dict] = {}
+        if self.path.exists():
+            # Replay the log into memory. Later lines overwrite earlier ones for
+            # the same key, so a re-run naturally supersedes an old result.
+            for line in self.path.read_text().splitlines():
+                if line.strip():                     # tolerate a trailing newline
+                    rec = json.loads(line)
+                    self.seen[rec["key"]] = rec
+
+    def get(self, key: str) -> dict | None:
+        return self.seen.get(key)
+
+    def put(self, key: str, result: Result) -> None:
+        rec = {"key": key, **result.__dict__}
+        # APPEND, never rewrite. A process killed mid-write loses at most the
+        # last line, and a run that dies at task 900 of 1000 resumes without
+        # re-spending 900 requests.
+        with self.path.open("a") as f:
+            f.write(json.dumps(rec, default=str) + "\n")   # default=str for datetimes
+        self.seen[key] = rec</code></pre>
+  <p>Add the harness version and the judge model and prompt version to the cache key as well. A judge change silently reusing old scores is one of the most expensive cache bugs, because it produces a regression that does not exist.</p>
+  <div class="callout example"><span class="tag">Worked problem</span><div>
+    <p><b>Acceptance test.</b> Run 1,000 tasks and kill the process at task 600. Restart. The run must finish with exactly 1,000 results and only 400 new model calls. Then change the temperature and confirm the cache misses on every task.</p>
+    <p>The parameter you forget to put in the key is the one that costs a day chasing a regression that is not there. Sort the parameter dict before hashing, or the same settings in a different order produce different keys.</p>
+  </div></div>
+  <h4>Flakiness quarantine</h4>
+  <p>Some tasks give different scores run to run even at fixed settings: nondeterministic environments, race conditions in test suites, judges sitting on a decision boundary. Run a sample of tasks five times at fixed settings and quarantine any whose score standard deviation exceeds about 0.25. Report quarantined tasks separately rather than averaging their noise into the headline.</p>
+  <pre class="code" data-lang="python"><code>import statistics
+
+def find_flaky(task_ids, run_once, repeats: int = 5, max_sd: float = 0.25) -> list[str]:
+    """run_once(task_id) -> score in [0, 1] at FIXED settings. Returns tasks to quarantine."""
+    flaky = []
+    for t in task_ids:
+        scores = [run_once(t) for _ in range(repeats)]
+        if statistics.pstdev(scores) > max_sd:   # a 0/1 task that flips 2 of 5 times has sd 0.49
+            flaky.append(t)
+    return flaky</code></pre>
+</div>
+
+<h3>The report</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A score without its fine print is not a score</span></div>
+  <p>The report is where all the care above either reaches the reader or gets lost. A pass rate on its own hides how many tasks there were, how uncertain the number is, and how many tasks never finished. The report should be impossible to produce without those.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A summary that cannot omit n, the interval, or the error count</span></div>
+  <p>The interval is the Wilson interval from <a href="#evalstats">eval statistics</a>; the latency quantiles follow the advice in <a href="#intervals">intervals and the bootstrap</a> never to report a mean latency.</p>
+  <pre class="code" data-lang="python"><code>def summarize(results: list[Result]) -> dict:
+    """A report that cannot omit n, the interval, or the error count."""
+
+    # Split errored tasks out FIRST. Scoring None as a failure would conflate
+    # "the model got it wrong" with "our infrastructure fell over", which are
+    # completely different findings.
+    ok = [r for r in results if r.error is None and r.score is not None]
+
+    passed = sum(1 for r in ok if r.score >= 1.0)
+    n = len(ok)
+    lo, hi = wilson(passed, n) if n else (0.0, 1.0)   # interval, never bare rate
+
+    lat = sorted(r.latency_s for r in ok)
+    def pct(q):
+        # Guard the index: at q = 1.0 the naive int(q*len) runs one past the end.
+        return lat[min(len(lat) - 1, int(q * len(lat)))] if lat else 0.0
+
+    return {
+        "n_tasks": len(results),
+        "n_scored": n,
+        # SURFACE the errors. A pass rate computed over a shrunken denominator
+        # is biased upward if failures correlate with difficulty, which they do.
+        "n_errored": len(results) - n,
+        "pass_rate": passed / n if n else 0.0,
+        "ci95": (round(lo, 4), round(hi, 4)),
+        # Retried tasks effectively got more than one sample, inflating their
+        # contribution. Reporting the count lets a reader discount for it.
+        "retried_tasks": sum(1 for r in ok if r.attempts > 1),
+        "latency_p50": round(pct(0.50), 2),
+        "latency_p95": round(pct(0.95), 2),   # never report a mean latency
+    }</code></pre>
+  <div class="callout example"><span class="tag">Worked problem</span><div>
+    <p><b>Acceptance test.</b> The summary must refuse to omit the error count, and the flakiness report must identify tasks you deliberately injected as flaky. A useful extra check: inject 5% infrastructure errors concentrated on the hardest tasks and confirm the report shows both the error count and the upward bias it would cause if those tasks were silently dropped.</p>
+  </div></div>
+</div>
+
+<div class="callout eval"><span class="tag">Eval lens</span><div>When two runs disagree, diff the harness before you diff the model: harness version, judge version, prompt template, timeouts, concurrency, sampling parameters, and task set membership. The <a href="#triage">regression triage</a> chapter turns this into a procedure.</div></div>
+</section>

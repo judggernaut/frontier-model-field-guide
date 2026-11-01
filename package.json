@@ -1,0 +1,17 @@
+{
+  "name": "frontier-model-field-guide",
+  "version": "1.0.0",
+  "description": "Statistics, evaluation, and training for LLMs, layered from plain words to principal depth.",
+  "scripts": {
+    "build": "python3 build.py",
+    "pdf": "python3 build.py --pdf"
+  },
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible": "^5.1.0",
+    "@fontsource/bricolage-grotesque": "^5.1.0",
+    "@fontsource/jetbrains-mono": "^5.1.0",
+    "highlight.js": "^11.10.0",
+    "mathjax-full": "^3.2.2"
+  },
+  "private": true
+}

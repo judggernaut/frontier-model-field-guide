@@ -1,0 +1,42 @@
+<section id="welcome" data-title="How to use this guide">
+<h2>How to use this guide</h2>
+<p>This guide follows one idea from end to end: you cannot improve what you cannot measure, and you cannot trust a measurement you do not understand. Part I gives you the statistics. Part II turns that into model evaluation. Part III explains how models are trained, always connecting back to how you would measure whether the training worked. Part IV is about leading that work.</p>
+
+<h3>Three layers in every chapter</h3>
+<div class="four">
+  <div class="tile"><h4 style="color:var(--eli5)">Plain words</h4><p>An analogy and the core idea, with no jargon and no formulas. Read this first, even if you think you know the topic.</p></div>
+  <div class="tile"><h4 style="color:var(--lead)">For leaders</h4><p>What decision the idea informs, what it costs, how it fails, and the questions a senior reviewer asks. This is the layer for staff, principal, and partner conversations.</p></div>
+  <div class="tile"><h4 style="color:var(--deep)">Under the hood</h4><p>The math, the derivations, and short runnable code. Enough to check someone's work, not just follow it.</p></div>
+</div>
+<p>Use the <b>All / Plain / Leader / Deep</b> switch in the top bar to read a single layer across the whole guide. A good first pass is Plain for everything, then Leader, then Deep for the chapters that matter to your work.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">What a layer looks like</span></div>
+  <p>Imagine tasting soup to decide if it needs salt. One spoonful tells you something, but not everything. Evaluation is tasting the model. Training is cooking. This guide teaches both, and how to tell when one spoonful is lying to you.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why both halves matter at senior levels</span></div>
+  <p>At senior levels in a frontier lab, decisions rarely turn on a single technique. They turn on whether a result is real, what it cost, and what it will break. Training choices (data, objective, RL method) determine what can go wrong. Evaluation choices determine whether you notice. Leaders who understand both can push back on a launch, scope a research bet, or kill a project with evidence instead of instinct.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">How the math and code are shown</span></div>
+  <p>Formulas are typeset, for example the cross-entropy loss that almost every chapter in Part III builds on:</p>
+  <div class="eq">\[ \mathcal{L}(\theta) = -\frac{1}{T}\sum_{t=1}^{T} \log p_\theta(x_t \mid x_{&lt;t}) \]<span class="eqcap">The average negative log probability the model assigns to each correct next token \(x_t\), given everything before it.</span></div>
+  <pre class="code" data-lang="python"><code>import math
+
+def cross_entropy(probs_of_correct_token):
+    # average surprise, in nats, at the token that actually came next
+    return -sum(math.log(p) for p in probs_of_correct_token) / len(probs_of_correct_token)
+
+print(round(cross_entropy([0.9, 0.5, 0.25]), 3))  # 0.732
+print(round(math.exp(0.732), 2))                  # perplexity 2.08</code></pre>
+</div>
+
+<h3>Map of the guide</h3>
+<div class="tw"><table>
+<thead><tr><th>Part</th><th>What you get</th><th>Start here if</th></tr></thead>
+<tbody>
+<tr><td>I. Statistical foundations</td><td>Distributions, sampling, standard error, intervals, p values, reading a shape, heavy tails</td><td>It has been years since you did statistics</td></tr>
+<tr><td>II. Evaluating models</td><td>Pass-rate intervals, paired comparisons, power, multiple comparisons, classification metrics through AUC, LLM judges, the offline to online gap, contamination, harness engineering, regression triage</td><td>You need to defend or challenge an eval result</td></tr>
+<tr><td>III. Training models</td><td>The pipeline, pretraining, optimisation, scaling laws, SFT, LoRA, reward models, RLHF and PPO, DPO and its relatives, GRPO and RL with verifiable rewards, distillation, inference-time compute, safety training</td><td>You need to talk credibly about how models are built</td></tr>
+<tr><td>IV. Leading the work</td><td>How training and evaluation connect, review checklists, the questions principals ask, and a glossary</td><td>You are preparing for a senior conversation tomorrow</td></tr>
+</tbody></table></div>
+<div class="callout note"><span class="tag">Note</span><div>Interactive panels run in the web version. The PDF shows each one at its default setting.</div></div>
+</section>

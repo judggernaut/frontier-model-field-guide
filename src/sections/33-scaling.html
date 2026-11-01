@@ -1,0 +1,101 @@
+<section id="scaling" data-title="Scaling laws">
+<h2>Scaling laws: predicting the result before you pay for it</h2>
+<p>Scaling laws are the reason frontier labs can spend hundreds of millions of dollars on a single run with some confidence. Loss falls along smooth, predictable curves as you add parameters, data, and compute, so you can fit those curves on small models and extrapolate to the big one.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Bigger brain or more books?</span></div>
+  <p>You have a fixed amount of money to train a student. You can buy a bigger brain (more parameters) or more books (more training data). A huge brain that reads only a few books wastes its capacity. A tiny brain that reads every book cannot hold it all. There is a best balance for any budget.</p>
+  <p>Scaling laws are the recipe for that balance. Researchers train many small models, plot how good each one gets, see a clean pattern, and use it to predict how a much bigger model will do.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Three generations of the recipe</span></div>
+  <ol class="steps">
+    <li><div><b>Kaplan et al. (2020), OpenAI.</b> Loss follows power laws in parameters, data, and compute over many orders of magnitude. Their fits suggested growing model size much faster than data as budgets rise, which shaped GPT-3 (175B parameters, about 300B tokens).</div></li>
+    <li><div><b>Hoffmann et al. (2022), DeepMind, "Chinchilla".</b> With better learning-rate schedules, the optimum shifts: parameters and tokens should grow in equal proportion with compute, at roughly <b>20 training tokens per parameter</b>. Chinchilla (70B parameters, 1.4T tokens) outperformed the 280B-parameter Gopher on the same compute.</div></li>
+    <li><div><b>Inference-aware training (2023 onward).</b> Chinchilla optimises training cost only. A model served to millions of users spends far more compute on inference over its life, so a smaller model trained on far more data is cheaper overall (Sardana and Frankle, 2023). Llama 3 8B was trained on about 15 trillion tokens, close to 1,900 tokens per parameter, almost a hundred times the Chinchilla ratio, and kept improving.</div></li>
+  </ol>
+  <p>The current frontier adds two more axes. <b>Mixture-of-experts</b> models activate only a fraction of their parameters per token (DeepSeek-V3: 671B total, 37B active, 2024), which decouples knowledge capacity from per-token cost. <b>Test-time compute</b> lets a model think longer at inference, and performance on reasoning tasks scales with that too (see <a href="#inference">Inference and test-time compute</a>). Pretraining compute is no longer the only dial.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul>
+    <li>What range of scales was the law fitted on, and how far are we extrapolating? More than one or two orders of magnitude deserves skepticism.</li>
+    <li>Are we optimising for training cost or lifetime cost including inference? What token-per-parameter ratio does that imply?</li>
+    <li>Does the law predict the downstream metric we care about, or only loss? How was the loss-to-metric link validated?</li>
+    <li>Is high-quality data the binding constraint? How many epochs does the plan imply for our best data?</li>
+  </ul></div></div>
+</div>
+
+<div class="widget" id="w-sc-plan">
+  <div class="wtitle">Compute budget planner</div>
+  <div class="wsub">Pick a training budget in FLOPs and a token-per-parameter ratio. The planner splits the budget into model size and data with C ≈ 6ND, estimates wall-clock time, and shows how much loss you give up by over-training a smaller model.</div>
+  <div class="controls">
+    <div class="ctl"><label for="sc-c">Training compute: <output id="sc-c-o"></output> FLOPs</label><input type="range" id="sc-c" min="21" max="27" step="0.1" value="24.5"></div>
+    <div class="ctl"><label for="sc-r">Tokens per parameter: <output id="sc-r-o"></output></label><input type="range" id="sc-r" min="0" max="3.3" step="0.05" value="1.3"></div>
+    <div class="ctl"><label for="sc-g">GPUs: <output id="sc-g-o"></output></label><input type="range" id="sc-g" min="8" max="17" step="1" value="13"></div>
+    <div class="ctl"><label for="sc-m">MFU: <output id="sc-m-o"></output></label><input type="range" id="sc-m" min="0.2" max="0.6" step="0.01" value="0.4"></div>
+    <div class="ctl"><label for="sc-hw">Hardware (dense bf16 peak)</label><select id="sc-hw"><option value="312e12">A100, 312 TFLOP/s</option><option value="989e12" selected>H100, 989 TFLOP/s</option><option value="2250e12">B200, about 2,250 TFLOP/s</option></select></div>
+  </div>
+  <div class="cards">
+    <div class="mc"><div class="l">Parameters N</div><div class="v" data-n>—</div></div>
+    <div class="mc"><div class="l">Training tokens D</div><div class="v" data-d>—</div></div>
+    <div class="mc"><div class="l">Wall-clock days</div><div class="v" data-days>—</div></div>
+    <div class="mc"><div class="l">GPU-hours</div><div class="v" data-gh>—</div></div>
+    <div class="mc"><div class="l">Predicted loss vs best split</div><div class="v" data-dl>—</div></div>
+  </div>
+  <canvas></canvas>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The Chinchilla loss surface</span></div>
+  <p>Hoffmann et al. fit a parametric form for final loss as a function of parameters \(N\) and training tokens \(D\):</p>
+  <div class="eq">\[ L(N, D) = E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}} \]<span class="eqcap">\(E\) is the irreducible loss of the data. The other terms are the penalty for a finite model and for finite data. Their fit (approach 3): \(E = 1.69,\ A = 406.4,\ B = 410.7,\ \alpha = 0.34,\ \beta = 0.28\). A 2024 replication by Besiroglu et al. argued these constants were mis-estimated and refit them; treat exact values as approximate.</span></div>
+  <p>Minimising \(L\) subject to a compute budget \(C \approx 6ND\) gives optimal allocations that scale as power laws in \(C\). Hoffmann et al. found exponents near 0.5 for both, so doubling compute should increase both \(N\) and \(D\) by about \(\sqrt{2}\). Kaplan et al. had found \(N_{\text{opt}} \propto C^{0.73}\), mostly because their runs used a fixed learning-rate schedule that under-trained smaller models.</p>
+  <p>With the 20-tokens-per-parameter rule, \(C = 6 \cdot N \cdot 20N = 120N^2\), so \(N = \sqrt{C/120}\).</p>
+  <pre class="code" data-lang="python"><code>import math
+
+E, A, B, a, b = 1.69, 406.4, 410.7, 0.34, 0.28        # Hoffmann et al. 2022 fit
+
+def loss(N, D):
+    return E + A / N**a + B / D**b
+
+def allocate(C, tokens_per_param=20):
+    N = math.sqrt(C / (6 * tokens_per_param))
+    return N, tokens_per_param * N
+
+C = 5.76e23                                         # roughly Chinchilla's own budget
+N, D = allocate(C)
+print(f"{N/1e9:.0f}B params, {D/1e12:.2f}T tokens")  # 69B params, 1.39T tokens
+
+# over-train a smaller model on the same compute
+for r in (20, 200, 2000):
+    N, D = allocate(C, r)
+    print(r, f"{N/1e9:.1f}B", round(loss(N, D), 3))
+# 20 69.3B 1.937   200 21.9B 1.932   2000 6.9B 1.959</code></pre>
+  <p>Two things stand out. First, under this parametric fit the loss at 200 tokens per parameter is slightly <em>lower</em> than at 20: the fitted surface puts the optimum near 90 tokens per parameter at this budget, not 20. The 20:1 rule came from the paper's other two estimation methods, and the mismatch between them is one of the issues Besiroglu et al. (2024) raised. Second, the surface is very flat near the optimum. Going to 2,000 tokens per parameter makes the model ten times smaller, and roughly ten times cheaper per token to serve, for a loss increase of about 0.02 at the same training compute. That flatness is the economic case for over-training.</p>
+  <p><b>Data-constrained scaling.</b> Muennighoff et al. (2023) extended the law to repeated data: each repeated epoch is worth less than fresh data, with about four epochs nearly free and value decaying toward zero by roughly sixteen.</p>
+</div>
+
+<h3>Emergence: sudden jumps or a trick of the metric?</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Getting every digit right</span></div>
+  <p>Imagine a student learning to multiply big numbers. Each week they get a few more digits right. But if the test only gives credit when <em>every</em> digit is right, their score sits at zero for months and then suddenly shoots up. The student improved steadily the whole time. The test made it look sudden.</p>
+</div>
+
+<div class="widget" id="w-sc-emerge">
+  <div class="wtitle">The same improvement, two metrics</div>
+  <div class="wsub">The underlying skill (chance of getting each token of the answer right) improves smoothly with compute. Exact match needs every token right. Lengthen the answer and watch a smooth trend turn into an apparent jump.</div>
+  <div class="controls">
+    <div class="ctl"><label for="sc-k">Answer length in tokens: <output id="sc-k-o"></output></label><input type="range" id="sc-k" min="1" max="30" step="1" value="10"></div>
+    <div class="ctl"><label for="sc-x">Compute (log scale): <output id="sc-x-o"></output></label><input type="range" id="sc-x" min="20" max="26" step="0.1" value="23"></div>
+  </div>
+  <canvas></canvas>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why this debate matters for planning</span></div>
+  <p>Wei et al. (2022) catalogued "emergent abilities": tasks where small models score near zero and larger models suddenly succeed. Schaeffer, Miranda, and Koyejo (2023) argued many of these jumps come from harsh, all-or-nothing metrics. Re-scored with smooth metrics, such as per-token log likelihood or partial credit, most curves became gradual and predictable.</p>
+  <p>Both views carry a practical lesson. If you measure only exact-match accuracy, capabilities will appear to arrive without warning, and safety-relevant ones are exactly the ones you do not want to be surprised by. If you also track a smooth proxy, you can see a capability coming several scales early.</p>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>For every important capability, keep two metrics: the binary one users experience (did it get the answer right) and a continuous one that moves earlier (log probability of the correct answer, partial credit, pass@k at large k). Forecast with the continuous one. Report the binary one. Labs including Meta (Llama 3, 2024) predict downstream accuracy in two steps: compute to the model's negative log likelihood on the correct answers, then likelihood to accuracy with a sigmoid fit.</div></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why products of probabilities look like step functions</span></div>
+  <p>Let per-token accuracy rise smoothly with log compute \(x\), say \(p(x) = \sigma(a(x - x_0))\). If an answer needs \(k\) independent tokens all correct, exact match is \(p(x)^k\). For large \(k\), \(p^k\) stays near zero until \(p\) is close to 1, then rises steeply: the derivative \(k p^{k-1} p'\) concentrates near the end. Per-token log likelihood \(k \log p(x)\) is smooth throughout. Same model, same improvement, different shape.</p>
+  <div class="eq">\[ \text{EM}(x) = p(x)^k, \qquad \frac{d\,\text{EM}}{dx} = k\, p(x)^{k-1} p'(x) \]</div>
+</div>
+</section>

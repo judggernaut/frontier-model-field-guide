@@ -1,0 +1,308 @@
+<section id="intervals" data-title="Intervals, bootstrap, clustering">
+<h2>Intervals, the bootstrap, and clustering in eval data</h2>
+<p>The previous chapter gave the tests. This chapter is the layer underneath, applied to eval metrics: what shape each metric has, what an interval promises, when the bootstrap saves you and when it quietly lies, and the clustering mistake that shrinks error bars on almost every agent eval. The general theory is in <a href="#bigideas">Part I, chapter 2</a> and the shapes themselves are in <a href="#zoo">the distribution zoo</a>.</p>
+
+<!-- ============ 1. shape ============ -->
+<h3>1. What shape is your metric?</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Different metrics, different math</span></div>
+  <p>Measure the same thing many times and you get a spread of answers. The <b>shape</b> of that spread decides which math is allowed. Pass or fail behaves like coin flips. Latency is a pile on the left with a long tail to the right. Using the coin-flip tool on latency data is one of the most common mistakes in eval reporting.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Which summary to trust</span></div>
+  <ul>
+    <li>For skewed metrics like latency and token counts, ask for the median and p95, not the mean. A single 40-second outlier moves the mean, and no user experiences the mean.</li>
+    <li>A cheap automated guard: if mean divided by median is above about 1.2, the report should switch to quantiles. Put that check in the reporting code rather than in review comments.</li>
+    <li>Count metrics such as tool calls per session vary far more than simple models assume. Intervals built on those assumptions are too narrow, so small changes look real.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Sampling distributions converge at different speeds</span></div>
+  <p>The distribution that matters is the <i>sampling distribution</i> of your statistic: the spread of results you would get from different draws of tasks. The central limit theorem says sample means become normal regardless of the underlying shape. The catch is how fast. For symmetric data, quickly. For pass rates near 0 or 1, slowly. For heavy-tailed latency, slowly and from the wrong side, so the interval is wrong in a predictable direction. For statistics that are not means at all, such as p95 or the median, the theorem does not apply directly. That is where the bootstrap earns its keep.</p>
+  <p>A practical test: how far from a mean is your statistic, and how heavy is the tail? A pass rate is a mean of 0s and 1s and behaves well once \(n\) is decent and \(p\) is not extreme. p95 latency is an extreme order statistic on a heavy-tailed variable, the worst case for every closed form.</p>
+</div>
+
+<div class="widget" id="w-dist"><div class="wtitle">Distribution explorer</div><div class="wsub">Change the shape and watch which summary statistic stops being honest. Push a lognormal's skew up and see the mean detach from the median. Switch to negative binomial and watch variance over mean climb past the point where Poisson intervals are valid.</div><div class="controls"><div class="ctl"><label>distribution</label><select data-k><option value="normal">Normal (symmetric, e.g. a well behaved score)</option><option value="lognormal" selected>Lognormal (latency, token counts)</option><option value="binomial">Binomial (pass counts)</option><option value="poisson">Poisson (counts, constant rate)</option><option value="negbin">Negative binomial (tool calls, varied difficulty)</option></select></div><div class="ctl"><label data-l1>param 1</label><input type="range" data-p1 min="0.5" max="20" step="0.5" value="2"></div><div class="ctl"><label data-l2>param 2</label><input type="range" data-p2 min="0.05" max="1.6" step="0.05" value="0.8"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+<div class="callout note"><span class="tag">Note</span><div>Set it to lognormal and drag the log standard deviation up. The skew ratio crosses 1.2 and the readout says to stop reporting the mean. That is the check to put in a reporting layer.</div></div>
+
+<!-- ============ 2. intervals ============ -->
+<h3>2. What a confidence interval promises</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A net that usually catches the fish</span></div>
+  <p>A 95% confidence interval comes from a recipe that catches the true value 95 times out of 100 in the long run. It does <b>not</b> mean there is a 95% chance the truth is inside this particular range. The recipe is the thing with the 95% guarantee, and some recipes do not keep their promise.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Nominal is not actual</span></div>
+  <ul>
+    <li>Interval width depends on three things: how noisy the measurement is, how many samples you have, and how much confidence you demand. Only the middle one is under your control, and quadrupling the sample only halves the width.</li>
+    <li>A "95%" interval can actually cover far less. Asking "did you check the coverage of your interval method at the rates we operate at?" is a senior question. It turns "we use Wilson" into "we verified Wilson holds up where our evals sit".</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Measure coverage empirically</span></div>
+  <p>Different constructions have different real coverage. The normal approximation on a proportion falls well below 95% near a boundary; Wilson holds up. Percentile bootstrap intervals are asymptotically correct but under-cover on small samples and skewed statistics, which BCa corrects. You can check any method in a few lines:</p>
+  <pre class="code" data-lang="python"><code>import random
+
+def coverage_check(true_p: float, n: int, method, trials: int = 5000, seed: int = 0) -&gt; float:
+    """Empirically measure whether a '95%' interval covers 95% of the time.
+
+    true p = 0.95, n = 30:   Wilson 0.94   normal approximation 0.78
+    true p = 0.95, n = 50:   Wilson 0.96   normal approximation 0.92
+    """
+    rng = random.Random(seed)
+    hits = 0
+    for _ in range(trials):
+        k = sum(1 for _ in range(n) if rng.random() &lt; true_p)
+        lo, hi = method(k, n)
+        if lo &lt;= true_p &lt;= hi:
+            hits += 1
+    return hits / trials</code></pre>
+</div>
+
+<!-- ============ 3. bootstrap ============ -->
+<h3>3. The bootstrap</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Faking more samples from the one you have</span></div>
+  <p>You have one sample and want to know how much your answer would wobble if you collected more. The bootstrap fakes it: build a new dataset by drawing <b>with replacement</b> from the one you have, recompute the number, do that ten thousand times, and look at the spread. The spread of the fakes approximates the spread of the real thing.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The default for anything that is not an average</span></div>
+  <ul>
+    <li>The bootstrap works for almost any statistic you can compute: median, p95, AUC, a ratio of two rates, a calibration slope. That makes it the right default for eval work, where the interesting statistics are rarely simple means.</li>
+    <li>Use the plain percentile version for a quick read. Ask for BCa when the number goes into a document someone will act on.</li>
+    <li>It fails in specific, predictable situations, covered next. A team that can name those has understood the method rather than memorised it.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Percentile and BCa intervals</span></div>
+  <p>It works because your sample is your best estimate of the population, so resampling from it mimics resampling from the population. The percentile interval takes the \(\alpha/2\) and \(1-\alpha/2\) quantiles of the bootstrap replicates \(\hat\theta^\ast_b\). BCa shifts those quantiles using a bias term \(\hat z_0\) and an acceleration term \(\hat a\) from the jackknife:</p>
+  <div class="eq">\[ \hat z_0 = \Phi^{-1}\!\left(\frac{\#\{\hat\theta^\ast_b &lt; \hat\theta\}}{B}\right), \qquad \hat a = \frac{\sum_i (\bar\theta_{(\cdot)} - \hat\theta_{(i)})^3}{6\left[\sum_i (\bar\theta_{(\cdot)} - \hat\theta_{(i)})^2\right]^{3/2}} \]
+  \[ \alpha_{\text{lo,hi}} = \Phi\!\left(\hat z_0 + \frac{\hat z_0 + z_q}{1 - \hat a(\hat z_0 + z_q)}\right), \quad q \in \{\alpha/2,\, 1-\alpha/2\} \]<span class="eqcap">\(\hat\theta_{(i)}\) is the statistic with point \(i\) left out, and \(\bar\theta_{(\cdot)}\) their mean. When \(\hat z_0 = \hat a = 0\), BCa reduces to the percentile interval.</span></div>
+  <pre class="code" data-lang="python"><code>import random
+from statistics import NormalDist, mean
+
+def bootstrap_ci(data: list, stat_fn, iters: int = 10_000,
+                 alpha: float = 0.05, seed: int = 0) -&gt; tuple[float, float, float]:
+    """Percentile bootstrap. Works for ANY statistic: median, p95, a ratio, a slope."""
+    rng = random.Random(seed)
+    n = len(data)
+    # Draw n items WITH replacement each time. Without replacement every rep
+    # would be the same dataset reshuffled.
+    reps = sorted(stat_fn([data[rng.randrange(n)] for _ in range(n)]) for _ in range(iters))
+    return stat_fn(data), reps[int((alpha / 2) * iters)], reps[int((1 - alpha / 2) * iters) - 1]
+
+
+def bca_ci(data: list, stat_fn, iters: int = 10_000,
+           alpha: float = 0.05, seed: int = 0) -&gt; tuple[float, float, float]:
+    """Bias corrected and accelerated bootstrap."""
+    rng = random.Random(seed)
+    n = len(data)
+    theta = stat_fn(data)
+    reps = sorted(stat_fn([data[rng.randrange(n)] for _ in range(n)]) for _ in range(iters))
+
+    # Bias: if unbiased, half the reps land below theta.
+    prop = sum(1 for r in reps if r &lt; theta) / iters
+    prop = min(max(prop, 1 / iters), 1 - 1 / iters)    # keep inv_cdf defined
+    N = NormalDist()
+    z0 = N.inv_cdf(prop)
+
+    # Acceleration: skewness of the jackknife values.
+    jack = [stat_fn(data[:i] + data[i + 1:]) for i in range(n)]
+    jm = mean(jack)
+    num = sum((jm - x) ** 3 for x in jack)
+    den = 6 * (sum((jm - x) ** 2 for x in jack) ** 1.5)
+    a = num / den if den else 0.0
+
+    bounds = []
+    for q in (alpha / 2, 1 - alpha / 2):
+        z = N.inv_cdf(q)
+        bounds.append(min(max(N.cdf(z0 + (z0 + z) / (1 - a * (z0 + z))), 0.0), 1.0))
+    return theta, reps[min(iters - 1, int(bounds[0] * iters))], reps[min(iters - 1, int(bounds[1] * iters))]</code></pre>
+</div>
+
+<div class="widget" id="w-boot"><div class="wtitle">Bootstrap, and where it breaks</div><div class="wsub">Pick a statistic and watch the bootstrap distribution form. Switch to p95 at small n, or to max at any n, and the widget will tell you why the interval you are looking at is not trustworthy.</div><div class="controls"><div class="ctl"><label>statistic</label><select data-stat><option value="mean">mean</option><option value="median" selected>median</option><option value="p95">p95</option><option value="max">max (a known failure)</option></select></div><div class="ctl"><label data-ln>n</label><input type="range" data-n min="10" max="600" step="10" value="200"></div><div class="ctl"><label data-lk>skew</label><input type="range" data-skew min="0.1" max="1.5" step="0.05" value="0.8"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+<div class="callout warn"><span class="tag">Watch out</span><div>Select max. The bootstrap is inconsistent for maxima at every sample size, not just small ones. It is the cleanest example of a method failing because an assumption is violated rather than because there was too little data.</div></div>
+
+<!-- ============ 4. when not to ============ -->
+<h3>4. When not to bootstrap</h3>
+<p>The bootstrap estimates sampling variability under one assumption: your rows are exchangeable draws from the population. Every failure below is a violation of that assumption. If you can name the assumption, you can predict the failure.</p>
+<div class="tw"><table><thead><tr><th>Situation</th><th>What goes wrong</th><th>What to do instead</th></tr></thead><tbody>
+  <tr><td>Very small n, under about 20</td><td>Resamples only contain values you already saw, so the interval cannot represent tails the sample missed</td><td>Exact methods: Clopper–Pearson for proportions, exact McNemar for pairs</td></tr>
+  <tr><td>Extreme quantiles, p99 on 200 points</td><td>p99 rests on about 2 observations. The bootstrap max is your observed max, so the upper bound is structurally censored</td><td>Report p95, collect more data, or fit a tail model and say you did</td></tr>
+  <tr><td>Dependent data, several calls per session</td><td>Resampling rows destroys the dependence and shrinks the interval, often by 2x or more</td><td>Cluster bootstrap: resample sessions, not rows (section 6)</td></tr>
+  <tr><td>Time-ordered data with drift</td><td>Resampling scrambles the ordering that carries the signal</td><td>Block bootstrap: resample contiguous chunks</td></tr>
+  <tr><td>Statistics at a boundary, near 0% or 100%</td><td>The bootstrap distribution piles up on the boundary and the interval degenerates</td><td>Wilson or Clopper–Pearson</td></tr>
+  <tr><td>The statistic is a max or min</td><td>The bootstrap is inconsistent for extremes. A known failure, not a small-sample issue</td><td>Extreme value theory, or change the metric</td></tr>
+</tbody></table></div>
+
+<!-- ============ 5. metric by metric ============ -->
+<h3>5. Each eval metric and what it needs</h3>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The lookup table for common product metrics</span></div>
+  <p>Pass rates, latency, token counts, tool use, and user satisfaction are five different statistical objects, and three of them break the default method. When a dashboard shows one of these, check the method against this table.</p>
+  <div class="tw"><table><thead><tr><th>Metric</th><th>Distribution</th><th>Right method</th><th>Common mistake</th></tr></thead><tbody>
+    <tr><td>Pass / fail rate</td><td>Bernoulli; binomial in aggregate</td><td>Wilson CI. McNemar or paired bootstrap for comparisons</td><td>Normal approximation near 0 or 1; ignoring the pairing</td></tr>
+    <tr><td>Latency</td><td>Right-skewed, heavy tail, roughly lognormal</td><td>Report p50, p95, p99 with bootstrap CIs</td><td>Reporting the mean</td></tr>
+    <tr><td>Token counts</td><td>Right-skewed, overdispersed counts</td><td>Median and quantiles with bootstrap CI, or model on the log scale</td><td>t-test on raw counts</td></tr>
+    <tr><td>Tool calls per session</td><td>Overdispersed counts, often zero-inflated</td><td>Negative binomial, or quantiles plus bootstrap. Check variance over mean first</td><td>Assuming Poisson. Real variance/mean ratios often run 3 to 6</td></tr>
+    <tr><td>Tool call success rate</td><td>Binomial but <b>clustered</b> within session</td><td>Cluster bootstrap at the session level</td><td>Treating each call as independent</td></tr>
+    <tr><td>Thumbs-up rate</td><td>Binomial with severe selection bias</td><td>Wilson on responders, plus the response rate stated explicitly</td><td>Calling it satisfaction. Only a biased slice of users clicks</td></tr>
+    <tr><td>Likert 1 to 5</td><td>Ordinal, not interval</td><td>Top-two-box proportion, or Mann–Whitney U on ranks</td><td>Averaging. The gap from 4 to 5 is not the gap from 1 to 2</td></tr>
+    <tr><td>Acceptance rate</td><td>Binomial, clustered by user and session</td><td>Cluster bootstrap on the user</td><td>Pooling all events into a tight, wrong interval</td></tr>
+  </tbody></table></div>
+</div>
+
+<div class="callout example"><span class="tag">Worked problem</span><div>
+  <p><b>p95 latency moved. Is it real?</b> After a change, p95 latency went from 9.81 s to 11.79 s, on 800 requests each side. A 2-second regression. Do you block the release?</p>
+  <pre class="code" data-lang="python"><code>import numpy as np
+
+def p95(x):
+    return float(np.quantile(x, 0.95))
+
+def bootstrap_diff(before, after, iters=4000, seed=1):
+    """CI on the DIFFERENCE in p95. No closed form exists, which is what the
+    bootstrap is for. Resample each side separately: these are different requests."""
+    rng = np.random.default_rng(seed)
+    reps = []
+    for _ in range(iters):
+        a = rng.choice(before, len(before))
+        b = rng.choice(after, len(after))
+        reps.append(p95(b) - p95(a))
+    reps = np.sort(reps)
+    return float(np.quantile(reps, 0.025)), float(np.quantile(reps, 0.975))
+
+# illustrative run: observed +1.98 s, bootstrap 95% CI [-0.45, +3.91]</code></pre>
+  <p>The interval crosses zero. p95 on 800 points rests on about 40 observations, so a 2-second move that looks alarming on a dashboard is not distinguishable from noise at this sample size. Do not block on this alone; say what sample size would settle it. In this data the mean/median ratio was 1.42, so anyone reporting mean latency was reporting a number no user experienced.</p>
+</div></div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Latency, counts, and ratings, worked</span></div>
+  <h4>Latency</h4>
+  <pre class="code" data-lang="python"><code>def latency_report(samples: list[float]) -&gt; dict:
+    """What a latency report should contain.
+
+    Illustrative lognormal sample of 400 requests:
+      mean 2.81, median 2.15, p95 8.06, max 17.17
+    The mean sits between the median and p95 and describes nobody's experience.
+    """
+    s = sorted(samples)
+    n = len(s)
+    q = lambda p: s[min(n - 1, int(p * n))]
+    p50_ci = bootstrap_ci(samples, lambda d: sorted(d)[len(d) // 2])
+    p95_ci = bootstrap_ci(samples, lambda d: sorted(d)[min(len(d) - 1, int(0.95 * len(d)))])
+    return {
+        "n": n,
+        "p50": q(0.50), "p50_ci": (p50_ci[1], p50_ci[2]),
+        "p95": q(0.95), "p95_ci": (p95_ci[1], p95_ci[2]),
+        "p99": q(0.99), "p99_warning": "p99 on n&lt;1000 rests on a handful of points.",
+        "skew_ratio": (sum(samples) / n) / q(0.50),   # above 1.2: do not use the mean
+    }</code></pre>
+
+  <h4>Counts, and why Poisson usually fails</h4>
+  <p>Poisson assumes variance equals mean. In agent evals the rate is not constant: an easy task takes two tool calls and a hard one takes twenty. A mixture of Poissons with gamma-distributed rates is a negative binomial, which is why real counts are overdispersed. With variance/mean ratio \(R\), Poisson intervals are roughly \(\sqrt{R}\) times too narrow.</p>
+  <pre class="code" data-lang="python"><code>from statistics import mean
+
+def overdispersion_check(counts: list[int]) -&gt; dict:
+    """Illustrative session mix: mean 5.15, variance 25.53, ratio 4.95.
+    A ratio of 5 makes Poisson intervals about sqrt(5) = 2.2x too narrow."""
+    m = mean(counts)
+    n = len(counts)
+    v = sum((x - m) ** 2 for x in counts) / (n - 1)
+    ratio = v / m if m else float("inf")
+    return {"mean": m, "variance": v, "ratio": ratio,
+            "verdict": "poisson ok" if ratio &lt; 1.5 else "overdispersed: negative binomial or bootstrap",
+            "zero_fraction": sum(1 for x in counts if x == 0) / n}</code></pre>
+
+  <h4>Satisfaction: ordinal, not interval</h4>
+  <pre class="code" data-lang="python"><code>def mann_whitney_u(x: list[float], y: list[float]) -&gt; dict:
+    """Compare two groups on ordinal data without pretending it is interval.
+
+    Illustrative Likert shift: means 3.21 -&gt; 3.35, which looks like nothing.
+    Common-language effect 0.54: a random new rating beats a random old one 54%
+    of the time. Top-two-box moved 0.470 -&gt; 0.525. Those two are actionable.
+    """
+    combined = sorted([(v, 0) for v in x] + [(v, 1) for v in y], key=lambda t: t[0])
+    ranks = [0.0] * len(combined)
+    i = 0
+    while i &lt; len(combined):                 # average ranks across ties
+        j = i
+        while j + 1 &lt; len(combined) and combined[j + 1][0] == combined[i][0]:
+            j += 1
+        for k in range(i, j + 1):
+            ranks[k] = (i + j) / 2 + 1
+        i = j + 1
+    r1 = sum(r for r, (_, g) in zip(ranks, combined) if g == 0)
+    n1, n2 = len(x), len(y)
+    u1 = r1 - n1 * (n1 + 1) / 2
+    return {"U": u1, "common_language_effect": u1 / (n1 * n2)}   # P(random x &gt; random y)
+
+
+def top_two_box(ratings: list[int], scale_max: int = 5) -&gt; float:
+    """Fraction rating 4 or 5: the number product teams can act on."""
+    return sum(1 for r in ratings if r &gt;= scale_max - 1) / len(ratings)</code></pre>
+</div>
+
+<!-- ============ 6. clustering ============ -->
+<h3>6. Clustering: the mistake that matters most for agent evals</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">450 measurements that are really 40</span></div>
+  <p>Suppose you measure 450 tool calls, but they came from only 40 sessions. Calls inside one session tend to succeed or fail together: a confused agent stays confused. So you do not have 450 independent measurements. Your real sample size is much closer to 40, and treating it as 450 makes your error bars far too small.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Ask for effective sample size, not row count</span></div>
+  <ul>
+    <li>Agent data is nested: tool calls inside sessions, sessions inside users. Any interval computed as if rows were independent is too narrow, often by a factor of two or more.</li>
+    <li>Ask "what is the unit of independence, and how many of those do we have?" A dashboard bragging about 50,000 events from 300 users has a sample size much closer to 300.</li>
+    <li>A good team's sentence: "we report effective sample size rather than row count, because calls are nested in sessions; the naive interval was about 2.4 times too narrow when we checked."</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Design effect and the cluster bootstrap</span></div>
+  <p>With average cluster size \(\bar m\) and intraclass correlation \(\rho\) (the share of variance that lives between clusters), Kish's design effect and the effective sample size are</p>
+  <div class="eq">\[ \text{deff} = 1 + (\bar m - 1)\,\rho, \qquad n_\text{eff} = \frac{N}{\text{deff}}, \qquad \text{SE}_\text{true} \approx \sqrt{\text{deff}}\;\text{SE}_\text{naive} \]<span class="eqcap">Bigger clusters amplify the penalty: \(\rho = 0.3\) with 20 calls per session gives deff 6.7; the same \(\rho\) with 3 calls gives 1.6.</span></div>
+  <pre class="code" data-lang="python"><code>import random
+from statistics import mean
+
+def cluster_bootstrap_ci(clusters: list[list[float]], iters: int = 10_000,
+                         seed: int = 0) -&gt; tuple[float, float, float]:
+    """Resample SESSIONS, not individual calls."""
+    rng = random.Random(seed)
+    m = len(clusters)                # number of independent units: the real n
+    # The point estimate is unaffected by clustering; only its uncertainty is.
+    observed = sum(sum(c) for c in clusters) / sum(len(c) for c in clusters)
+    reps = []
+    for _ in range(iters):
+        picked = [clusters[rng.randrange(m)] for _ in range(m)]   # whole sessions
+        total, count = sum(sum(c) for c in picked), sum(len(c) for c in picked)
+        reps.append(total / count if count else 0.0)              # recount: sizes vary
+    reps.sort()
+    return observed, reps[int(0.025 * iters)], reps[int(0.975 * iters) - 1]
+
+
+def design_effect(clusters: list[list[float]]) -&gt; float:
+    sizes = [len(c) for c in clusters]
+    grand = sum(sum(c) for c in clusters) / sum(sizes)
+    between = sum(len(c) * (sum(c) / len(c) - grand) ** 2 for c in clusters) / (len(clusters) - 1)
+    within = sum((x - sum(c) / len(c)) ** 2 for c in clusters for x in c) / max(1, sum(sizes) - len(clusters))
+    icc = between / (between + within) if (between + within) else 0.0
+    return 1 + (mean(sizes) - 1) * icc
+
+# Illustrative, 40 sessions with 450 tool calls:
+#   naive row bootstrap: [0.7289, 0.8067]  width 0.078
+#   cluster bootstrap:   [0.6711, 0.8581]  width 0.187   (2.4x wider)</code></pre>
+</div>
+
+<div class="widget" id="w-cluster"><div class="wtitle">Clustering and the design effect</div><div class="wsub">Tool calls nested in sessions. The naive bootstrap resamples individual calls, the cluster bootstrap resamples whole sessions. Raise the within session correlation and watch how much confidence the naive interval invents.</div><div class="controls"><div class="ctl"><label data-l1>within-session correlation</label><input type="range" data-icc min="0.0" max="0.95" step="0.05" value="0.6"></div><div class="ctl"><label data-l2>calls per session</label><input type="range" data-sz min="2" max="30" step="1" value="12"></div><div class="ctl"><label data-l3>sessions</label><input type="range" data-m min="10" max="200" step="5" value="40"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+<div class="callout ask"><span class="tag">Principal asks</span><div>Push correlation and cluster size up together. That is a realistic agent trace, and the naive interval ends up several times too narrow. This is the most likely statistical mistake in agent evaluation, and the easiest one to show you avoid.</div></div>
+
+<!-- ============ 7. choosing ============ -->
+<h3>7. Choosing a method, in one flow</h3>
+<ol class="steps">
+  <li><div><b>What is the unit of independence?</b> Task, session, or user. Not row. Everything else follows from this.</div></li>
+  <li><div><b>Is the outcome binary, count, continuous, or ordinal?</b> That picks the family.</div></li>
+  <li><div><b>Is the statistic a mean, a proportion, or a quantile?</b> Means and proportions have closed forms. Quantiles need the bootstrap.</div></li>
+  <li><div><b>Is the comparison paired?</b> If both models saw the same tasks, use the pairing or you throw away most of your power.</div></li>
+  <li><div><b>Is n small or the statistic extreme?</b> If yes, use exact methods and stop bootstrapping.</div></li>
+  <li><div><b>How skewed is it?</b> Mean over median above 1.2 means report quantiles, not averages.</div></li>
+</ol>
+<div class="callout key"><span class="tag">Key idea</span><div>If you can walk that flow out loud in ninety seconds while someone describes a metric, you can handle most eval statistics questions. The reasoning is the same every time; the tables above are the lookup for each branch. For the general version, see <a href="#lookup">from shape to method</a>.</div></div>
+</section>

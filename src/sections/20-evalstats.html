@@ -1,0 +1,436 @@
+<section id="evalstats" data-title="Statistics for eval sets">
+<h2>Statistics for eval sets: is the difference real?</h2>
+<p>Every eval number is an estimate from a finite sample of tasks. This chapter covers the handful of methods that decide whether a result can be trusted: an interval on one pass rate, a paired comparison of two models, power and sample size, many benchmarks at once, pass@k, and comparisons across more than two models. It assumes the ideas from <a href="#bigideas">sampling distributions and standard error</a>; here they are applied to the numbers an eval team actually reports.</p>
+
+<div class="callout key"><span class="tag">Key idea</span><div>Most eval mistakes are not exotic. They are a missing interval, an ignored pairing, an underpowered suite, or forty benchmarks read as forty independent findings. Get those four right and you are ahead of most results decks.</div></div>
+
+<!-- ============ 1. one pass rate ============ -->
+<h3>1. The uncertainty on a single pass rate</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">One score is one spoonful</span></div>
+  <p>If a model passes 49 of 50 tasks, its "true" pass rate is probably high, but you only tasted 50 spoonfuls. A different 50 tasks would give a slightly different score. A <b>confidence interval</b> is the range of true pass rates that could reasonably have produced what you saw. Fewer tasks means a wider range.</p>
+  <p>The most common shortcut for building that range breaks when scores are near 0% or 100%, which is exactly where good models live. For 49 of 50 it claims the true rate might be 102%, which is impossible. A better recipe, the <b>Wilson interval</b>, never does that.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What to require in every report</span></div>
+  <ul>
+    <li><b>No pass rate without n and an interval.</b> "62%" is not a result. "62% (124/200, 95% CI 55 to 68)" is.</li>
+    <li><b>Near the ceiling, intervals get lopsided.</b> On saturated benchmarks the honest interval is asymmetric, and small suites cannot separate 96% from 99%. That is a sign the benchmark has stopped being informative, not that the models are equal.</li>
+    <li><b>Red flag:</b> symmetric "±" error bars on a score above 90% or below 10%. They come from the normal approximation and are wrong in a predictable direction.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The Wilson score interval</span></div>
+  <p>With \(k\) passes out of \(n\), \(\hat p = k/n\), and \(z = 1.96\) for 95%:</p>
+  <div class="eq">\[ \frac{\hat p + \frac{z^2}{2n}}{1+\frac{z^2}{n}} \;\pm\; \frac{z}{1+\frac{z^2}{n}}\sqrt{\frac{\hat p(1-\hat p)}{n}+\frac{z^2}{4n^2}} \]<span class="eqcap">The centre is pulled toward 0.5 by \(z^2/2n\), and the width gets a small-sample correction \(z^2/4n^2\). Wilson comes from inverting the score test, so the interval is asymmetric in the right direction near a boundary.</span></div>
+  <pre class="code" data-lang="python"><code>import math
+
+def wilson(k: int, n: int, z: float = 1.96) -&gt; tuple[float, float]:
+    """Wilson score interval for a binomial proportion."""
+    # With no data every proportion is possible; avoids dividing by zero below.
+    if n == 0:
+        return (0.0, 1.0)
+
+    p = k / n                        # observed pass rate, the point estimate
+    denom = 1.0 + z * z / n          # shrink factor; tends to 1 as n grows
+
+    # The CENTRE is not p. Wilson pulls it toward 0.5 by z^2/(2n), which is what
+    # stops the interval running past 0 or 1 at extreme rates.
+    center = (p + z * z / (2 * n)) / denom
+
+    # Half width: binomial variance p(1-p)/n plus the small-sample term z^2/(4n^2).
+    margin = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+
+    # Clamp against floating point nudging a bound past a boundary.
+    return (max(0.0, center - margin), min(1.0, center + margin))
+
+
+def normal_approx(k: int, n: int, z: float = 1.96) -&gt; tuple[float, float]:
+    """The default most people reach for. Shown so you can see why it fails."""
+    p = k / n
+    margin = z * math.sqrt(p * (1 - p) / n)    # symmetric, no correction
+    return (p - margin, p + margin)            # no clamping: can exceed 1
+
+
+print(wilson(49, 50))         # (0.8950, 0.9965)  stays inside [0, 1]
+print(normal_approx(49, 50))  # (0.9412, 1.0188)  claims a rate above 100%</code></pre>
+  <p>The normal approximation fails because it assumes the sampling distribution of \(\hat p\) is symmetric around \(\hat p\). Near a boundary it is not. Exact coverage at a true rate of 0.95 with \(n=30\): Wilson 0.94, normal approximation 0.78. At \(n=50\): 0.96 versus 0.92.</p>
+</div>
+
+<div class="widget" id="w-ci"><div class="wtitle">Wilson vs the normal approximation</div><div class="wsub">Both claim to be 95 percent intervals. The readout runs 3000 simulated experiments at your settings and reports what fraction actually contained the true rate. Drag the rate toward 0.95 and shrink n to watch the normal approximation quietly stop being a 95 percent interval.</div><div class="controls"><div class="ctl"><label data-lp>true rate</label><input type="range" data-p min="0.02" max="0.99" step="0.01" value="0.95"></div><div class="ctl"><label data-ln>n</label><input type="range" data-n min="10" max="500" step="5" value="30"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+<div class="callout warn"><span class="tag">Watch out</span><div>At a true rate of 0.95 with n = 30, the normal approximation covers about 78 percent of the time and its upper bound can exceed 1.0. Extreme rates on small sets are where eval suites live.</div></div>
+
+<!-- ============ 2. paired comparison ============ -->
+<h3>2. Comparing two models on the same tasks</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Only the disagreements count</span></div>
+  <p>Two students take the same 200-question exam. On most questions they both get it right, or both get it wrong. Those questions tell you nothing about who is better. Only the questions where one was right and the other wrong carry information. If there are 30 such questions and one student wins 18 of them, that could easily be luck. If they win 22 of 30, it probably is not.</p>
+  <p>Evals work the same way. When two models run on the same tasks, you compare them task by task. This is called a <b>paired</b> comparison, and it is far more sensitive than comparing two separate averages.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What to say when product wants to ship</span></div>
+  <ul>
+    <li><b>Overlapping intervals is not a test.</b> Two intervals can overlap heavily while the paired difference is clearly significant, and the reverse. Ask for the paired result.</li>
+    <li><b>The headline delta is not enough.</b> The same 3-point gap can be noise or real depending on how the disagreements split. Ask: "How many tasks did they disagree on, and how did those split?"</li>
+    <li><b>Frame the answer as a decision.</b> "The 3-point gain rests on 30 disagreements split 18 to 12. A coin flip does that about a third of the time. I can't call this an improvement yet. Here is what it would take to know."</li>
+  </ul>
+</div>
+
+<div class="callout example"><span class="tag">Worked problem</span><div>
+  <p><b>Two models, 200 shared tasks. Ship or not?</b> Model A passed 124 of 200. Model B passed 130 of 200. Product wants to ship B.</p>
+  <p>Wilson intervals: A is 0.551 to 0.684, B is 0.582 to 0.713. They overlap heavily, and the instinct is "no significant difference". That instinct uses the wrong method. The tasks were shared, so treating the models as independent throws away most of the power.</p>
+  <p>The right analysis looks at the discordant pairs. Suppose the models agreed on 170 tasks and split the other 30.</p>
+  <pre class="code" data-lang="python"><code>from math import comb
+
+def mcnemar_exact(b, c):
+    """b = tasks B won and A lost. c = the reverse."""
+    n = b + c
+    if n == 0:
+        return 1.0
+    k = min(b, c)
+    tail = sum(comb(n, i) for i in range(k + 1)) / (2 ** n)
+    return min(1.0, 2 * tail)
+
+print(mcnemar_exact(18, 12))   # 0.3616  not significant
+print(mcnemar_exact(22, 8))    # 0.0161  significant</code></pre>
+  <p>Same 3-point headline, opposite conclusions. 18 to 12 is noise; 22 to 8 is real. The pass rates alone cannot tell you which world you are in.</p>
+</div></div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Paired bootstrap and exact McNemar</span></div>
+  <p>Let \(b\) be the tasks A passed and B failed, and \(c\) the reverse. Under the null hypothesis that the models are equally good, each discordant task is a fair coin flip, so \(b \sim \text{Binomial}(b+c, \tfrac12)\). The exact two-sided p value is</p>
+  <div class="eq">\[ p = \min\!\left(1,\; 2\sum_{i=0}^{\min(b,c)} \binom{n_d}{i} 2^{-n_d}\right), \qquad n_d = b + c \]<span class="eqcap">Tasks both models passed or both failed never enter the formula. That is why the test has power on small suites. Use the exact version rather than the chi-squared approximation when \(n_d\) is small.</span></div>
+  <pre class="code" data-lang="python"><code>from math import comb
+
+def mcnemar_exact(a: list[int], b: list[int]) -&gt; dict:
+    """Exact McNemar test on paired binary outcomes."""
+    b_count = sum(1 for x, y in zip(a, b) if x == 1 and y == 0)   # A won, B lost
+    c_count = sum(1 for x, y in zip(a, b) if x == 0 and y == 1)   # B won, A lost
+    n = b_count + c_count            # discordant pairs: the effective sample
+    if n == 0:
+        return {"b": 0, "c": 0, "p": 1.0}
+    k = min(b_count, c_count)
+    tail = sum(comb(n, i) for i in range(0, k + 1)) / (2 ** n)
+    return {"b": b_count, "c": c_count, "n_discordant": n, "p": min(1.0, 2 * tail)}
+
+
+# 200 tasks, the models agree on 188. A wins 9 of the 12 disagreements.
+print(mcnemar_exact([1]*9 + [0]*3 + [1]*94 + [0]*94,
+                    [0]*9 + [1]*3 + [1]*94 + [0]*94))
+# {'b': 9, 'c': 3, 'n_discordant': 12, 'p': 0.146}   nine to three is not enough</code></pre>
+  <p>The paired bootstrap gives an interval on the difference itself. The one line that matters is resampling <i>task indices</i> and reading both models at each index.</p>
+  <pre class="code" data-lang="python"><code>import random
+
+def paired_bootstrap(a: list[int], b: list[int], iters: int = 10_000, seed: int = 0) -&gt; dict:
+    """CI for the difference in pass rate between two models on the SAME tasks."""
+    assert len(a) == len(b)          # misaligned lists silently produce garbage
+    n = len(a)
+    rng = random.Random(seed)
+    observed = sum(a) / n - sum(b) / n
+
+    diffs = []
+    for _ in range(iters):
+        # Resample TASK INDICES, then read BOTH models at each index.
+        # Sampling a[] and b[] independently would destroy the pairing.
+        sample = [rng.randrange(n) for _ in range(n)]
+        diffs.append(sum(a[i] for i in sample) / n - sum(b[i] for i in sample) / n)
+    diffs.sort()
+    lo, hi = diffs[int(0.025 * iters)], diffs[int(0.975 * iters)]
+    p_val = 2 * min(sum(d &lt;= 0 for d in diffs), sum(d &gt;= 0 for d in diffs)) / iters
+    return {"observed": observed, "ci95": (lo, hi), "p": min(1.0, p_val)}</code></pre>
+</div>
+
+<div class="widget" id="w-mcnemar"><div class="wtitle">Paired comparison, live</div><div class="wsub">Two models on the same tasks. Only the disagreements carry information. Set agreement to 0.94 and the effect to 0.03 and watch a convincing looking win count fail to reach significance.</div><div class="controls"><div class="ctl"><label data-l1>tasks</label><input type="range" data-n min="50" max="2000" step="50" value="200"></div><div class="ctl"><label data-l2>agreement</label><input type="range" data-ag min="0.5" max="0.98" step="0.02" value="0.94"></div><div class="ctl"><label data-l3>effect</label><input type="range" data-ef min="0.0" max="0.15" step="0.005" value="0.03"></div></div><canvas></canvas><div class="cmgrid" data-grid></div><div class="readout" data-out></div></div>
+
+<!-- ============ 3. power ============ -->
+<h3>3. Power: the smallest difference you can see</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A blurry camera</span></div>
+  <p>A small eval set is a blurry camera. Big differences show up; small ones disappear into the blur. <b>Power</b> is the chance your eval detects a real improvement of a given size. The <b>minimum detectable effect</b> is the smallest improvement you could reliably see. If your camera can only see 5-point changes, it will report "no difference" for a real 2-point gain.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Decide the effect size before you run</span></div>
+  <ul>
+    <li><b>Ask what size of change matters, then size the suite.</b> If the team cares about 2 points, a 200-task suite cannot answer the question. Rule of thumb: a 2-point difference near a 50% base rate needs on the order of 1,000 to 4,000 paired tasks, depending on how often the models disagree.</li>
+    <li><b>Underpowered evals fail in two ways.</b> They miss real gains, and the gains they do "find" are inflated, because only lucky draws clear the bar. That second effect is the winner's curse, and it is why a surprising win on a small suite often shrinks on re-run.</li>
+    <li><b>"No significant difference" from an underpowered test is not evidence of no difference.</b> Ask for the minimum detectable effect alongside every null result.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Power by simulation</span></div>
+  <p>Simulation is the most defensible way to answer "how many tasks?", because the only assumptions are the ones you write into the simulator: base rate, effect, and how correlated the two models are per task.</p>
+  <pre class="code" data-lang="python"><code>import random
+
+def mde_by_simulation(base_rate: float, n_tasks: int, correlation: float = 0.8,
+                      alpha: float = 0.05, power_target: float = 0.8,
+                      trials: int = 2000, seed: int = 0) -&gt; float:
+    """Smallest true effect detectable at 80% power on n_tasks paired examples.
+
+    correlation approximates how much the two models agree per task. Higher
+    correlation gives a tighter paired comparison and a smaller detectable effect.
+    """
+    rng = random.Random(seed)
+
+    def power_at(effect: float) -&gt; float:
+        hits = 0
+        for _ in range(trials):
+            a, b = [], []
+            for _ in range(n_tasks):
+                pa = base_rate + effect
+                if rng.random() &lt; correlation:          # shared difficulty draw
+                    u = rng.random()
+                    a.append(1 if u &lt; pa else 0)
+                    b.append(1 if u &lt; base_rate else 0)
+                else:                                     # independent draws
+                    a.append(1 if rng.random() &lt; pa else 0)
+                    b.append(1 if rng.random() &lt; base_rate else 0)
+            if mcnemar_exact(a, b)["p"] &lt; alpha:
+                hits += 1
+        return hits / trials
+
+    lo, hi = 0.0, 0.30
+    for _ in range(12):                      # binary search on the effect size
+        mid = (lo + hi) / 2
+        if power_at(mid) &gt;= power_target:
+            hi = mid
+        else:
+            lo = mid
+    return hi</code></pre>
+</div>
+
+<div class="widget" id="w-power"><div class="wtitle">Power and sample size</div><div class="wsub">How many tasks do you actually need. Model agreement is the slider people forget: the more two models agree, the fewer discordant pairs carry information, and the more tasks you need to separate them. Drag it up and watch the curve collapse.</div><div class="controls"><div class="ctl"><label data-lb>base rate</label><input type="range" data-b min="0.1" max="0.9" step="0.05" value="0.5"></div><div class="ctl"><label data-le>true effect</label><input type="range" data-e min="0.005" max="0.15" step="0.005" value="0.03"></div><div class="ctl"><label data-lr>model agreement</label><input type="range" data-r min="0.0" max="0.95" step="0.05" value="0.8"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+<div class="callout ask"><span class="tag">Principal asks</span><div>Set the effect to 0.02 and agreement to 0.9. The curve does not reach 80 percent power even at 3,200 tasks. That is the quantitative case for generating tasks where models actually differ instead of growing a static suite.</div></div>
+
+<!-- ============ 4. sample size ============ -->
+<h3>4. Sample size, stated plainly</h3>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why converging models get expensive to compare</span></div>
+  <p>A paired test only learns from the tasks where models disagree. As frontier models converge on a fixed suite, they disagree on fewer tasks, and the suite has to grow just to keep the same resolution. At a fixed win share among disagreements, halving the disagreement rate doubles the tasks you need. This is the economic argument for dynamic benchmark generation: build tasks where current models differ, instead of adding more tasks they all pass.</p>
+  <p>Use the closed form below for a quick answer in a meeting, and the simulation in the previous section when the number has to be defended.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Closed-form sample size for a paired binary comparison</span></div>
+  <p>Let \(p_d\) be the fraction of tasks where the models disagree and \(\pi\) the share of those disagreements the better model wins. Testing \(\pi = \tfrac12\) on the discordant pairs needs</p>
+  <div class="eq">\[ n_d = \frac{\left(z_{1-\alpha/2}\cdot\tfrac12 + z_{1-\beta}\sqrt{\pi(1-\pi)}\right)^2}{\left(\pi-\tfrac12\right)^2}, \qquad n = \frac{n_d}{p_d} \]<span class="eqcap">The difference in pass rates is \(p_d(2\pi-1)\). For 95% confidence and 80% power, \(z_{1-\alpha/2} = 1.96\) and \(z_{1-\beta} = 0.84\).</span></div>
+  <pre class="code" data-lang="python"><code>import math
+from statistics import NormalDist
+
+def paired_sample_size(p_discordant: float, win_share: float = 0.7,
+                       alpha: float = 0.05, power: float = 0.8) -&gt; int:
+    """Tasks needed for a paired binary comparison.
+
+    p_discordant: fraction of tasks where the two models disagree.
+    win_share:    of those disagreements, the fraction the better model wins.
+    """
+    z_a = NormalDist().inv_cdf(1 - alpha / 2)
+    z_b = NormalDist().inv_cdf(power)
+    d = win_share - 0.5
+    if d &lt;= 0:
+        return 10 ** 9
+    n_discordant = (0.5 * z_a + z_b * math.sqrt(win_share * (1 - win_share))) ** 2 / d ** 2
+    return math.ceil(n_discordant / p_discordant)
+
+
+print(paired_sample_size(0.12, 0.70))   # 389   models disagree on 12% of tasks
+print(paired_sample_size(0.04, 0.70))   # 1166  same models after they converge</code></pre>
+</div>
+
+<div class="callout example"><span class="tag">Worked problem</span><div>
+  <p><b>How many tasks do I need?</b> A product team wants to detect an improvement of about 2 to 3 points.</p>
+  <div class="tw"><table><thead><tr><th>Disagreement rate</th><th>Win share</th><th>Pass-rate gap</th><th>Tasks needed</th></tr></thead><tbody>
+    <tr><td class="n">0.12</td><td class="n">0.62</td><td class="n">2.9 pts</td><td class="n"><b>1,116</b></td></tr>
+    <tr><td class="n">0.12</td><td class="n">0.58</td><td class="n">1.9 pts</td><td class="n"><b>2,536</b></td></tr>
+    <tr><td class="n">0.06 (models have converged)</td><td class="n">0.62</td><td class="n">1.4 pts</td><td class="n"><b>2,232</b></td></tr>
+  </tbody></table></div>
+  <p>A 2-point move needs over a thousand tasks, not two hundred. That is the honest answer to most sample size questions. And at a fixed win share, halving the disagreement rate doubles the requirement.</p>
+</div></div>
+
+<div class="widget" id="w-samplesize"><div class="wtitle">Sample size calculator</div><div class="wsub">The reciprocal curve that makes converging models so expensive to compare. Drag the discordance rate down toward 0.04 and watch the required task count run away.</div><div class="controls"><div class="ctl"><label data-l1>discordance</label><input type="range" data-d min="0.02" max="0.5" step="0.01" value="0.12"></div><div class="ctl"><label data-l2>win share</label><input type="range" data-s min="0.55" max="0.95" step="0.01" value="0.7"></div><div class="ctl"><label data-l3>power</label><input type="range" data-pw min="0.5" max="0.95" step="0.05" value="0.8"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+
+<!-- ============ 5. multiple comparisons ============ -->
+<h3>5. Many benchmarks at once</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Forty coin flips</span></div>
+  <p>Flip 40 fair coins five times each and a couple will land heads every time, by luck. Run 40 benchmarks on a new model and a couple will "improve significantly" by luck too. The more things you test, the more false wins you get. A <b>multiple comparisons correction</b> raises the bar to account for how many things you looked at.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Pick which error you would rather make</span></div>
+  <ul>
+    <li>At a 0.05 threshold, 30 benchmarks with no real change produce about 1.5 false "significant" results on average. A big standing suite will always have something lighting up.</li>
+    <li>Corrections are not free. They cut false alarms and also miss real effects. There is no option without a cost, only a choice about which error is cheaper.</li>
+    <li><b>The asymmetry to say out loud:</b> for regression monitoring, a missed regression ships a worse model while a false alarm costs an engineer a day. So monitoring deliberately accepts more false alarms than a publication claim would. For a launch announcement, the reverse.</li>
+    <li><b>Red flag:</b> a deck that lists "6 of 40 benchmarks improved" with no correction and no note of how many got worse.</li>
+  </ul>
+</div>
+
+<div class="callout example"><span class="tag">Worked problem</span><div>
+  <p><b>Forty benchmarks, six moved. Which do you believe?</b> A new model lands, the standing suite of 40 benchmarks runs, and six come back with p below 0.05. One illustrative simulation where exactly three benchmarks genuinely moved:</p>
+  <div class="tw"><table><thead><tr><th>Method</th><th>Real found</th><th>False alarms</th><th>Real missed</th></tr></thead><tbody>
+    <tr><td>No correction</td><td class="n">3</td><td class="n"><b>3</b></td><td class="n">0</td></tr>
+    <tr><td>Benjamini–Hochberg</td><td class="n">1</td><td class="n">0</td><td class="n"><b>2</b></td></tr>
+    <tr><td>Bonferroni</td><td class="n">1</td><td class="n">0</td><td class="n"><b>2</b></td></tr>
+  </tbody></table></div>
+  <p>Half the uncorrected "discoveries" were noise. Both corrections removed them and also missed two real effects. The right choice depends on the loss function, which is a product decision as much as a statistical one.</p>
+</div></div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Bonferroni and Benjamini–Hochberg</span></div>
+  <p><b>Bonferroni</b> controls the chance of any false positive (the family-wise error rate) by testing each of \(m\) hypotheses at \(\alpha/m\). It is simple and very conservative on large suites.</p>
+  <p><b>Benjamini–Hochberg</b> controls the false discovery rate, the expected share of discoveries that are false. Sort the p values \(p_{(1)} \le \dots \le p_{(m)}\) and find</p>
+  <div class="eq">\[ k^\ast = \max\left\{ k : p_{(k)} \le \frac{k}{m}\, q \right\} \]<span class="eqcap">Reject the hypotheses with the \(k^\ast\) smallest p values, including any below \(k^\ast\) that individually failed the check. The threshold loosens as rank grows, which keeps power on a large suite.</span></div>
+  <pre class="code" data-lang="python"><code>def benjamini_hochberg(p_values: list[float], fdr: float = 0.05) -&gt; list[bool]:
+    """Control the false discovery rate across a suite of benchmarks."""
+    m = len(p_values)
+    order = sorted(range(m), key=lambda i: p_values[i])   # indices, ascending p
+
+    # PASS ONE: the largest rank whose p value clears rank/m * fdr.
+    # Scan ALL ranks; a later rank can pass after an earlier one fails.
+    max_rank = -1
+    for rank, i in enumerate(order, start=1):
+        if p_values[i] &lt;= fdr * rank / m:
+            max_rank = rank
+
+    # PASS TWO: everything up to that rank is a discovery (the step-up rule,
+    # and the part people most often implement wrong).
+    keep = [False] * m
+    for rank, i in enumerate(order, start=1):
+        if rank &lt;= max_rank:
+            keep[i] = True
+    return keep</code></pre>
+</div>
+
+<div class="widget" id="w-multcomp"><div class="wtitle">Multiple comparisons, live</div><div class="wsub">Run a whole suite against a new model and see how many benchmarks light up by luck. Compare no correction, Benjamini Hochberg and Bonferroni on the same draw.</div><div class="controls"><div class="ctl"><label data-l1>benchmarks</label><input type="range" data-m min="5" max="80" step="5" value="40"></div><div class="ctl"><label data-l2>real effects</label><input type="range" data-t min="0" max="20" step="1" value="3"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+
+<!-- ============ 6. pass@k ============ -->
+<h3>6. pass@k and sampling variance</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">How many tries does the model get?</span></div>
+  <p>A model with some randomness can answer the same question differently each time. <b>pass@1</b> asks how often its first try is right. <b>pass@k</b> asks how often at least one of k tries is right, which matters when something can check the answers (like running unit tests on code). The opposite question, how often <i>all</i> k tries are right, measures reliability.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Match the metric to the product</span></div>
+  <ul>
+    <li><b>pass@1</b> is what a user sees when they get one answer. <b>pass@k</b> is relevant only if the product samples several times and has a way to pick the right one, such as tests or a verifier.</li>
+    <li><b>pass^k</b> (all k attempts succeed, popularised by the τ-bench agent benchmark, Yao et al. 2024) measures consistency. Agents that pass once and fail the next time are a reliability problem pass@1 hides.</li>
+    <li>Ask what temperature and how many samples produced a number. A pass@k quoted next to a competitor's pass@1 is not a comparison.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The unbiased pass@k estimator</span></div>
+  <p>Sample \(n \ge k\) completions per task and count the \(c\) that pass. The unbiased estimator from the Codex paper (Chen et al. 2021) is the probability that a random subset of \(k\) contains at least one pass, averaged over tasks:</p>
+  <div class="eq">\[ \widehat{\text{pass@}k} = \mathbb{E}_{\text{tasks}}\left[ 1 - \frac{\binom{n-c}{k}}{\binom{n}{k}} \right] \]<span class="eqcap">Sampling exactly \(k\) and checking is unbiased but high variance; sampling \(n\) and plugging \(c/n\) into \(1-(1-c/n)^k\) is biased. The combinatorial form uses all \(n\) samples without bias.</span></div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+
+def pass_at_k(n: int, c: int, k: int) -&gt; float:
+    """Unbiased estimate of pass@k given n samples of which c passed."""
+    # Fewer than k failures: any k samples include a pass.
+    if n - c &lt; k:
+        return 1.0
+    # 1 - C(n-c, k)/C(n, k), computed as a product so large n does not overflow.
+    return 1.0 - float(np.prod(1.0 - k / np.arange(n - c + 1, n + 1)))
+
+
+def suite_pass_at_k(results: dict[str, tuple[int, int]], k: int) -&gt; float:
+    """results maps task_id -&gt; (n_samples, n_passed). Average PER TASK,
+    so one heavily sampled task cannot dominate the number."""
+    return sum(pass_at_k(n, c, k) for n, c in results.values()) / len(results)</code></pre>
+</div>
+
+<!-- ============ 7. more than two models ============ -->
+<h3>7. More than two models, and where the noise comes from</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A tournament, then a referee check</span></div>
+  <p>With three or more models, first ask whether they differ at all, then which pairs differ. Separately, it helps to know where the wobble in your scores comes from: are the tasks themselves very different in difficulty, or does the same task give different results each time you run it? That answer tells you whether to buy more tasks or more runs.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">More tasks or more samples?</span></div>
+  <p>This is a budgeting question that teams often guess at. Variance components answer it with a number. In one illustrative measurement on 60 tasks with 5 runs each, doubling the tasks reduced the standard error from 0.041 to 0.029, while doubling the runs per task only got it to 0.037, for the same compute. Task variance is divided only by the number of tasks; run-to-run noise is divided by tasks times runs. So once you have a few runs per task, new tasks are almost always the better buy.</p>
+  <p>Plain one-way ANOVA is usually the wrong tool for evals, because outcomes are binary and the design is paired. Ask for the paired version from the table below.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Cochran's Q, ANOVA, and variance components</span></div>
+  <div class="tw"><table><thead><tr><th>Situation</th><th>Test</th><th>Why</th></tr></thead><tbody>
+    <tr><td>2 models, binary, same tasks</td><td>McNemar exact</td><td>Paired, exact on small discordant counts</td></tr>
+    <tr><td>3+ models, binary, same tasks</td><td>Cochran's Q</td><td>The paired multi-group extension of McNemar</td></tr>
+    <tr><td>3+ models, continuous or ordinal scores</td><td>Friedman</td><td>Ranks within task, no distribution assumption</td></tr>
+    <tr><td>3+ models, continuous, independent groups</td><td>One-way ANOVA</td><td>Only when tasks are not shared, which is rare in evals</td></tr>
+    <tr><td>Score by model and task category</td><td>Two-way ANOVA</td><td>Separates model effect from task difficulty and their interaction</td></tr>
+    <tr><td>How much noise comes from where</td><td>Variance components</td><td>Tells you whether to add tasks or add samples</td></tr>
+  </tbody></table></div>
+
+  <h4>Cochran's Q</h4>
+  <p>With \(k\) models, \(G_j\) the passes for model \(j\), and \(L_i\) the passes on task \(i\):</p>
+  <div class="eq">\[ Q = (k-1)\,\frac{k\sum_j G_j^2 - \left(\sum_j G_j\right)^2}{k\sum_i L_i - \sum_i L_i^2} \;\sim\; \chi^2_{k-1} \text{ under } H_0 \]<span class="eqcap">Tasks every model passed (\(L_i = k\)) or failed (\(L_i = 0\)) contribute nothing to the denominator: the same "only disagreement counts" logic as McNemar.</span></div>
+  <pre class="code" data-lang="python"><code>import random
+
+def cochran_q(X: list[list[int]]) -&gt; float:
+    """X[i][j] = 1 if model j passed task i. Paired across k models."""
+    n, k = len(X), len(X[0])
+    G = [sum(X[i][j] for i in range(n)) for j in range(k)]   # per model totals
+    L = [sum(row) for row in X]                              # per task totals
+    num = (k - 1) * (k * sum(g * g for g in G) - sum(G) ** 2)
+    den = k * sum(L) - sum(l * l for l in L)
+    return num / den if den else 0.0    # den == 0 when every task is unanimous
+
+
+def permutation_p(X, stat_fn, iters: int = 5000, seed: int = 0) -&gt; tuple[float, float]:
+    """p value with no distribution assumptions."""
+    rng = random.Random(seed)
+    observed = stat_fn(X)
+    hits = 0
+    for _ in range(iters):
+        shuffled = []
+        for row in X:
+            r = list(row)
+            rng.shuffle(r)      # shuffle WITHIN a task: models are exchangeable
+            shuffled.append(r)  # under H0, but tasks differ in difficulty
+        if stat_fn(shuffled) &gt;= observed:
+            hits += 1
+    return observed, (hits + 1) / (iters + 1)   # +1 avoids ever reporting p = 0</code></pre>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Cochran's Q answers "are these models different at all". It does not say which. Running it and then reporting the winner is the multiple comparisons mistake in a different form. Follow a significant Q with pairwise McNemar tests and Benjamini–Hochberg across the pairs.</div></div>
+
+  <h4>One-way ANOVA, for continuous scores</h4>
+  <div class="eq">\[ F = \frac{SS_\text{between}/(g-1)}{SS_\text{within}/(N-g)}, \qquad \eta^2 = \frac{SS_\text{between}}{SS_\text{between}+SS_\text{within}} \]<span class="eqcap">\(F\) is signal over noise. \(\eta^2\) is the effect size: the share of variance explained by group membership. Always report \(\eta^2\), because \(F\) grows with sample size and can be large for a difference nobody would notice.</span></div>
+  <pre class="code" data-lang="python"><code>def one_way_anova(groups: list[list[float]]) -&gt; dict:
+    g = len(groups)
+    N = sum(len(x) for x in groups)
+    grand = sum(sum(x) for x in groups) / N
+    ss_between = sum(len(x) * (sum(x) / len(x) - grand) ** 2 for x in groups)   # signal
+    ss_within = sum((v - sum(x) / len(x)) ** 2 for x in groups for v in x)       # noise
+    df_b, df_w = g - 1, N - g
+    ms_b, ms_w = ss_between / df_b, ss_within / df_w
+    return {"F": ms_b / ms_w if ms_w else float("inf"), "df": (df_b, df_w),
+            "eta_squared": ss_between / (ss_between + ss_within)}</code></pre>
+
+  <h4>Variance components: more tasks or more samples</h4>
+  <p>Run each of \(n\) tasks \(r\) times. Split the variance into a task part \(\sigma^2_\text{task}\) and a run-to-run part \(\sigma^2_\text{samp}\). The standard error of the suite mean is</p>
+  <div class="eq">\[ \mathrm{SE} = \sqrt{\frac{\sigma^2_\text{task}}{n} + \frac{\sigma^2_\text{samp}}{n\,r}} \]<span class="eqcap">Adding runs only shrinks the second term. Adding tasks shrinks both. The ratio \(\sigma^2_\text{task}/(\sigma^2_\text{task}+\sigma^2_\text{samp})\) is the intraclass correlation, which reappears as the design effect in <a href="#intervals">the next chapter</a>.</span></div>
+  <pre class="code" data-lang="python"><code>from statistics import mean
+import math
+
+def variance_components(scores: list[list[float]]) -&gt; dict:
+    """scores[i] = r repeated runs of task i at identical settings."""
+    n, r = len(scores), len(scores[0])
+    task_means = [mean(s) for s in scores]
+    grand = mean(task_means)
+    # Between-task mean square, on the same scale as the within term.
+    ms_between = r * sum((m - grand) ** 2 for m in task_means) / (n - 1)
+    # Within-task spread: pure run-to-run noise, difficulty is held fixed.
+    ms_within = sum((x - task_means[i]) ** 2 for i in range(n) for x in scores[i]) / (n * (r - 1))
+    var_task = max(0.0, (ms_between - ms_within) / r)   # noise can push it negative
+    var_sampling = ms_within
+
+    def se(n_tasks, n_reps):
+        return math.sqrt(var_task / n_tasks + var_sampling / (n_tasks * n_reps))
+
+    return {"var_task": var_task, "var_sampling": var_sampling,
+            "icc": var_task / (var_task + var_sampling) if var_task + var_sampling else 0.0,
+            "se_current": se(n, r), "se_double_tasks": se(2 * n, r), "se_double_samples": se(n, 2 * r)}
+
+# Illustrative, 60 tasks x 5 runs: var_task 0.063, var_sampling 0.188
+#   SE now 0.0409 | double the tasks 0.0290 | double the samples 0.0369</code></pre>
+</div>
+
+<div class="callout ask"><span class="tag">Principal asks</span><div>
+  <p><b>"The benchmark moved 4 points and nothing about the model changed. Why?"</b> Usual suspects: temperature or top-p changed; the harness retried failures and quietly gave some tasks extra attempts; a timeout threshold moved; the judge prompt changed; the task set was silently filtered. See <a href="#triage">regression triage</a> for the order to check them in.</p>
+  <p><b>Red flags in a results deck:</b> a pass rate with no n; symmetric error bars near 100%; overlapping intervals used as a test; an unpaired comparison on shared tasks; "k of m benchmarks improved" with no correction and no count of regressions; a null result with no minimum detectable effect; pass@k compared with pass@1.</p>
+</div></div>
+</section>

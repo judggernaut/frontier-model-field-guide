@@ -1,0 +1,44 @@
+<section id="lookup" data-title="From shape to method">
+<h2>From shape to method: a lookup table</h2>
+<p>Given what you have, use this. Every row assumes you have already plotted a histogram and checked for censoring and bimodality, as in the reading-a-shape checklist.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Pick the tool that fits the data</span></div>
+  <p>You would not measure flour with a thermometer. Each kind of eval data, yes/no results, waiting times, counts, star ratings, has tools that fit it and tools that quietly give wrong answers. This table matches each kind of data to a way of summarising it, a way of comparing two models, and a way of drawing an error bar.</p>
+</div>
+
+<div class="tw"><table><thead><tr><th>You have</th><th>Shape</th><th>Summarise with</th><th>Compare with</th><th>Interval from</th></tr></thead><tbody>
+<tr><td>Pass / fail per task</td><td>Bernoulli / binomial</td><td>Rate + count</td><td>Exact McNemar (paired), Cochran's Q (3+)</td><td>Wilson</td></tr>
+<tr><td>Pass / fail nested in sessions</td><td>Clustered binomial</td><td>Rate + effective n</td><td>Cluster-level comparison</td><td>Cluster bootstrap</td></tr>
+<tr><td>Latency</td><td>Lognormal, right skewed</td><td>p50, p95, p99</td><td>Mann-Whitney, or t test on logs</td><td>Bootstrap on the percentile</td></tr>
+<tr><td>Token counts</td><td>Right skewed, overdispersed</td><td>Median + quantiles</td><td>Mann-Whitney</td><td>Bootstrap</td></tr>
+<tr><td>Tool calls per session</td><td>Negative binomial</td><td>Median + quantiles, report var/mean</td><td>Negative binomial model, or bootstrap</td><td>Bootstrap</td></tr>
+<tr><td>Retry counts</td><td>Geometric</td><td>Median, share needing &gt;1 attempt</td><td>Proportion test on "needed a retry"</td><td>Wilson on that proportion</td></tr>
+<tr><td>Likert 1-5</td><td>Ordinal</td><td>Top-two-box share</td><td>Mann-Whitney + effect size</td><td>Wilson on top-two-box</td></tr>
+<tr><td>Judge score 0-10</td><td>Ordinal, often compressed</td><td>Median + distribution</td><td>Friedman (3+), Mann-Whitney (2)</td><td>Bootstrap</td></tr>
+<tr><td>A rate you barely have data for</td><td>Beta</td><td>Posterior mean + interval</td><td>Overlap of posteriors</td><td>Beta credible interval</td></tr>
+<tr><td>Anything with two humps</td><td>Mixture</td><td><b>Split it first</b></td><td>Compare within segments</td><td>Per segment</td></tr>
+<tr><td>Anything with a spike at a cap</td><td>Censored</td><td><b>Report the censoring rate</b></td><td>Survival methods</td><td>Kaplan-Meier</td></tr>
+</tbody></table></div>
+<div class="callout note"><span class="tag">Note</span><div>If a row makes you reach for the bootstrap, remember its limits: it fails at very small n, on extreme quantiles, on maxima, and on clustered data unless you resample the clusters. Part II covers each of these in detail.</div></div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Use the table as a review checklist</span></div>
+  <p>You do not need to run these methods yourself to use this table well. When a result lands in front of you, find the row that matches the metric and check the analysis against it.</p>
+  <ol class="steps">
+    <li><div><b>Was the comparison paired?</b> If both models ran the same tasks, the comparison should use the pairing (McNemar, paired bootstrap). An unpaired test throws away most of the statistical power and can miss real wins.</div></li>
+    <li><div><b>Does the interval method match the data?</b> Wilson for rates, bootstrap for percentiles, cluster bootstrap for anything nested in sessions or conversations. A normal-approximation interval on a 98% pass rate or a session-level metric is a warning sign.</div></li>
+    <li><div><b>Was the data split or flagged first?</b> Mixtures need segmenting and censored data needs its censoring rate reported. If neither check is mentioned, ask.</div></li>
+    <li><div><b>Is the summary the one users feel?</b> Percentiles for latency, top-two-box for satisfaction, rates with counts for pass/fail.</div></li>
+  </ol>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>"Which row of the table is this metric, and does the method match?" A team that can answer instantly has thought about its measurement. A pause usually means the default tool was used without checking whether it fits.</div></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The decision, compressed</span></div>
+  <p>The table encodes four questions asked in order:</p>
+  <ol>
+    <li><b>Is it binary, count, continuous, or ordinal?</b> This fixes the family: binomial and beta for binary, Poisson or negative binomial for counts, lognormal or quantile methods for positive continuous data, rank methods for ordinal scores.</li>
+    <li><b>Are observations independent?</b> If they are nested (calls in sessions, turns in conversations), the effective sample size is closer to the number of clusters, and intervals must resample clusters.</li>
+    <li><b>Are the comparisons paired?</b> Shared tasks call for paired tests, which use within-task differences and remove between-task difficulty from the noise.</li>
+    <li><b>Is the statistic smooth?</b> Means and medians bootstrap well at moderate n. Extreme quantiles and maxima do not, and need more data, a parametric tail model, or an honest "insufficient data".</li>
+  </ol>
+</div>
+</section>

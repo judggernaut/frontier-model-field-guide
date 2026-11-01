@@ -1,0 +1,131 @@
+<section id="basics" data-title="Distributions: the basics">
+<h2>Distributions: centre, spread, and shape</h2>
+<p>Every number an eval produces, whether a pass rate, a latency, a token count, or a judge score, is a summary of a spread of measurements. This chapter gives you the vocabulary for describing that spread and the reflexes for spotting when a summary is lying.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A distribution is the shape a spread of answers makes</span></div>
+  <p>Measure the same thing many times and you do not get one answer, you get a spread of answers. A <b>distribution</b> is the shape that spread makes. That is the whole idea. Everything else in this chapter is vocabulary for describing shapes: where the middle is, how wide it is, and which way it leans.</p>
+  <p>Think of a hundred people timing the same bus route. Most say about twenty minutes, a few say fifteen, and one person who hit every red light says forty-five. If you stack their answers into a bar chart, the shape you see is the distribution of the commute.</p>
+</div>
+
+<h3>What a distribution actually is</h3>
+<figure><img src="figs/stats-001.png" alt="400 individual measurements, then binned into a histogram, then smoothed into a curve"><figcaption>Left: 400 individual measurements. Middle: stack them into bins. Right: the shape they make. That shape is the distribution.</figcaption></figure>
+<p>Three words get used loosely and mean different things:</p>
+<ul>
+  <li><b>Population</b> is every possible measurement you could ever take. Usually imaginary, always unavailable.</li>
+  <li><b>Sample</b> is the measurements you actually have. 200 tasks, 5000 sessions.</li>
+  <li><b>Distribution</b> is the shape. A population has one, and your sample gives you a blurry picture of it.</li>
+</ul>
+<div class="callout eval"><span class="tag">Eval lens</span><div>Your eval suite is a sample. Production is closer to the population. The offline to online gap is, in one sentence, the sample not looking like the population.</div></div>
+
+<h3>Centre: three different answers to "what is typical"</h3>
+<figure><img src="figs/stats-002.png" alt="Mean, median, and mode marked on a skewed distribution"><figcaption>The same data has three different centres. On a skewed distribution they are far apart, and picking the wrong one is the most common reporting error there is.</figcaption></figure>
+<div class="tw"><table><thead><tr><th>Measure</th><th>What it is</th><th>Use when</th><th>Breaks when</th></tr></thead><tbody>
+<tr><td><b>Mean</b></td><td>Add everything, divide by n</td><td>Symmetric data. Also anything where the total matters, like compute cost</td><td>The tail is long. One 400 second request drags it and no user experiences it</td></tr>
+<tr><td><b>Median</b></td><td>The middle value when sorted</td><td>Skewed data. Almost all latency and token reporting</td><td>You need totals, or the data is bimodal (the middle can fall in the empty valley)</td></tr>
+<tr><td><b>Mode</b></td><td>The most common value</td><td>Categorical data, spotting bimodality</td><td>Continuous data, where no value repeats exactly</td></tr>
+</tbody></table></div>
+<div class="callout key"><span class="tag">Key idea</span><div>On a right skewed distribution the order is always mode &lt; median &lt; mean. If someone reports a mean latency well above the median, they are reporting a number no user experienced.</div></div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Mean and median, defined</span></div>
+  <div class="eq">\[ \bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i \qquad\qquad \text{median} = x_{((n+1)/2)} \ \text{ of the sorted values} \]<span class="eqcap">For even n, the median is the average of the two middle sorted values.</span></div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+
+lat = [1.9, 2.1, 2.0, 2.4, 2.2, 1.8, 2.3, 2.0, 41.0]   # one slow request
+
+# THE MEAN: add everything, divide by n. One outlier drags it a long way.
+print(sum(lat) / len(lat))              # 6.41 - no request took anywhere near this
+
+# THE MEDIAN: sort, take the middle. The outlier moves it by nothing.
+s = sorted(lat)
+n = len(s)
+median = s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+print(median)                           # 2.10 - describes a typical request
+
+# THE RATIO: the fastest diagnostic in this whole part of the guide.
+print((sum(lat) / len(lat)) / median)   # 3.05 -&gt; heavily right skewed</code></pre>
+</div>
+
+<h3>Spread: how much things vary</h3>
+<figure><img src="figs/stats-005.png" alt="Normal curves of different widths, and box plots with and without outliers"><figcaption>Left: standard deviation controls the width. Right: two outliers barely move the box (which is built from quartiles) but would move the standard deviation a lot.</figcaption></figure>
+<div class="tw"><table><thead><tr><th>Measure</th><th>Definition in words</th><th>Strength</th><th>Weakness</th></tr></thead><tbody>
+<tr><td><b>Variance</b></td><td>Average squared distance from the mean</td><td>Adds up nicely across independent sources, which is why the maths uses it</td><td>Wrong units. Variance of seconds is in seconds squared</td></tr>
+<tr><td><b>Standard deviation</b></td><td>Square root of variance, back in the original units</td><td>Interpretable. Roughly 68% of normal data sits within 1 sd</td><td>One extreme value can dominate it</td></tr>
+<tr><td><b>IQR</b></td><td>The range covering the middle 50%, p75 minus p25</td><td>Outliers cannot touch it</td><td>Ignores the tails entirely, which may be the thing you care about</td></tr>
+<tr><td><b>MAD</b></td><td>Median of the absolute distances from the median</td><td>Very robust</td><td>Less familiar, and needs a scaling constant to compare with sd</td></tr>
+</tbody></table></div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Four measures of spread</span></div>
+  <div class="eq">\[ s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i-\bar{x})^2 \qquad\qquad s = \sqrt{s^2} \]<span class="eqcap">Sample variance and standard deviation. Dividing by \(n-1\) rather than \(n\) corrects for having used the same data to estimate the mean.</span></div>
+  <div class="eq">\[ \text{IQR} = Q_3 - Q_1 = p_{75} - p_{25} \qquad\qquad \text{MAD} = \operatorname{median}\big(\lvert x_i - \operatorname{median}(x)\rvert\big) \]<span class="eqcap">The two robust measures. Multiply MAD by 1.4826 to compare it with the sd on normal data.</span></div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+
+def spread(x):
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    m = x.mean()
+
+    # VARIANCE: mean squared distance from the mean.
+    # n-1, not n. Dividing by n underestimates, because you used the same
+    # data to compute the mean you are measuring distance from.
+    var = ((x - m) ** 2).sum() / (n - 1)
+
+    q1, q3 = np.quantile(x, [0.25, 0.75])          # IQR: middle 50%
+    med = np.median(x)
+    mad = np.median(np.abs(x - med))               # robust alternative to sd
+
+    return {"sd": var ** 0.5, "var": var, "iqr": q3 - q1,
+            "mad": mad, "mad_scaled": 1.4826 * mad}   # scaled to match sd on normal data
+
+clean = [1.9, 2.1, 2.0, 2.4, 2.2, 1.8, 2.3, 2.0]
+print(spread(clean))                    # sd 0.194, iqr 0.275, mad 0.150
+print(spread(clean + [41.0]))           # sd 12.9 (!), iqr 0.300, mad 0.200
+# One outlier multiplied the sd by 66x and barely touched the IQR or MAD.</code></pre>
+</div>
+
+<h3>Shape: skew and modality</h3>
+<figure><img src="figs/stats-010.png" alt="Right skewed, symmetric, left skewed, and bimodal distributions"><figcaption>Skew is named for the side the tail is on, not the side the bulk is on. This trips up almost everyone at first.</figcaption></figure>
+<ul>
+  <li><b>Right skewed</b> (positive skew). Long tail to the right. Latency, token counts, tool calls, repo sizes. By far the most common shape in eval work.</li>
+  <li><b>Left skewed</b>. Long tail to the left. Rarer. Shows up in scores near a ceiling, like a pass rate close to 100%.</li>
+  <li><b>Symmetric</b>. Both tails alike. Test statistics, averages of many things.</li>
+  <li><b>Bimodal</b>. Two humps. Almost always two populations mixed together, not one distribution being odd.</li>
+</ul>
+<div class="callout key"><span class="tag">Key idea</span><div>The quickest skew check you can do in your head: <b>divide the mean by the median</b>. Above about 1.2 means right skewed enough that you should stop reporting the mean. Below about 0.85 means left skewed. This one ratio catches most bad reporting.</div></div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Skewness, formally and quickly</span></div>
+  <div class="eq">\[ g_1 = \frac{\frac{1}{n}\sum (x_i-\bar{x})^3}{s^3} \]<span class="eqcap">Formal skewness. Positive means a right tail. In practice the mean/median ratio below is quicker and just as useful.</span></div>
+  <div class="eq">\[ \frac{\bar{x}}{\operatorname{median}(x)} > 1.2 \;\Rightarrow\; \text{right skewed} \]</div>
+</div>
+
+<h3>Density, cumulative, and quantiles</h3>
+<p>Three ways of describing the same shape. You need all three because different questions want different ones.</p>
+<ul>
+  <li><b>Density (PDF)</b> answers "how common is a value around here". This is the humped curve you picture when someone says distribution.</li>
+  <li><b>Cumulative (CDF)</b> answers "what share of values are at or below here". Always rises from 0 to 1.</li>
+  <li><b>Quantiles</b> are the CDF read backwards: "what value has 95% of the data below it". p95 is a quantile. So is the median, which is p50.</li>
+</ul>
+<div class="callout note"><span class="tag">Note</span><div>Percentile and quantile are the same thing at different scales. p95, the 95th percentile, and the 0.95 quantile are three names for one number.</div></div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">CDF and quantile function</span></div>
+  <div class="eq">\[ F(x) = P(X \le x) \qquad\qquad Q(p) = F^{-1}(p) \]<span class="eqcap">The CDF gives the share at or below a value. The quantile function is its inverse: give it 0.95 and it hands back p95.</span></div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+
+lat = np.array([1.2, 1.5, 1.9, 2.1, 2.4, 3.0, 4.5, 8.0, 15.0, 40.0])
+
+# QUANTILE: what value has p of the data below it?
+print(np.quantile(lat, 0.50))     # 2.70  -&gt; the median
+print(np.quantile(lat, 0.95))     # 28.7  -&gt; p95
+
+# CDF: run it the other way. What share is at or below 4.5?
+print((lat &lt;= 4.5).mean())        # 0.70
+
+# These are inverses of each other. Same information, two directions.</code></pre>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Reading a dashboard number without being fooled</span></div>
+  <p>Most bad decisions built on eval data are not caused by exotic statistics. They come from a single summary number standing in for a shape nobody looked at. The questions below take thirty seconds and catch most of it.</p>
+  <ul>
+    <li><b>"Is that a mean or a median, and what is the other one?"</b> For latency, cost per task, or tokens per response, a mean far above the median tells you a tail is driving the number. A mean is right for capacity and budget (totals); a median or p95 is right for user experience.</li>
+    <li><b>"What is the spread, and in what units?"</b> A 3 point win means little if per-task scores swing by 20 points. Ask for an IQR or a percentile band, not just an average.</li>
+    <li><b>"Has anyone plotted it?"</b> A bimodal distribution, such as cache hits versus cold starts or easy versus hard tasks, means there are two stories. Averaging them produces a number that describes neither and hides which one moved.</li>
+    <li><b>"Which population is this a sample of?"</b> An eval suite is a sample chosen by people. If it over-represents easy or old tasks, every summary inherits that.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>"The mean latency improved by 12%. What happened to p50 and p95?" If the mean improved because a handful of pathological requests got fixed, that is good engineering but says nothing about the typical user. If p95 got worse while the mean improved, the launch may hurt the users who already suffer most.</div></div>
+</div>
+</section>

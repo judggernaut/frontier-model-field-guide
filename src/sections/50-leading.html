@@ -1,0 +1,129 @@
+<section id="leading" data-title="Connecting training and evaluation">
+<h2>Connecting training and evaluation</h2>
+<p>Parts II and III describe two machines. One makes models. The other tells you whether they got better. This chapter is about running both as one system, and about the judgment calls that separate a senior reviewer from someone who reads results off a dashboard.</p>
+
+<h3>The loop</h3>
+<div class="pipeline">
+  <div class="stage"><b>Hypothesis</b>What should improve, and why</div>
+  <div class="stage"><b>Training change</b>Data, objective, method, or scale</div>
+  <div class="stage"><b>Eval</b>Suite chosen before the run</div>
+  <div class="stage"><b>Analysis</b>Paired deltas, intervals, slices</div>
+  <div class="stage"><b>Decision</b>Ship, iterate, or kill</div>
+  <div class="stage"><b>Online signal</b>Feeds the next hypothesis</div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The scale and the diet</span></div>
+  <p>Training is the diet. Evaluation is the bathroom scale. If the scale is wrong, every diet looks like it works or none does. If you only ever weigh yourself on one scale, you start eating whatever moves that particular scale, even if it does nothing for your health. Teams that train models face the same trap. Whatever you measure becomes what you optimise, so you need scales you trust, more than one of them, and some you never look at until the end.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Evals are the objective function of the organisation</span></div>
+  <p>In a training organisation, the eval suite is the de facto objective function. People will optimise whatever gets reported in the weekly review. That gives the eval owner unusual leverage and unusual responsibility.</p>
+  <ul>
+    <li><b>Goodhart is the default.</b> Every metric that drives decisions will be gamed, usually without bad intent. Training data drifts toward benchmark-like content, prompts drift toward judge preferences, and RL policies find verifier loopholes. Plan for it: rotate suites, keep private holdouts, and audit the largest gains first.</li>
+    <li><b>Separate the scales.</b> Keep three tiers: development evals the training team can see every day, decision evals reviewed at milestones, and sealed holdouts that only an independent owner runs before launch. If the sealed set disagrees with the development set, believe the sealed set.</li>
+    <li><b>Pre-register the decision.</b> Write down, before the run, which evals decide success and what delta counts. Post hoc selection of the metric that moved is the most common way a team fools itself.</li>
+    <li><b>Price the evals.</b> Evaluation is a real fraction of compute and headcount. A suite that cannot detect the effect sizes your training changes produce (see <a href="#evalstats">power and sample size</a>) is pure cost. Fund fewer, better-powered evals over many thin ones.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why gains shrink when they reach the holdout</span></div>
+  <p>Suppose you try \(m\) training variants and pick the one with the best development score. Even if every variant has the same true quality, the winner's observed score is biased upward by the expected maximum of \(m\) noise draws. With per-variant standard error \(\sigma\), that bias is roughly</p>
+  <div class="eq">\[ \mathbb{E}\big[\max_{i\le m} \varepsilon_i\big] \approx \sigma\sqrt{2\ln m} \]<span class="eqcap">For \(m=20\) variants and \(\sigma = 1\) point, the "best" variant looks about 2.4 points better than it is. This is the winner's curse, and it is why a fresh holdout almost always shows a smaller gain than the development set.</span></div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+
+rng = np.random.default_rng(0)
+m, sigma, trials = 20, 1.0, 20000
+best_dev = rng.normal(0, sigma, size=(trials, m)).max(axis=1)   # all variants truly equal
+print(round(best_dev.mean(), 2))                 # ~1.87 (the asymptotic formula overstates at small m)
+print(round(sigma * np.sqrt(2 * np.log(m)), 2))  # 2.45</code></pre>
+  <p>The practical fix is the same as in any selection problem: hold out a set you never select on, and report the selected model's score on it.</p>
+</div>
+
+<h3>Is this result real? Seeds and run-to-run noise</h3>
+<p>Training runs are noisy. The same recipe with a different random seed lands at a different score. Before you believe a gain from a training change, you need to know how large that seed noise is compared with the gain.</p>
+
+<div class="widget" id="w-ld-seeds">
+  <div class="wtitle">Seeds needed to trust a gain</div>
+  <div class="wsub">Set how much a score moves between seeds and the gain someone is claiming. The chart shows how likely you are to see the gain as significant with more seeds per arm, and the readout says what a single-seed comparison is worth.</div>
+  <div class="controls">
+    <div class="ctl"><label for="ld-sd">Seed-to-seed std (points): <output id="ld-sd-o"></output></label><input type="range" id="ld-sd" min="0.1" max="3" step="0.1" value="0.8"></div>
+    <div class="ctl"><label for="ld-d">Claimed gain (points): <output id="ld-d-o"></output></label><input type="range" id="ld-d" min="0.1" max="5" step="0.1" value="1"></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Chance 1 vs 1 seed shows the wrong sign</div><div class="v" data-wrong></div></div>
+    <div class="mc"><div class="l">Seeds per arm for 80% power</div><div class="v" data-n80></div></div>
+    <div class="mc"><div class="l">Gain / seed std</div><div class="v" data-ratio></div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">One run is one coin flip</span></div>
+  <p>If you train the same model twice, you get two slightly different results, like flipping a coin twice. A claimed one-point gain from comparing one run against one other run can easily be luck. The widget shows how many repeat runs you need before a gain of a given size is believable.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What to require before you believe an ablation</span></div>
+  <ul>
+    <li><b>Ask for the seed variance first.</b> No one can interpret a delta without it. If the team does not know it, the first deliverable is three seeds of the baseline.</li>
+    <li><b>Compute-matched comparisons.</b> A new method that also used 30 percent more compute has not been compared with the baseline. Insist on equal FLOPs, equal tokens, or an explicit compute-versus-quality curve.</li>
+    <li><b>Tuned baselines.</b> The new method usually gets more tuning effort than the baseline. Ask how many hyperparameter trials each arm got.</li>
+    <li><b>Small-scale results transfer imperfectly.</b> Many gains at 1B parameters vanish at 70B, and some appear only at scale. Ask whether the trend holds across at least two or three model sizes before it drives a large run.</li>
+    <li><b>Kill criteria.</b> Every research bet should state in advance what result would stop it. Without one, projects drift for quarters.</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The arithmetic behind the widget</span></div>
+  <p>With \(n\) seeds per arm, seed standard deviation \(s\), and true gain \(\delta\), the difference in arm means has standard error \(s\sqrt{2/n}\). A two-sided test at \(\alpha = 0.05\) has power approximately</p>
+  <div class="eq">\[ \text{power}(n) \approx \Phi\!\left(\frac{\delta}{s\sqrt{2/n}} - 1.96\right), \qquad n_{80} = \left\lceil 2\left(\frac{(1.96 + 0.84)\,s}{\delta}\right)^2 \right\rceil \]<span class="eqcap">\(\Phi\) is the standard normal CDF. With very few seeds a t-distribution is more honest and needs slightly more seeds than this normal approximation.</span></div>
+  <p>The chance a single seed versus a single seed shows the wrong sign is \(\Phi\big(-\delta/(s\sqrt{2})\big)\). When the gain equals the seed standard deviation, that is about 24 percent: one comparison in four points the wrong way.</p>
+</div>
+
+<h3>A reviewer's checklist</h3>
+<p>Use this when someone shows you a training result or an eval delta. Each item links to the chapter that explains it.</p>
+<div class="tw"><table>
+<thead><tr><th>Question</th><th>Why it matters</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td>What is the interval on that number, and what is n?</td><td>A point estimate without uncertainty cannot support a decision.</td><td><a href="#evalstats">Eval statistics</a></td></tr>
+<tr><td>Was the comparison paired on the same items?</td><td>Unpaired tests throw away most of the power.</td><td><a href="#evalstats">Eval statistics</a></td></tr>
+<tr><td>How many metrics or benchmarks were looked at?</td><td>With 40 benchmarks, two "significant" moves are expected by chance.</td><td><a href="#evalstats">Multiple comparisons</a></td></tr>
+<tr><td>Are items clustered (multi-turn, agent traces, per-repo tasks)?</td><td>Naive intervals can be several times too narrow.</td><td><a href="#intervals">Clustering</a></td></tr>
+<tr><td>What is the seed variance, and how many seeds?</td><td>Single-run comparisons are coin flips at small effect sizes.</td><td>This chapter</td></tr>
+<tr><td>Is the comparison compute-matched and baseline-tuned?</td><td>Otherwise you are measuring effort, not method.</td><td>This chapter, <a href="#scaling">scaling</a></td></tr>
+<tr><td>Who or what scored it, and was the scorer validated?</td><td>Judges carry bias and absolute-level offsets.</td><td><a href="#judges">LLM as judge</a></td></tr>
+<tr><td>Could the eval items be in the training data?</td><td>Contamination inflates scores and hides real capability.</td><td><a href="#contamination">Contamination</a></td></tr>
+<tr><td>Does the offline gain predict an online gain?</td><td>Offline suites overstate and sometimes point the wrong way.</td><td><a href="#gap">Offline to online gap</a></td></tr>
+<tr><td>What got worse?</td><td>Every training change has regressions; a report without them is incomplete.</td><td><a href="#sft">SFT</a>, <a href="#triage">triage</a></td></tr>
+<tr><td>Was decoding held fixed?</td><td>Temperature and sampling settings alone can move scores by points.</td><td><a href="#inference">Inference</a></td></tr>
+<tr><td>Is the reward or verifier being exploited?</td><td>RL finds loopholes faster than people do.</td><td><a href="#reward-models">Reward models</a>, <a href="#grpo">GRPO</a></td></tr>
+</tbody></table></div>
+
+<h3>Red flags, and what they usually mean</h3>
+<div class="tw"><table>
+<thead><tr><th>You see</th><th>Likely cause</th><th>Ask</th></tr></thead>
+<tbody>
+<tr><td>Huge gain on one benchmark, nothing elsewhere</td><td>Contamination, benchmark-specific data, or format overfitting</td><td>Score on a perturbed or fresh version of that benchmark</td></tr>
+<tr><td>Judge win rate up, human ratings flat</td><td>Optimising toward judge preferences (length, style)</td><td>Length-controlled win rate and a human spot check</td></tr>
+<tr><td>Reward keeps climbing during RL, quality plateaus</td><td>Reward overoptimisation or verifier hacking</td><td>Samples from late checkpoints; gold-reward or held-out checks</td></tr>
+<tr><td>pass@1 up, pass@k at large k down</td><td>RL sharpening the distribution rather than adding capability</td><td>pass@k curves before and after</td></tr>
+<tr><td>Offline up, online flat</td><td>Eval distribution or harness differs from real usage</td><td>Backtest of offline vs online deltas across past releases</td></tr>
+<tr><td>Smooth loss improvement, sudden "emergent" jump in accuracy</td><td>Thresholded metric hiding steady progress</td><td>A continuous metric (log-likelihood or partial credit) on the same items</td></tr>
+<tr><td>Big gain, one seed, no interval</td><td>Noise</td><td>Three seeds per arm and a paired test</td></tr>
+</tbody></table></div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Communicating uncertainty upward</span></div>
+  <p>Executives need a decision, not a lecture on intervals. A pattern that works:</p>
+  <ol class="steps">
+    <li><div><b>Lead with the decision and your confidence.</b> "Recommend shipping. We are confident it is not worse and fairly confident it is better on coding."</div></li>
+    <li><div><b>Give the number with its range in plain words.</b> "Coding pass rate up about 3 points, plausibly between 1 and 5."</div></li>
+    <li><div><b>Name the main risk and how you are watching it.</b> "Long-context retrieval slipped slightly. We are monitoring it in the staged rollout with a rollback trigger."</div></li>
+    <li><div><b>Say what would change your mind.</b> This builds trust when something does change.</div></li>
+  </ol>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>
+    <ul>
+      <li>What would we have to believe for this result to be wrong?</li>
+      <li>If we had half the eval budget, which evals would we keep, and why?</li>
+      <li>Which of our evals has disagreed with production most often, and what did we change because of it?</li>
+      <li>What is the smallest effect our suite can reliably detect, and is that smaller than the effects we are trying to ship?</li>
+      <li>Who owns the sealed holdout, and when did someone last look at failures on it by hand?</li>
+    </ul>
+  </div></div>
+</div>
+</section>

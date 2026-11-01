@@ -1,0 +1,199 @@
+<section id="gap" data-title="The offline to online gap">
+<h2>The offline to online gap: does the lab score predict the real world?</h2>
+<p>Every offline eval is a bet that a number computed on a fixed task set will move the same way as the thing you actually care about: user acceptance, retention, task success in production. This chapter is about testing that bet, putting a number on how wrong it is, and saying honestly how much of the gap you can close.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The driving test and the commute</span></div>
+  <p>A driving test happens on a quiet route, in good weather, with an examiner watching. Passing it predicts how someone drives on a real commute, but not perfectly. Some careful test-takers panic in traffic. Some sloppy ones are fine in practice.</p>
+  <p>An offline eval is the driving test. Production is the commute. The questions in this chapter are simple to say: when a new model scores better on the test, does it also do better on the commute? By how much? And how often does the test point the wrong way entirely?</p>
+  <p>Two things to keep apart. First, <b>ordering</b>: does the test rank drivers in the same order as real life? Second, <b>size</b>: if someone improves by 10 points on the test, how many points is that on the road? Ordering is the more important and easier question. Size comes second.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why this is the most important number your eval team does not report</span></div>
+  <p>An offline suite that has never been checked against production is a story, not a measurement. Most teams report offline deltas as if they were product deltas. The difference shows up months later as a launch that won offline and did nothing online, or worse, a regression that offline scored as a win.</p>
+  <p>What to ask for, in order:</p>
+  <ol class="steps">
+    <li><div><b>A rank check.</b> Across the last 8 to 15 releases, does the offline suite order models the same way production does? Kendall's tau is the honest statistic at that sample size.</div></li>
+    <li><div><b>A calibration line.</b> A fit of online delta against offline delta. The slope tells you how much offline overstates. A slope of 0.6 means a 10 point offline win is worth about 6 points in production.</div></li>
+    <li><div><b>A backtest.</b> Leave-one-out prediction of each past release from all the others. Report the typical miss, the worst miss, and above all <b>direction accuracy</b>: how often offline and online disagreed on whether the release was better.</div></li>
+    <li><div><b>A decomposition of the remaining gap</b> into what is fixable (task coverage, harness realism, judge fidelity) and what is not (user variance, traffic drift). This is what tells you where to spend.</div></li>
+  </ol>
+  <p><b>What to fund.</b> If direction accuracy is below about 85%, the offline suite cannot gate launches on its own and you need online experiments for every material change. That is expensive, so the higher-return investment is usually the fixable buckets: realistic harnesses and task sets drawn from real usage.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>
+    <ul>
+      <li>How many releases is this calibration fitted on, and what happens to the error if you drop to half of them?</li>
+      <li>What is the worst single miss, and what was different about that release?</li>
+      <li>Has the product or traffic mix changed since the oldest release in the fit? If so, why should yesterday's slope hold?</li>
+      <li>Of the remaining gap, how much do you believe is irreducible, and how did you estimate it?</li>
+    </ul></div></div>
+</div>
+
+<h3>Does offline predict online at all</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Same order, before same size</span></div>
+  <p>Line up past models by their offline score, then by their production score. If the two line-ups mostly agree, offline is useful for picking winners even if its numbers are inflated. If they do not agree, nothing else in this chapter rescues it.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Spearman and Kendall rank correlation</span></div>
+  <p>Spearman's \(\rho\) is the Pearson correlation of the ranks. Kendall's \(\tau\) counts pairs of releases that the two measures order the same way (concordant, \(C\)) versus opposite ways (discordant, \(D\)):</p>
+  <div class="eq">\[ \tau = \frac{C - D}{C + D} \]<span class="eqcap">Ties are excluded from both counts in this simple version (tau-a over untied pairs). \(\tau = 1\) means offline and online order every pair the same way.</span></div>
+  <p>With 8 to 15 releases, which is realistic, \(\tau\) is more stable than \(\rho\) and has a direct reading: \(\tau = 0.6\) means 80% of release pairs are ordered correctly, because \((C-D)/(C+D) = 2\cdot\text{share}_C - 1\).</p>
+  <pre class="code" data-lang="python"><code>def spearman(x: list[float], y: list[float]) -> float:
+    """Rank correlation. The right first question for offline vs online:
+    does the offline suite ORDER models the way production does?
+    Absolute calibration is a separate and easier problem."""
+    def ranks(v):
+        order = sorted(range(len(v)), key=lambda i: v[i])
+        r = [0.0] * len(v)
+        i = 0
+        while i < len(order):
+            j = i
+            while j + 1 < len(order) and v[order[j + 1]] == v[order[i]]:
+                j += 1
+            avg = (i + j) / 2 + 1          # tied values share the average rank
+            for k in range(i, j + 1):
+                r[order[k]] = avg
+            i = j + 1
+        return r
+
+    rx, ry = ranks(x), ranks(y)
+    n = len(x)
+    mx, my = sum(rx) / n, sum(ry) / n
+    num = sum((a - mx) * (b - my) for a, b in zip(rx, ry))
+    den = (sum((a - mx) ** 2 for a in rx) * sum((b - my) ** 2 for b in ry)) ** 0.5
+    return num / den if den else 0.0
+
+
+def kendall_tau(x: list[float], y: list[float]) -> float:
+    """More robust than Spearman when you have few models. With 8 to 15 model
+    releases, which is the realistic n, tau is the honest choice."""
+    n = len(x)
+    conc = disc = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            sx = (x[i] - x[j])
+            sy = (y[i] - y[j])
+            if sx * sy > 0:
+                conc += 1
+            elif sx * sy < 0:
+                disc += 1
+    total = conc + disc
+    return (conc - disc) / total if total else 0.0</code></pre>
+  <div class="callout warn"><span class="tag">Watch out</span><div>With 10 releases there are only 45 pairs, and a 95% interval on \(\tau\) is roughly ±0.45 wide. A \(\tau\) of 0.5 on ten releases is consistent with anything from barely useful to excellent. Bootstrap over releases (see <a href="#intervals">intervals and the bootstrap</a>) before you quote it.</div></div>
+</div>
+
+<h3>Calibrating the offline delta to the online delta</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">An exchange rate between two currencies</span></div>
+  <p>Offline points and production points are different currencies. The calibration line is the exchange rate. If the rate is 0.6, a 10 point offline win buys about 6 points online. The scatter around the line tells you how much that exchange rate wobbles from release to release.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Least squares on release deltas</span></div>
+  <p>For each past release \(i\), take the offline delta \(x_i\) against the previous model and the online delta \(y_i\) from the A/B test. Fit</p>
+  <div class="eq">\[ y_i = a\,x_i + b + \varepsilon_i, \qquad \hat a = \frac{\sum (x_i-\bar x)(y_i-\bar y)}{\sum (x_i-\bar x)^2}, \qquad \hat b = \bar y - \hat a \bar x \]<span class="eqcap">\(\hat a &lt; 1\) means offline overstates improvements, which is the common case because offline tasks are cleaner and easier than production. Shrinkage \(1-\hat a\) is the gap as a single number. The residual spread is the real prediction interval.</span></div>
+  <pre class="code" data-lang="python"><code>def fit_gap_model(offline_deltas: list[float], online_deltas: list[float]) -> dict:
+    """Least squares fit of online_delta ~ a * offline_delta + b."""
+    n = len(offline_deltas)
+    mx = sum(offline_deltas) / n
+    my = sum(online_deltas) / n
+
+    # Standard least squares slope: covariance over variance of x.
+    sxy = sum((x - mx) * (y - my) for x, y in zip(offline_deltas, online_deltas))
+    sxx = sum((x - mx) ** 2 for x in offline_deltas)
+    a = sxy / sxx if sxx else 0.0        # sxx == 0 when every release moved identically
+    b = my - a * mx                      # line passes through the means
+
+    resid = [y - (a * x + b) for x, y in zip(offline_deltas, online_deltas)]
+    rmse = (sum(r * r for r in resid) / n) ** 0.5      # typical prediction miss
+    ss_tot = sum((y - my) ** 2 for y in online_deltas)
+    r2 = 1 - sum(r * r for r in resid) / ss_tot if ss_tot else 0.0
+
+    return {"slope": a, "intercept": b, "rmse": rmse, "r2": r2,
+            # slope &lt; 1 means offline OVERSTATES improvements, the common case,
+            # because the offline suite is cleaner than production.
+            "shrinkage": 1 - a}</code></pre>
+  <div class="callout note"><span class="tag">Note</span><div>Ordinary least squares assumes the offline delta is measured without error. It is not: offline deltas carry their own sampling noise, which biases \(\hat a\) toward zero (attenuation bias). With small eval sets this makes offline look worse at predicting online than it really is. Larger offline suites, or an errors-in-variables fit, reduce the effect.</div></div>
+</div>
+
+<h3>Backtest: the part that makes it a method instead of a story</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Predict the past you have not looked at</span></div>
+  <p>Any line looks good on the points it was drawn through. The fair test is to hide one past release, draw the line through the rest, and see how well it predicts the hidden one. Repeat for every release. That is a backtest, and it is the only honest estimate of how well the next prediction will go.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Which number gates a launch</span></div>
+  <p>The backtest produces three numbers. The <b>mean absolute error</b> is the headline gap. The <b>worst miss</b> is the one a skeptic will ask about. <b>Direction accuracy</b> is the one that matters for a ship decision: predicting +3 when the truth was +1 is a small error, but predicting +1 when the truth was −1 means you shipped a worse model. A suite with small MAE and 70% direction accuracy is not fit to gate launches.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Leave-one-out over releases</span></div>
+  <pre class="code" data-lang="python"><code>def backtest_suite(history: list[dict]) -> dict:
+    """history: one entry per past release with {"model", "offline", "online"}."""
+    errors, sign_hits = [], 0
+
+    for i in range(len(history)):
+        # LEAVE ONE OUT: fit on every release EXCEPT this one, then predict it.
+        # Fitting and scoring on the same releases always looks good and tells
+        # you nothing about the next release, which is the one you care about.
+        train = history[:i] + history[i + 1:]
+        test = history[i]
+
+        fit = fit_gap_model([h["offline"] for h in train],
+                            [h["online"] for h in train])
+        pred = fit["slope"] * test["offline"] + fit["intercept"]
+
+        errors.append(abs(pred - test["online"]))
+
+        # DIRECTION is the ship decision. Track it separately from error size
+        # because the two failures are not the same.
+        if (pred > 0) == (test["online"] > 0):
+            sign_hits += 1
+
+    return {
+        "mae": sum(errors) / len(errors),           # your headline "gap" number
+        "direction_accuracy": sign_hits / len(history),
+        "worst_case": max(errors),                  # the one they will ask about
+    }</code></pre>
+  <div class="callout example"><span class="tag">Worked problem</span><div>
+    <p><b>Fourteen past releases, each with an offline delta and an online delta. How well does offline predict online?</b></p>
+    <pre class="code" data-lang="python"><code>import numpy as np
+
+def leave_one_out(off, on):
+    """Fit on every release EXCEPT one, predict that one."""
+    errs, sign_hits = [], 0
+    for i in range(len(off)):
+        xs, ys = np.delete(off, i), np.delete(on, i)
+        a = ((xs - xs.mean()) * (ys - ys.mean())).sum() / ((xs - xs.mean()) ** 2).sum()
+        b = ys.mean() - a * xs.mean()
+        pred = a * off[i] + b
+        errs.append(abs(pred - on[i]))
+        if (pred > 0) == (on[i] > 0):          # did we get the DIRECTION right?
+            sign_hits += 1
+    return {"mae": np.mean(errs), "worst": max(errs),
+            "direction_accuracy": sign_hits / len(off)}</code></pre>
+    <div class="tw"><table><thead><tr><th>Result</th><th>Value</th><th>What it means</th></tr></thead><tbody>
+      <tr><td>Fitted slope</td><td class="n">0.616</td><td>Offline overstates: a 10 point offline move is about 6 points online</td></tr>
+      <tr><td>Shrinkage</td><td class="n">0.384</td><td>That 38% is the gap, expressed as one number</td></tr>
+      <tr><td>Leave-one-out MAE</td><td class="n">0.0122</td><td>Typical prediction miss, 1.2 points</td></tr>
+      <tr><td>Worst single miss</td><td class="n">0.0352</td><td>The one a reviewer will ask about</td></tr>
+      <tr><td><b>Direction accuracy</b></td><td class="n"><b>0.857</b></td><td><b>Two of fourteen releases pointed the wrong way</b></td></tr>
+    </tbody></table></div>
+    <p>The figures are illustrative. Direction accuracy is the number that matters for a ship decision. MAE can look small while the suite still points the wrong way on the releases you cared about.</p>
+  </div></div>
+</div>
+
+<div class="widget" id="w-gapfit"><div class="wtitle">Offline vs online, fitted and backtested</div><div class="wsub">Each dot is a past release. The fitted line is your calibration. Orange dots are releases where offline and online disagreed on the direction. Drop the release count to 6 and watch the leave one out error jump, which is what overfitting a handful of releases looks like.</div><div class="controls"><div class="ctl"><label data-l1>releases</label><input type="range" data-n min="5" max="40" step="1" value="14"></div><div class="ctl"><label data-l2>true shrinkage</label><input type="range" data-slope min="0.2" max="1.2" step="0.05" value="0.65"></div><div class="ctl"><label data-l3>noise</label><input type="range" data-noise min="0.0" max="0.05" step="0.002" value="0.015"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+
+<div class="callout warn"><span class="tag">Watch out</span><div>Three attacks on this method, and you should have answers ready for all three. <b>One:</b> the calibration is fitted on a handful of releases, so it is overfit to small n. <b>Two:</b> the online distribution moves when the model changes user behaviour, so yesterday's calibration may not hold (the population you are predicting is itself shifting). <b>Three:</b> MAE flatters the method; direction accuracy is what decides ship or no ship. Where the honest answer is "that is a real limitation", say so.</div></div>
+
+<h3>What is in the remaining gap</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Four reasons the test and the commute differ</span></div>
+  <p>The test route does not cover every kind of road. The test car is not quite the car people drive. The examiner sometimes judges differently from what actually gets you home safely. And some days traffic is just different. The first three can be fixed with effort. The last one cannot.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Decompose the gap before you fund work on it</span></div>
+  <p>When someone quotes "a 5% gap and closing", ask for the decomposition rather than the number:</p>
+  <div class="four">
+    <div class="tile"><h4>Task distribution</h4><p>Production work the task set does not yet represent: new languages, longer sessions, bigger inputs, new user intents. Fix: sample tasks from real usage, refresh regularly.</p></div>
+    <div class="tile"><h4>Harness realism</h4><p>Missing context, absent tools, unrealistic starting state, no interruptions or retries. Fix: replay real environments, not idealised ones.</p></div>
+    <div class="tile"><h4>Judge fidelity</h4><p>Where the automated judge and a real user disagree about whether the output was useful. Fix: validate the judge against user outcomes (see <a href="#judges">LLM as judge</a>).</p></div>
+    <div class="tile"><h4>Irreducible</h4><p>User behaviour variance, non-stationary traffic mix, acceptance that depends on the person as much as the output. Estimate it; do not promise to remove it.</p></div>
+  </div>
+  <p>Ending with "and this much is irreducible, here is how I estimated it" is a stronger position than claiming the gap can go to zero. It also points spending at the first two buckets, which is where dynamic, usage-derived benchmarks pay off.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Estimating the irreducible floor</span></div>
+  <p>One practical estimate: run the <em>same</em> model in two concurrent online arms (an A/A test). The spread of the measured online "delta" across repeated A/A runs is the noise floor no offline suite can predict through. If the backtest residual RMSE is close to the A/A spread, the offline suite is already about as predictive as it can be, and further offline investment should target coverage, not calibration.</p>
+  <div class="eq">\[ \underbrace{\operatorname{Var}(\text{residual})}_{\text{backtest}} \approx \underbrace{\operatorname{Var}(\text{offline noise})\,\hat a^2}_{\text{bigger eval set}} + \underbrace{\operatorname{Var}(\text{online noise})}_{\text{A/A floor}} + \underbrace{\operatorname{Var}(\text{mismatch})}_{\text{coverage, realism, judge}} \]<span class="eqcap">A rough variance budget, assuming the three sources are independent. Each term points at a different fix.</span></div>
+</div>
+<div class="callout eval"><span class="tag">Eval lens</span><div>Treat the backtest as a standing metric of the eval program itself. Recompute it after every launch. A falling direction accuracy is the earliest warning that the offline suite has drifted away from what users do.</div></div>
+</section>

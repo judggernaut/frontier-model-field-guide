@@ -1,0 +1,138 @@
+<section id="optimization" data-title="Optimisation and infrastructure">
+<h2>Optimisation: how the model actually learns</h2>
+<p>Training is a loop: show the model a batch of text, measure the loss, work out which direction to nudge each of billions of numbers to lower it, take a small step, repeat a few hundred thousand times. This chapter covers how big those steps are, which direction they point, and the hardware arithmetic that decides whether a run is possible at all.</p>
+
+<h3>Gradient descent and the learning rate</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Walking downhill in fog</span></div>
+  <p>Picture standing on a hillside in thick fog, trying to reach the valley floor. You cannot see the valley, but you can feel which way the ground slopes under your feet. So you take a step downhill, feel again, step again. That is <b>gradient descent</b>. The slope is the <b>gradient</b>, and the length of your stride is the <b>learning rate</b>.</p>
+  <p>Strides too short and you take forever. Strides too long and you leap across the valley and up the other side, maybe further up than where you started. Most of the craft of training is choosing stride length well and changing it over time.</p>
+</div>
+
+<div class="widget" id="w-op-gd">
+  <div class="wtitle">Step size on a long, narrow valley</div>
+  <div class="wsub">The ellipses are contours of a loss surface that is ten times steeper in one direction than the other, like most real ones. Try the presets, then move the sliders.</div>
+  <div class="btnrow">
+    <button class="b" type="button" data-preset="small">Too small</button>
+    <button class="b" type="button" data-preset="good">Good</button>
+    <button class="b" type="button" data-preset="large">Too large</button>
+    <button class="b" type="button" data-preset="mom">With momentum</button>
+    <button class="b" type="button" data-preset="adam">Adam</button>
+  </div>
+  <div class="controls">
+    <div class="ctl"><label for="op-lr">Learning rate: <output id="op-lr-o"></output></label><input type="range" id="op-lr" min="0.005" max="0.3" step="0.005" value="0.15"></div>
+    <div class="ctl"><label for="op-beta">Momentum: <output id="op-beta-o"></output></label><input type="range" id="op-beta" min="0" max="0.95" step="0.05" value="0"></div>
+    <div class="ctl"><label for="op-opt">Optimiser</label><select id="op-opt"><option value="sgd">Gradient descent (with momentum if set)</option><option value="adam">Adam</option></select></div>
+  </div>
+  <canvas data-cv="surf"></canvas>
+  <canvas data-cv="loss"></canvas>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why hyperparameters are a budget question</span></div>
+  <p>The learning rate is the most important hyperparameter in a training run. A bad choice wastes the whole run, and at frontier scale nobody can afford to sweep it at full size. So labs tune on small models and transfer the settings using scaling rules (for example, the muP parameterization from Yang et al., 2022, which keeps the best learning rate roughly stable as width grows). Ask how the hyperparameters were chosen and at what scale they were validated.</p>
+  <p>The loss surface of a real network is far from a smooth bowl. It has long narrow valleys, flat plateaus, and cliffs. Optimisers like Adam exist because plain gradient descent handles those shapes badly, as the widget shows: a step size that is safe for the steep direction is painfully slow along the shallow one.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The update rules</span></div>
+  <p>Plain gradient descent on parameters \(\theta\) with learning rate \(\eta\):</p>
+  <div class="eq">\[ \theta_{t+1} = \theta_t - \eta\, \nabla_\theta \mathcal{L}(\theta_t) \]<span class="eqcap">In practice the gradient is estimated on a mini-batch, so this is stochastic gradient descent (SGD).</span></div>
+  <p>On a quadratic with curvature \(\lambda\) along some direction, each step multiplies the error in that direction by \(1 - \eta\lambda\). It shrinks only if \(|1-\eta\lambda| &lt; 1\), so the step must satisfy \(\eta &lt; 2/\lambda_{\max}\). In the widget \(\lambda_{\max} = 10\), so anything above 0.2 diverges. Meanwhile the shallow direction (\(\lambda = 1\)) shrinks by only \(1 - \eta\) per step. The ratio \(\lambda_{\max}/\lambda_{\min}\), the condition number, sets how slow plain descent must be.</p>
+  <p><b>Momentum</b> keeps a running average of past gradients, so consistent directions accelerate and oscillating ones cancel: \(v_{t+1} = \beta v_t + \nabla\mathcal{L}\), \(\theta_{t+1} = \theta_t - \eta v_{t+1}\).</p>
+  <p><b>Adam</b> (Kingma and Ba, 2015) also tracks the average squared gradient per parameter and divides by its square root, so every parameter takes steps of roughly the same size regardless of its gradient scale:</p>
+  <div class="eq">\[ m_t = \beta_1 m_{t-1} + (1-\beta_1) g_t,\quad v_t = \beta_2 v_{t-1} + (1-\beta_2) g_t^2,\quad \theta_{t} = \theta_{t-1} - \eta\left(\frac{\hat m_t}{\sqrt{\hat v_t} + \epsilon} + \lambda\,\theta_{t-1}\right) \]<span class="eqcap">\(\hat m, \hat v\) are bias-corrected: divide by \(1-\beta^t\). The \(\lambda\theta\) term is decoupled weight decay, the "W" in AdamW (Loshchilov and Hutter, 2019). Typical LLM settings: \(\beta_1 = 0.9\), \(\beta_2 = 0.95\), weight decay 0.1.</span></div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+
+def adamw_step(theta, g, m, v, t, lr=3e-4, b1=0.9, b2=0.95, eps=1e-8, wd=0.1):
+    m = b1 * m + (1 - b1) * g                 # first moment: direction
+    v = b2 * v + (1 - b2) * g * g             # second moment: per-parameter scale
+    m_hat = m / (1 - b1 ** t)                 # bias correction for the zero init
+    v_hat = v / (1 - b2 ** t)
+    theta = theta - lr * (m_hat / (np.sqrt(v_hat) + eps) + wd * theta)   # decoupled decay
+    return theta, m, v
+
+theta, m, v = np.array([1.0, -2.0]), np.zeros(2), np.zeros(2)
+theta, m, v = adamw_step(theta, np.array([0.5, 40.0]), m, v, t=1)
+print(theta)   # both coordinates move by about lr, despite an 80x gradient difference</code></pre>
+  <p>Newer optimisers aim to beat AdamW per token. Muon (2024), which orthogonalises the update for matrix parameters, was used at scale in Moonshot's Kimi K2 (2025). AdamW remains the default reference.</p>
+</div>
+
+<h3>Schedules, batch size, and stability</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Start gently, stride out, then slow down to land</span></div>
+  <p>At the very start the model is random and its gradients are wild, so training begins with tiny steps and ramps up (<b>warmup</b>). Then it runs at full stride for most of training. Near the end it shortens its stride to settle into the bottom of the valley (<b>decay</b>). The batch is how many examples it looks at before each step: a bigger batch gives a steadier sense of direction, up to a point.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The knobs that decide wall-clock time and risk</span></div>
+  <ul>
+    <li><b>Schedules.</b> Cosine decay has been the default since GPT-3. Warmup-stable-decay (WSD) schedules, popularised by MiniCPM (Hu et al., 2024), hold the learning rate flat and decay only at the end. That lets a team branch a decayed checkpoint off at any point, which makes it cheap to continue training or to run scaling studies without restarting.</li>
+    <li><b>Batch size.</b> Bigger batches let you use more GPUs in parallel, which shortens wall-clock time. Below the <b>critical batch size</b>, doubling the batch roughly halves the number of steps needed. Above it, you pay for more compute with little speedup (McCandlish et al., 2018). The critical batch size grows as loss falls, so batch size is often increased during a run. Frontier runs use batches of millions of tokens per step.</li>
+    <li><b>Loss spikes.</b> Large runs occasionally see the loss jump. PaLM (Chowdhery et al., 2022) handled spikes by rolling back to a checkpoint about 100 steps earlier and skipping a few hundred batches. Mitigations include gradient clipping (cap the gradient norm, commonly at 1.0), lower learning rates, normalising queries and keys in attention, and careful initialisation.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul>
+    <li>How many spikes did this run have, and how much compute was lost to rollbacks?</li>
+    <li>Were hyperparameters tuned at this scale or transferred? What is the evidence the transfer held?</li>
+    <li>Which results are from a checkpoint before or after the final learning-rate decay? A pre-decay checkpoint understates the model.</li>
+  </ul></div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Cosine and WSD, written out</span></div>
+  <div class="eq">\[ \eta_{\text{cos}}(t) = \eta_{\min} + \tfrac12(\eta_{\max}-\eta_{\min})\left(1+\cos\frac{\pi (t - t_w)}{T - t_w}\right) \quad \text{for } t > t_w \]<span class="eqcap">Linear warmup over \(t_w\) steps first. WSD replaces the cosine with a constant \(\eta_{\max}\) and a short final decay, often 10 to 20 percent of training.</span></div>
+  <p>Gradient clipping rescales \(g \leftarrow g \cdot \min(1, c/\|g\|)\). The gradient noise scale \(B_{\text{noise}} = \mathrm{tr}(\Sigma)/\|G\|^2\), the ratio of per-example gradient variance to the squared true gradient, estimates the critical batch size.</p>
+</div>
+
+<h3>Precision, memory, and parallelism</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The model does not fit on one chip</span></div>
+  <p>A large model's numbers, plus the extra bookkeeping the optimiser keeps, take far more memory than any single GPU has. So training splits the work across thousands of GPUs: some split the data, some split each layer, some split the stack of layers. Teams also store numbers with fewer digits (lower precision) to save memory and go faster, carefully, because too few digits make training unstable.</p>
+</div>
+
+<div class="widget" id="w-op-mem">
+  <div class="wtitle">Training memory per GPU</div>
+  <div class="wsub">Model states only (weights, gradients, optimiser), plus an activation allowance you set. Try a 70B model on 8 GPUs at each ZeRO stage.</div>
+  <div class="controls">
+    <div class="ctl"><label for="op-n">Parameters: <output id="op-n-o"></output></label><input type="range" id="op-n" min="0" max="3" step="0.005" value="1.845"></div>
+    <div class="ctl"><label for="op-o">Optimiser and precision</label><select id="op-o">
+      <option value="16" selected>AdamW, bf16 weights + fp32 master and states (16 B/param)</option>
+      <option value="10">8-bit Adam states + fp32 master (10 B/param)</option>
+      <option value="12">SGD momentum + fp32 master (12 B/param)</option>
+      <option value="8">AdamW, all bf16, no master copy (8 B/param)</option></select></div>
+    <div class="ctl"><label for="op-z">ZeRO / FSDP stage</label><select id="op-z"><option value="0">0: everything replicated</option><option value="1">1: shard optimiser states</option><option value="2">2: + shard gradients</option><option value="3" selected>3: + shard weights (FSDP full shard)</option></select></div>
+    <div class="ctl"><label for="op-g">GPUs in the shard group: <output id="op-g-o"></output></label><input type="range" id="op-g" min="0" max="10" step="1" value="3"></div>
+    <div class="ctl"><label for="op-a">Activations per GPU (GB): <output id="op-a-o"></output></label><input type="range" id="op-a" min="0" max="80" step="1" value="20"></div>
+    <div class="ctl"><label for="op-cap">GPU memory</label><select id="op-cap"><option value="80" selected>80 GB (H100)</option><option value="141">141 GB (H200)</option><option value="192">192 GB (B200)</option></select></div>
+  </div>
+  <canvas></canvas>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The arithmetic behind a GPU request</span></div>
+  <p>The rule of thumb to carry: mixed-precision training with Adam needs about <b>16 bytes per parameter</b> before activations. A 70-billion-parameter model therefore needs about 1.1 TB just for weights, gradients, and optimiser state, which is 14 H100s' worth of memory doing nothing but holding numbers. Sharding (ZeRO, FSDP) spreads that across GPUs; activations, which grow with sequence length and batch size, are handled with recomputation (activation checkpointing) and more parallelism.</p>
+  <div class="four">
+    <div class="tile"><h4>Data parallel</h4><p>Every GPU has a full copy and its own slice of the batch. Simple, but memory-bound. ZeRO / FSDP shard the copies away.</p></div>
+    <div class="tile"><h4>Tensor parallel</h4><p>Split each weight matrix across GPUs in one server (Megatron-LM, Shoeybi et al., 2019). Needs very fast interconnect.</p></div>
+    <div class="tile"><h4>Pipeline parallel</h4><p>Different layers on different GPUs, with micro-batches flowing through. Idle "bubbles" are the cost.</p></div>
+    <div class="tile"><h4>Expert parallel</h4><p>For mixture-of-experts models, different experts live on different GPUs and tokens are routed between them.</p></div>
+  </div>
+  <p><b>Model FLOPs utilisation (MFU)</b> is the share of the hardware's peak arithmetic that goes into useful training math. PaLM reported 46% (Chowdhery et al., 2022); Meta reported 38 to 43% for Llama 3 405B on 16,000 H100s (2024). At these scales, hardware failures are routine, so checkpointing and fast restarts matter as much as raw speed.</p>
+  <p><b>Lower precision.</b> bf16 is standard. DeepSeek-V3 (2024) trained a 671B-parameter mixture-of-experts model largely in FP8, which cuts memory and roughly doubles throughput on supporting hardware, at the price of careful scaling to avoid overflow.</p>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>Infrastructure choices change results in ways that look like model changes. Different precision, batch size, or parallel layout can shift evaluation numbers slightly through nondeterminism. Before attributing a small benchmark delta to a training change, rerun the eval on the same checkpoint and confirm the run-to-run noise floor.</div></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Memory and MFU formulas</span></div>
+  <p>With \(\Psi\) parameters, \(N_d\) data-parallel GPUs, and \(K\) bytes of optimiser state per parameter (\(K=12\) for fp32 master weights plus Adam's two moments), the per-GPU model-state memory under ZeRO (Rajbhandari et al., 2020) is:</p>
+  <div class="eq">\[ \underbrace{(2+2+K)\Psi}_{\text{stage 0}},\quad \underbrace{4\Psi + \tfrac{K\Psi}{N_d}}_{\text{stage 1}},\quad \underbrace{2\Psi + \tfrac{(2+K)\Psi}{N_d}}_{\text{stage 2}},\quad \underbrace{\tfrac{(4+K)\Psi}{N_d}}_{\text{stage 3}} \]<span class="eqcap">2 bytes each for bf16 weights and gradients. Stage 3 is what PyTorch FSDP calls full sharding.</span></div>
+  <p>A dense transformer spends about \(6\Psi\) FLOPs per training token (2 forward, 4 backward), ignoring the attention term that grows with context length. So:</p>
+  <div class="eq">\[ \text{MFU} = \frac{6\Psi \cdot \text{tokens per second}}{N_{\text{GPU}} \cdot \text{peak FLOP/s}} \]</div>
+  <pre class="code" data-lang="python"><code>def model_state_gb(params, n_gpu, stage, k=12):
+    p = params
+    per = {0: (4 + k) * p,
+           1: 4 * p + k * p / n_gpu,
+           2: 2 * p + (2 + k) * p / n_gpu,
+           3: (4 + k) * p / n_gpu}[stage]
+    return per / 1e9
+
+for s in range(4):
+    print(s, round(model_state_gb(70e9, 8, s), 1), "GB per GPU")
+# 0 1120.0   1 385.0   2 262.5   3 140.0   -> even full sharding over 8 GPUs exceeds 80 GB
+
+def mfu(params, tok_per_s, n_gpu, peak=989e12):          # H100 dense bf16 peak
+    return 6 * params * tok_per_s / (n_gpu * peak)
+print(round(mfu(405e9, 2.6e6, 16000), 2))                 # about 0.4</code></pre>
+</div>
+</section>

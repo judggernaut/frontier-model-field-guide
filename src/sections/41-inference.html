@@ -1,0 +1,181 @@
+<section id="inference" data-title="Inference, decoding, and test-time compute">
+<h2>Inference, decoding, and test-time compute</h2>
+<p>Training produces a probability distribution over the next token. Everything after that, how you pick tokens, how many answers you generate, how you choose among them, and how you fit it all onto hardware, is inference. These choices change benchmark scores as much as some training changes do, and they set what the model costs to serve. This chapter covers decoding, measuring with sampling, spending more compute at answer time, and serving economics.</p>
+
+<h3>Decoding: turning probabilities into text</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Choosing the next word from a ranked list</span></div>
+  <p>At every step the model hands you a ranked list of possible next words with a probability for each. You have to pick one. Always taking the top word ("greedy") is safe but repetitive. Picking at random in proportion to the probabilities is more varied but sometimes picks something silly from far down the list.</p>
+  <p>The settings are dials on that choice. <b>Temperature</b> flattens the list (more adventurous) or sharpens it (more predictable). <b>Top-k</b> keeps only the top k words. <b>Top-p</b> keeps the smallest set of top words whose probabilities add up to p. <b>Min-p</b> keeps any word at least some fraction as likely as the favourite. All of them trim the silly tail while keeping some variety.</p>
+</div>
+
+<div class="widget" id="w-in-decode">
+  <div class="wtitle">Decoding explorer</div>
+  <div class="wsub">The model is completing "The weather today is". Bars show each candidate's probability after temperature; greyed bars are cut by the filters. Filters apply in order: temperature, top-k, top-p, min-p, then renormalise.</div>
+  <div class="controls">
+    <div class="ctl"><label for="in-t">Temperature: <output id="in-t-o">1.00</output></label><input type="range" id="in-t" min="0.05" max="2" step="0.05" value="1"></div>
+    <div class="ctl"><label for="in-k">Top-k: <output id="in-k-o">12</output></label><input type="range" id="in-k" min="1" max="12" step="1" value="12"></div>
+    <div class="ctl"><label for="in-p">Top-p: <output id="in-p-o">1.00</output></label><input type="range" id="in-p" min="0.05" max="1" step="0.05" value="1"></div>
+    <div class="ctl"><label for="in-m">Min-p: <output id="in-m-o">0.00</output></label><input type="range" id="in-m" min="0" max="0.5" step="0.01" value="0"></div>
+  </div>
+  <div class="btnrow"><button class="b" data-preset="greedy">Greedy</button><button class="b" data-preset="chat">Typical chat (T 0.7, top-p 0.9)</button><button class="b" data-preset="eval">Sampling eval (T 1.0, top-p 0.95)</button><button class="b" data-preset="reset">Reset</button></div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Tokens that can be sampled</div><div class="v" data-n></div></div>
+    <div class="mc"><div class="l">Entropy (bits)</div><div class="v" data-h></div></div>
+    <div class="mc"><div class="l">Top token probability</div><div class="v" data-top></div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Decoding settings are part of the result</span></div>
+  <ul>
+    <li><b>A score without its decoding settings is not a result.</b> The same model can move several points on maths or code benchmarks between greedy and sampled decoding. When comparing two models, pin temperature, top-p, max tokens, and the system prompt, and check the comparison was run that way.</li>
+    <li><b>Greedy is not "the real" score.</b> Users of chat products get sampled outputs. Reasoning models are usually tuned for sampling at a specific temperature, and greedy decoding can make them loop or repeat. Evaluate at the settings you ship.</li>
+    <li><b>Sampled evals have variance on top of task variance.</b> A single sampled run per problem adds noise that can swamp a small difference. Use several samples per problem and report the spread (see <a href="#evalstats">eval statistics</a>).</li>
+    <li><b>Lower temperature trades diversity for reliability.</b> That helps pass@1 and hurts pass@k, which matters for products that generate several candidates.</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The filters, precisely</span></div>
+  <p>Given logits \(z_i\), temperature \(T\) gives \(p_i = \exp(z_i/T)/\sum_j \exp(z_j/T)\). As \(T\to 0\) this approaches greedy; at \(T=1\) it is the model's distribution. Top-k keeps the \(k\) largest \(p_i\). Top-p, or nucleus sampling (Holtzman et al., 2020), keeps the smallest prefix of the sorted list whose cumulative mass is at least \(p\). Min-p (Nguyen et al., 2024) keeps tokens with \(p_i \ge p_\text{min}\cdot\max_j p_j\), so the cutoff scales with the model's confidence: strict when one token dominates, permissive when many are plausible. After filtering, renormalise and sample. Implementations differ in the order they apply these filters, which is one reason scores differ across inference stacks.</p>
+  <pre class="code" data-lang="python"><code>import math, random
+
+def sample(logits, temperature=1.0, top_p=1.0, rng=random.Random(0)):
+    if temperature == 0:                                  # greedy
+        return max(range(len(logits)), key=lambda i: logits[i])
+    z = [l / temperature for l in logits]
+    m = max(z)
+    w = [math.exp(v - m) for v in z]                      # subtract max for stability
+    s = sum(w)
+    ranked = sorted(((p / s, i) for i, p in enumerate(w)), reverse=True)
+    kept, cum = [], 0.0
+    for p, i in ranked:                                   # nucleus: smallest set reaching top_p
+        kept.append((p, i)); cum += p
+        if cum >= top_p:
+            break
+    r = rng.random() * sum(p for p, _ in kept)            # renormalise implicitly
+    for p, i in kept:
+        r -= p
+        if r &lt;= 0:
+            return i
+    return kept[-1][1]</code></pre>
+</div>
+
+<h3>Measuring with samples: pass@k done right</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">pass@1, pass@k, and maj@k answer different questions</span></div>
+  <div class="tw"><table>
+  <thead><tr><th>Metric</th><th>Question it answers</th><th>Matches a product that</th></tr></thead>
+  <tbody>
+  <tr><td>pass@1</td><td>If I sample once, how often is it right?</td><td>Shows one answer to a user</td></tr>
+  <tr><td>pass@k</td><td>If I sample k times, how often is at least one right?</td><td>Has an oracle or tests to pick the right one (code with tests, search)</td></tr>
+  <tr><td>maj@k (consensus)</td><td>If I sample k times and take the most common answer, how often is it right?</td><td>Can vote but cannot verify</td></tr>
+  <tr><td>best-of-k with a verifier</td><td>If a reward model picks among k, how often is the pick right?</td><td>Uses a learned scorer to choose</td></tr>
+  </tbody></table></div>
+  <p>pass@k with large k flatters a model, because it assumes you can recognise the right answer for free. Make sure the metric matches how the product actually picks an answer.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The unbiased pass@k estimator</span></div>
+  <p>The naive estimate, sampling exactly \(k\) times and checking whether any passed, has high variance. Chen et al. (2021) sample \(n \ge k\) responses, count \(c\) correct, and compute the probability that a random subset of size \(k\) contains at least one correct response:</p>
+  <div class="eq">\[ \widehat{\text{pass@}k} = \mathbb{E}_{\text{problems}}\left[1 - \frac{\binom{n-c}{k}}{\binom{n}{k}}\right] \]<span class="eqcap">Unbiased for each problem. Average across problems. Use n comfortably larger than the largest k you report.</span></div>
+  <pre class="code" data-lang="python"><code>from math import comb
+import numpy as np
+
+def pass_at_k(n, c, k):
+    """n samples, c correct. Probability a random size-k subset has a correct one."""
+    if n - c &lt; k:
+        return 1.0
+    return 1.0 - comb(n - c, k) / comb(n, k)
+
+def pass_at_k_stable(n, c, k):
+    """Same value, no huge binomials (form used in the Codex paper)."""
+    if n - c &lt; k:
+        return 1.0
+    return 1.0 - np.prod(1.0 - k / np.arange(n - c + 1, n + 1))
+
+print(round(pass_at_k(20, 3, 1), 4), round(pass_at_k(20, 3, 5), 4), round(pass_at_k(20, 3, 10), 4))
+# 0.15 0.6009 0.8947</code></pre>
+  <p>Sampling variance has two sources: which problems are in the set, and which samples each problem drew. With \(n\) samples per problem, the per-problem estimate of pass@1 is \(c/n\), whose variance shrinks with \(n\). The between-problem variance does not. More samples per problem helps only until problem-to-problem variation dominates. For intervals, bootstrap over problems, keeping each problem's samples together (the clustering point from <a href="#evalstats">eval statistics</a>).</p>
+</div>
+
+<h3>Test-time compute: thinking longer, sampling wider</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Two heads, or ten tries, are better than one</span></div>
+  <p>You can make a model's answers better without retraining it, by spending more effort when it answers. Let it think longer before answering. Or ask it the same question ten times and go with the answer it gives most often. Or ask ten times and have a separate grader pick the best. Each costs more per question, and each has a limit.</p>
+</div>
+
+<div class="widget" id="w-in-bon">
+  <div class="wtitle">Best-of-N versus majority vote</div>
+  <div class="wsub">Each sample is right with some probability. Majority vote picks the most common answer. Best-of-N lets an imperfect verifier pick the highest-scoring sample. Add a few "exploits" (wrong answers that fool the verifier) and watch best-of-N peak and then fall as N grows.</div>
+  <div class="controls">
+    <div class="ctl"><label for="in-a">Per-sample accuracy: <output id="in-a-o">40%</output></label><input type="range" id="in-a" min="0.05" max="0.9" step="0.01" value="0.4"></div>
+    <div class="ctl"><label for="in-d">Verifier quality (separation d′): <output id="in-d-o">1.5</output></label><input type="range" id="in-d" min="0" max="4" step="0.1" value="1.5"></div>
+    <div class="ctl"><label for="in-x">Wrong answers that fool the verifier: <output id="in-x-o">1.0%</output></label><input type="range" id="in-x" min="0" max="0.05" step="0.0025" value="0.01"></div>
+  </div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--tn)"></span>pass@N (oracle picks)</span><span><span class="sw" style="background:var(--accent)"></span>best-of-N with verifier</span><span><span class="sw" style="background:var(--tp)"></span>majority vote</span></div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">When spending compute at answer time pays</span></div>
+  <ul>
+    <li><b>Majority vote</b> (self-consistency, Wang et al., 2022) needs no extra model and works well when the right answer is the single most likely answer. If a particular wrong answer is more common than the right one, voting locks in the error.</li>
+    <li><b>Best-of-N with a verifier</b> can beat voting, but only as far as the verifier is reliable. With a learned reward model, larger N eventually finds answers that fool it. This is the inference-time version of reward over-optimisation (see <a href="#reward-models">reward models</a>).</li>
+    <li><b>Reasoning models</b> move test-time compute inside a single response: a long chain of thought that explores, checks, and backtracks, learned with the RL from <a href="#grpo">GRPO</a>. Accuracy typically rises with thinking budget, with diminishing returns.</li>
+    <li><b>Compute-optimal allocation.</b> Snell et al. (2024) found that the best use of extra inference compute depends on problem difficulty, and that for easy and medium problems, well-allocated test-time compute could rival a much larger model. For the hardest problems, more pretraining still won. The strategic question is where to spend: bigger model, longer thinking, or more samples.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>What is the accuracy at matched cost? A model that wins by thinking three times longer has not necessarily won. Plot accuracy against tokens or dollars per problem, not against model name.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why the curves bend</span></div>
+  <p>Let each sample be correct with probability \(a\). pass@N is \(1-(1-a)^N\), the ceiling. Majority vote over answers with probabilities \(a\) (correct) and \(q_1, q_2, \dots\) (distinct wrong answers) converges to 1 as \(N\to\infty\) if \(a > \max_j q_j\), and to 0 otherwise: the plurality answer wins in the limit. Best-of-N with verifier scores \(s \sim \mathcal{N}(d',1)\) for correct and \(\mathcal{N}(0,1)\) for wrong picks the maximum score. If a fraction \(\epsilon\) of wrong answers score far higher (exploits), the probability that at least one exploit appears is \(1-(1-(1-a)\epsilon)^N\), which approaches 1 as N grows. The verifier then picks the exploit, and accuracy falls. The widget simulates this with fixed seeds.</p>
+</div>
+
+<h3>Serving: memory, speed, and cost</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Why long conversations are expensive</span></div>
+  <p>To write each new word, the model needs to look back at everything said so far. Rather than reread the whole conversation every time, it keeps notes on every earlier word, called the KV cache. Those notes take memory, and the longer the conversation and the more people served at once, the more memory they take. Memory, not raw arithmetic, is usually what limits how many people one machine can serve.</p>
+</div>
+
+<div class="widget" id="w-in-kv">
+  <div class="wtitle">KV-cache memory calculator</div>
+  <div class="wsub">Pick a model shape, context length, and how many sequences run at once. Compare cache memory with the model weights and an 80 GB accelerator. Architectures are illustrative of public 8B and 70B models that use grouped-query attention.</div>
+  <div class="controls">
+    <div class="ctl"><label for="in-model">Model shape</label><select id="in-model">
+      <option value="8">8B class: 32 layers, 8 KV heads, head dim 128</option>
+      <option value="70" selected>70B class: 80 layers, 8 KV heads, head dim 128</option>
+      <option value="70mha">70B class without GQA: 80 layers, 64 KV heads</option>
+    </select></div>
+    <div class="ctl"><label for="in-ctx">Context length: <output id="in-ctx-o">32K</output></label><input type="range" id="in-ctx" min="10" max="17" step="1" value="15"></div>
+    <div class="ctl"><label for="in-b">Concurrent sequences: <output id="in-b-o">8</output></label><input type="range" id="in-b" min="0" max="7" step="1" value="3"></div>
+    <div class="ctl"><label for="in-prec">Precision</label><select id="in-prec"><option value="2" selected>16-bit (2 bytes)</option><option value="1">8-bit (1 byte)</option><option value="0.5">4-bit (0.5 bytes)</option></select></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">KV cache per sequence</div><div class="v" data-per></div></div>
+    <div class="mc"><div class="l">KV cache total</div><div class="v" data-tot></div></div>
+    <div class="mc"><div class="l">Weights</div><div class="v" data-w></div></div>
+    <div class="mc"><div class="l">80 GB accelerators needed</div><div class="v" data-g></div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The economics in five ideas</span></div>
+  <ol class="steps">
+    <li><div><b>Prefill versus decode.</b> Reading the prompt (prefill) is processed in parallel and limited by arithmetic. Generating tokens (decode) is one token at a time and limited by memory bandwidth, because every step reads the full weights and cache. Long prompts cost compute; long outputs cost time.</div></li>
+    <li><div><b>Batching is the main lever.</b> Weights are read once per decode step regardless of how many sequences share it, so serving more sequences at once raises throughput almost for free until memory runs out or latency targets break. Continuous batching keeps the batch full as requests finish.</div></li>
+    <li><div><b>Latency and throughput trade off.</b> Bigger batches mean more tokens per second per accelerator and lower cost per token, but each user's tokens arrive more slowly. Products set a latency target and maximise throughput under it.</div></li>
+    <li><div><b>Speculative decoding</b> (Leviathan et al., 2023) uses a small draft model to propose several tokens and the large model to verify them in one pass. Output is mathematically identical to sampling from the large model, and speed-ups of 2 to 3 times are common when the draft agrees often.</div></li>
+    <li><div><b>Quantisation</b> stores weights (and sometimes the cache) in 8 or 4 bits. It cuts memory and raises speed. 8-bit weights are usually close to lossless; 4-bit methods such as GPTQ (Frantar et al., 2023) and AWQ (Lin et al., 2024) lose a little on average and sometimes much more on maths, code, long context, and low-resource languages.</div></li>
+  </ol>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>Evaluate the model you serve, not the model you trained. Quantisation, speculative decoding with a non-exact acceptance rule, a different inference engine, or a changed chat template can each shift scores. Re-run the core suite on the serving configuration before launch and compare with the training-time numbers using a paired test on the same problems. Perplexity alone hides task-specific losses.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The arithmetic</span></div>
+  <p><b>KV cache.</b> Each layer stores a key and a value vector per KV head per token:</p>
+  <div class="eq">\[ \text{bytes} = 2 \times L \times H_{kv} \times d_\text{head} \times \text{tokens} \times \text{sequences} \times \text{bytes per value} \]<span class="eqcap">The 2 counts keys and values. Grouped-query attention shrinks \(H_{kv}\) below the number of query heads, which is why modern models use it.</span></div>
+  <pre class="code" data-lang="python"><code>def kv_cache_bytes(layers, kv_heads, head_dim, seq_len, batch, bytes_per=2):
+    return 2 * layers * kv_heads * head_dim * seq_len * batch * bytes_per
+
+print(kv_cache_bytes(80, 8, 128, 32_768, 1) / 2**30)   # 10.0 GiB: one 32K-token sequence, 70B-class with GQA
+print(kv_cache_bytes(80, 64, 128, 32_768, 1) / 2**30)  # 80.0 GiB: the same without GQA</code></pre>
+  <p><b>Decode speed bound.</b> At batch size 1, each token requires reading all weights once. A 70B model in 16-bit is about 140 GB; on an accelerator with roughly 3.35 TB/s of memory bandwidth, that caps decode at about 24 tokens per second per sequence, before any parallelism across devices. Batching amortises that read across sequences.</p>
+  <p><b>Speculative decoding.</b> With draft length \(\gamma\) and per-token acceptance probability \(\alpha\), the expected number of tokens produced per target-model pass is \(\frac{1-\alpha^{\gamma+1}}{1-\alpha}\). For \(\alpha = 0.8,\ \gamma = 4\) that is about 3.4.</p>
+  <p><b>Cost per million tokens.</b></p>
+  <div class="eq">\[ \text{cost per } 10^6 \text{ tokens} = \frac{\text{dollars per accelerator-hour}}{\text{tokens/s per accelerator} \times 3600} \times 10^6 \]</div>
+  <p>At an illustrative $3 per hour and 1,500 output tokens per second per accelerator, that is about $0.56 per million output tokens. Every lever above acts through the denominator.</p>
+</div>
+</section>

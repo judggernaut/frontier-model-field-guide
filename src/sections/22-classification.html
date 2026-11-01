@@ -1,0 +1,481 @@
+<section id="classification" data-title="Classification metrics, precision to AUC">
+<style>
+.cl-row{display:flex;gap:2px}
+.cl-cell{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0 6px;border-radius:5px}
+.cl-cell.pred{background:var(--accent-soft)}
+.cl-dot{width:14px;height:14px;border-radius:50%}
+.cl-lab{font-family:var(--font-mono);font-size:10px;color:var(--muted)}
+.cl-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--faint);margin-bottom:4px}
+.cl-split{display:grid;grid-template-columns:minmax(0,230px) minmax(0,1fr);gap:28px;margin-top:18px;align-items:start}
+.cl-mx{display:grid;grid-template-columns:auto 1fr 1fr;gap:5px;font-size:12px;color:var(--muted)}
+.cl-h{text-align:center;align-self:end}.cl-rh{text-align:right;align-self:center;padding-right:2px}
+.cl-b{border-radius:8px;padding:10px 4px;text-align:center;background:color-mix(in srgb,var(--c) 16%,var(--surface));border:1px solid color-mix(in srgb,var(--c) 45%,transparent)}
+.cl-b strong{display:block;font-family:var(--font-mono);font-size:22px;font-weight:500;color:var(--fg)}
+.cl-b span{color:var(--c);font-family:var(--font-mono)}
+.cl-mrow{display:grid;grid-template-columns:104px minmax(0,1fr) 50px;gap:14px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.cl-mrow:first-child{border-top:0;padding-top:0}
+.cl-mname{font-family:var(--font-display);font-weight:500}
+.cl-mfrac{font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+.cl-bar{display:flex;height:12px;border-radius:3px;overflow:hidden;background:var(--sunk)}
+.cl-mq{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.4}
+.cl-mval{font-family:var(--font-mono);font-size:18px;text-align:right}
+.cl-out{border-radius:12px;padding:14px 16px;background:color-mix(in srgb,var(--c) 12%,var(--surface));border:1px solid color-mix(in srgb,var(--c) 40%,transparent)}
+.cl-out .t{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:13px;color:var(--c);font-weight:500}
+.cl-out p{margin:6px 0 0;font-size:15px}
+.cl-qs{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:4px 24px;margin:14px 0;padding:0;list-style:none}
+.cl-qs li{padding:10px 0;border-top:1px solid var(--line);margin:0}
+.cl-qs b{font-family:var(--font-display);font-weight:500;font-size:1.05rem;display:block}
+.cl-grid100{display:grid;grid-template-columns:repeat(20,1fr);gap:3px;max-width:420px}
+.cl-grid100 i{aspect-ratio:1;border-radius:2px;background:var(--tn)}
+.cl-grid100 i.s{background:var(--fn)}
+.cl-charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin-top:8px}
+.cl-ch{font-size:13px;color:var(--muted);margin-bottom:4px}
+.cl-cap{font-size:16px;min-height:28px;margin-bottom:6px}
+.mc.roc{box-shadow:inset 0 0 0 1px var(--roc)} .mc.prc{box-shadow:inset 0 0 0 1px var(--pr)}
+.widget svg text{font-family:var(--font-body)}
+#w-cl-rocsteps svg[data-roc]{max-width:400px}
+.cl-charts svg{max-width:400px}
+#w-clf .readout{display:flex;flex-wrap:wrap;gap:7px;background:transparent;padding:0}
+@media (max-width:640px){.cl-split{grid-template-columns:minmax(0,1fr)}.cl-mrow{grid-template-columns:86px minmax(0,1fr) 44px;gap:10px}.cl-lab{display:none}}
+</style>
+
+<h2>Classification metrics, from precision to AUC</h2>
+<p>Every LLM judge is a classifier. So is a safety filter, a regression detector, an intent labeller, and an auto-approve gate. This chapter starts with someone sorting mail and ends with the metrics you would put in a launch review. One spam example runs through every chart, so each idea builds on the last.</p>
+
+<h3>The four outcomes</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A helper sorts your mail into two piles</span></div>
+  <p>Your helper looks at every letter and decides: junk pile or keep pile. Each time, they can be right in two ways and wrong in two ways.</p>
+  <div class="four">
+    <div class="cl-out" style="--c:var(--tp)"><div class="t"><span class="sw" style="background:var(--tp)"></span>True positive</div><p>It was junk, and they put it in the junk pile. Good catch.</p></div>
+    <div class="cl-out" style="--c:var(--fp)"><div class="t"><span class="sw" style="background:var(--fp)"></span>False positive</div><p>It was a real letter, and they threw it in the junk pile. A false alarm.</p></div>
+    <div class="cl-out" style="--c:var(--fn)"><div class="t"><span class="sw" style="background:var(--fn)"></span>False negative</div><p>It was junk, and they left it in the keep pile. It slipped through.</p></div>
+    <div class="cl-out" style="--c:var(--tn)"><div class="t"><span class="sw" style="background:var(--tn)"></span>True negative</div><p>It was a real letter, and they kept it. Also good.</p></div>
+  </div>
+  <p>Every metric in this chapter is a different way of counting those four piles. Each one asks a simple question:</p>
+  <ul class="cl-qs">
+    <li><b>Precision</b>When the helper says "junk," how often are they right?</li>
+    <li><b>Recall</b>Of all the junk that arrived, how much did they find?</li>
+    <li><b>Accuracy</b>Out of every letter, how many did they sort correctly?</li>
+    <li><b>F1</b>One score that is only high when precision and recall are both high.</li>
+  </ul>
+  <p class="muted">"Positive" means the thing you are hunting for. Here that is spam. It does not mean good.</p>
+</div>
+
+<p>A spam model does not really say "spam" or "not spam." It gives each email a score from 0 to 1 for how spammy it looks. You choose a cutoff, and anything at or above it goes to the spam folder. That cutoff is the <b>threshold</b>. Think of it as the passing grade on a test: the scores are fixed, but you decide where the line goes.</p>
+
+<div class="widget" id="w-cl-email">
+  <div class="wtitle">Twenty-two emails and a threshold</div>
+  <div class="wsub">Emails are sorted by score. Drag the threshold; shaded cells go to the spam folder. Then press the two buttons and watch precision and recall pull against each other.</div>
+  <div class="controls">
+    <div class="ctl"><label for="cl-t">Threshold: <output id="cl-t-o">0.58</output></label><input type="range" id="cl-t" min="0" max="100" step="1" value="58"></div>
+  </div>
+  <div class="btnrow"><button class="b" data-lo>Catch everything (0.20)</button><button class="b" data-hi>Only be sure (0.80)</button></div>
+  <div class="cl-ends"><span>Looks legit</span><span>Looks spammy</span></div>
+  <div class="cl-row" data-row aria-label="Emails sorted by spam score"></div>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--tp)"></span>TP: spam, caught</span>
+    <span><span class="sw" style="background:var(--fp)"></span>FP: real email flagged</span>
+    <span><span class="sw" style="background:var(--fn)"></span>FN: spam slipped through</span>
+    <span><span class="sw" style="background:var(--tn)"></span>TN: real email kept</span>
+  </div>
+  <div class="cl-split">
+    <div><div class="cl-ch">Confusion matrix</div><div class="cl-mx" data-mx></div></div>
+    <div data-metrics></div>
+  </div>
+</div>
+<p>The 2×2 grid is the <b>confusion matrix</b>. Rows are the truth, columns are what the model decided. Everything else in this chapter is built from those four numbers.</p>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">A metric without its confusion matrix is unauditable</span></div>
+  <p>When someone shows you "precision 0.92," three things are hidden: the threshold, the prevalence of the positive class in the test set, and how many examples sat behind the number. Each one can move the headline more than the model change being reported. Make it a standing rule that any classifier metric in a review comes with the confusion matrix, the threshold, and n.</p>
+  <p>The second rule: decide which mistake costs more <i>before</i> you look at results. A false positive in a safety filter blocks a legitimate user. A false negative lets a harmful output through. A false positive in a regression detector costs an engineer an afternoon; a false negative ships a regression. If the team cannot say which error is worse, no metric choice will be defensible.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul><li>At what threshold, and who chose it? Was it tuned on the same data you are reporting?</li><li>What is the positive rate in this test set, and what is it in production?</li><li>Which error are we optimising against, and what does one of each cost?</li></ul></div></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The confusion matrix is a function of the threshold</span></div>
+  <p>Given scores \(s_i\), labels \(y_i \in \{0,1\}\), and a threshold \(\tau\), the prediction is \(\hat y_i = \mathbb{1}[s_i \ge \tau]\). Each cell counts a combination:</p>
+  <div class="eq">\[ \mathrm{TP}(\tau)=\sum_i \mathbb{1}[\hat y_i=1, y_i=1],\quad \mathrm{FP}(\tau)=\sum_i \mathbb{1}[\hat y_i=1, y_i=0],\quad \mathrm{FN}(\tau)=\sum_i \mathbb{1}[\hat y_i=0, y_i=1] \]<span class="eqcap">TN is everything else. Raising \(\tau\) can only move items from the predicted-positive column to the predicted-negative column, so TP and FP never increase as \(\tau\) rises.</span></div>
+  <p>Report a single precision or recall and you have silently reported a threshold choice as if it were a property of the model. Two teams can report very different F1 for the same model because they picked different operating points. Threshold-free metrics (section on AUC below) sidestep this and bring their own problems.</p>
+  <pre class="code" data-lang="python"><code>def confusion(y_true, y_pred):
+    """The four numbers everything else is built from.
+    Always compute this first and show it next to any derived metric."""
+    tp = sum(1 for a, b in zip(y_true, y_pred) if a == 1 and b == 1)
+    fp = sum(1 for a, b in zip(y_true, y_pred) if a == 0 and b == 1)
+    fn = sum(1 for a, b in zip(y_true, y_pred) if a == 1 and b == 0)
+    tn = sum(1 for a, b in zip(y_true, y_pred) if a == 0 and b == 0)
+    return {"tp": tp, "fp": fp, "fn": fn, "tn": tn}</code></pre>
+</div>
+
+<h3>Four metrics, four questions</h3>
+<p>Look at the bars in the widget above. Precision and recall both start from true positives. What changes is which group you divide by.</p>
+<div class="tw"><table>
+  <thead><tr><th>Metric</th><th>Formula</th><th>Divides by</th><th>Its enemy</th><th>Memory hook</th></tr></thead>
+  <tbody>
+    <tr><td>Precision</td><td class="n">TP / (TP + FP)</td><td>Everything you flagged</td><td><span class="sw" style="background:var(--fp)"></span>False alarms</td><td>Precise means picky</td></tr>
+    <tr><td>Recall</td><td class="n">TP / (TP + FN)</td><td>All the real spam</td><td><span class="sw" style="background:var(--fn)"></span>Misses</td><td>Recall them all, like a product recall</td></tr>
+    <tr><td>Accuracy</td><td class="n">(TP + TN) / all</td><td>Every email</td><td>Both mistakes</td><td>Simple, but can lie</td></tr>
+    <tr><td>F1</td><td class="n">2PR / (P + R)</td><td>Combines P and R</td><td>Whichever is lower</td><td>A harsh average</td></tr>
+  </tbody>
+</table></div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The tug-of-war, and why accuracy can lie</span></div>
+  <p>Press "Catch everything." Recall climbs, but coral dots flood the spam folder and precision falls. Press "Only be sure" and the opposite happens. Moving the threshold trades one mistake for the other. You choose based on which mistake hurts more. Missing a cancer diagnosis is worse than a false alarm, so screening favours recall. Losing an important email is worse than seeing some spam, so spam filters usually favour precision.</p>
+  <p>Now suppose only 1% of email is spam. A lazy model that flags nothing gets every legit email right.</p>
+  <div class="widget" id="cl-grid100" style="padding:16px">
+    <div class="cl-grid100" data-grid aria-label="100 squares, 99 legit and 1 spam"></div>
+    <div class="cards" style="max-width:520px">
+      <div class="mc"><div class="l">Accuracy</div><div class="v">99%</div></div>
+      <div class="mc"><div class="l">Recall</div><div class="v">0%</div></div>
+      <div class="mc"><div class="l">F1</div><div class="v">0%</div></div>
+    </div>
+    <p class="small muted" style="margin:10px 0 0">Each square is 10 emails. The one amber square is all the spam, and the "flag nothing" model misses every bit of it.</p>
+  </div>
+  <p>99% accuracy, zero spam caught. When one class is rare, accuracy mostly measures how common the other class is.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">How each metric gets gamed</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Metric</th><th>Easy way to inflate it</th><th>What to demand alongside it</th></tr></thead>
+    <tbody>
+      <tr><td>Accuracy</td><td>Test on a set where the easy class dominates</td><td>Prevalence, balanced accuracy or MCC</td></tr>
+      <tr><td>Precision</td><td>Only flag the most obvious cases. Precision 1.0 at recall 0.02 looks perfect and is worthless</td><td>Recall at the same threshold</td></tr>
+      <tr><td>Recall</td><td>Flag everything. Recall 1.0 is always available, at precision equal to prevalence</td><td>Precision at the same threshold</td></tr>
+      <tr><td>F1</td><td>Tune the threshold on the test set; test on a large pool of easy negatives F1 never sees</td><td>A held-out threshold and the TN count</td></tr>
+      <tr><td>ROC-AUC</td><td>Report it on a rare-positive problem, where it flatters</td><td>PR-AUC and the confusion matrix at the operating point</td></tr>
+    </tbody>
+  </table></div>
+  <p>Nobody needs to act in bad faith for this to happen. A team that iterates on a metric for months will drift toward whatever the metric rewards. The defence is a metric pack fixed in advance, not a single number.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">F-beta, and the demonstration that F1 ignores TN</span></div>
+  <div class="eq">\[ F_\beta = (1+\beta^2)\,\frac{P\cdot R}{\beta^2 P + R} \]<span class="eqcap">\(\beta&gt;1\) weights recall more, \(\beta&lt;1\) weights precision more. \(F_1\) is the harmonic mean of \(P\) and \(R\), which punishes imbalance: \(P=0.9, R=0.1\) gives 0.18, not 0.5.</span></div>
+  <pre class="code" data-lang="python"><code>def f_beta(precision, recall, beta=1.0):
+    """beta > 1 weights recall more, beta < 1 weights precision more.
+    beta = 2 says a miss costs about four times a false alarm (beta squared)."""
+    if precision + recall == 0:
+        return 0.0
+    b2 = beta * beta
+    return (1 + b2) * precision * recall / (b2 * precision + recall)</code></pre>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Two classifiers, both with TP = 80, FP = 20, FN = 20. Scenario A has TN = 80; scenario B has TN = 9,980. Both score F1 = 0.800. MCC separates them: 0.600 versus 0.798. Same F1, materially different classifiers, because F1 never looks at the TN cell.</div></div>
+</div>
+
+<h3>One class at a time</h3>
+<p>Precision, recall, and F1 are always calculated for one class, treated as "positive." So far spam was positive. Flip it and ask the same questions about legit email. The table follows the threshold in the first widget.</p>
+<div class="tile" style="margin:14px 0 20px">
+  <div class="tw" style="margin:0"><table>
+    <thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th><th>Count</th></tr></thead>
+    <tbody>
+      <tr><td>Spam</td><td class="n" id="cl-pc-sp"></td><td class="n" id="cl-pc-sr"></td><td class="n" id="cl-pc-sf"></td><td class="n">10</td></tr>
+      <tr><td>Legit</td><td class="n" id="cl-pc-lp"></td><td class="n" id="cl-pc-lr"></td><td class="n" id="cl-pc-lf"></td><td class="n">12</td></tr>
+      <tr><td>Macro average</td><td></td><td></td><td class="n" id="cl-pc-mac"></td><td></td></tr>
+      <tr><td>Weighted average</td><td></td><td></td><td class="n" id="cl-pc-wt"></td><td></td></tr>
+      <tr><td>Micro average (equals accuracy)</td><td></td><td></td><td class="n" id="cl-pc-mic"></td><td></td></tr>
+    </tbody>
+  </table></div>
+  <p class="small muted" id="cl-pc-note" style="margin:10px 0 0"></p>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Same four boxes, reassigned</span></div>
+  <p>Legit precision asks, "of what reached my inbox, how much was really legit?" That is TN out of TN + FN. Legit recall asks, "of all real emails, how many reached my inbox?" That is TN out of TN + FP. Legit recall has its own name, <b>specificity</b>, common in medical testing. Accuracy is the odd one out: it is one number for the whole model.</p>
+  <ul>
+    <li><b>Macro average</b> is a plain average of each class's score. Every class counts equally, so a rare class you care about cannot hide.</li>
+    <li><b>Weighted average</b> weights each class by how many examples it has. The big class has more say.</li>
+    <li><b>Micro average</b> pools all the counts first, then computes. For one-label-per-item problems it equals accuracy.</li>
+  </ul>
+</div>
+
+<div class="widget" id="w-multiclass"><div class="wtitle">Multiclass confusion heatmap</div><div class="wsub">An intent taxonomy as a heatmap. Rows are true intent, columns are predicted. Raise imbalance and watch weighted F1 detach from macro F1 while the headline number stays comfortable.</div><div class="controls"><div class="ctl"><label data-l1>classes</label><input type="range" data-k min="3" max="8" step="1" value="6"></div><div class="ctl"><label data-l2>imbalance</label><input type="range" data-im min="0.0" max="0.6" step="0.05" value="0.35"></div><div class="ctl"><label data-l3>confusability</label><input type="range" data-cf min="0.0" max="0.5" step="0.02" value="0.18"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+
+<div class="callout example"><span class="tag">Worked problem</span><div>
+  <p><b>An intent classifier: which number goes in the report?</b> Six intent classes, imbalanced, 3,000 sessions. Weighted F1 is 0.836. Ship it?</p>
+  <div class="tw"><table><thead><tr><th>Class</th><th>Support</th><th>F1</th></tr></thead><tbody>
+    <tr><td>fix_bug</td><td class="n">1,006</td><td class="n">0.934</td></tr>
+    <tr><td>refactor</td><td class="n">660</td><td class="n">0.919</td></tr>
+    <tr><td>explain</td><td class="n">598</td><td class="n">0.872</td></tr>
+    <tr><td>add_test</td><td class="n">369</td><td class="n">0.674</td></tr>
+    <tr><td>docs</td><td class="n">242</td><td class="n">0.579</td></tr>
+    <tr><td><b>optimize</b></td><td class="n"><b>125</b></td><td class="n"><b>0.423</b></td></tr>
+  </tbody></table></div>
+  <p>Macro F1 is 0.733, weighted F1 is 0.836, a gap of 0.103. The headline weighted number is carried by the three common classes. On <code>optimize</code> the classifier is barely better than guessing. When macro and weighted diverge by more than about 0.05, that divergence is the finding, and reporting only the weighted number hides it. If these labels are used to generate benchmark tasks, the rare intents are the ones being mislabelled.</p>
+</div></div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Per class first, averages second</span></div>
+  <p>Ask for the per-class table before any average. The averaging choice is a statement about what matters: macro says every class matters equally, weighted says the traffic mix matters, micro says only total volume matters. For anything where rare cases carry the risk (safety categories, unusual intents, rare failure modes), weighted and micro hide exactly what you need to see.</p>
+  <p>The actionable unit is usually a confusable pair, not a score. "Macro F1 0.81" tells you nothing to do. "Refactor and rename are confused 40% of the time" tells you to fix the taxonomy or the labelling guide.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The three averages, precisely</span></div>
+  <div class="eq">\[ F_1^{\text{macro}}=\frac1K\sum_{k=1}^K F_1^{(k)},\qquad F_1^{\text{weighted}}=\sum_{k=1}^K \frac{n_k}{n}F_1^{(k)},\qquad F_1^{\text{micro}}=\frac{2\sum_k \mathrm{TP}_k}{2\sum_k \mathrm{TP}_k+\sum_k \mathrm{FP}_k+\sum_k \mathrm{FN}_k} \]<span class="eqcap">In single-label multiclass, every false positive for one class is a false negative for another, so \(\sum_k \mathrm{FP}_k=\sum_k \mathrm{FN}_k\) and micro-F1 equals accuracy.</span></div>
+  <pre class="code" data-lang="python"><code>from collections import Counter
+
+def multiclass_report(y_true, y_pred):
+    """Per-class metrics plus all three averages. When macro and weighted
+    diverge sharply, that gap is the finding."""
+    labels = sorted(set(y_true) | set(y_pred))
+    per = {}
+    for lab in labels:
+        tp = sum(a == lab and b == lab for a, b in zip(y_true, y_pred))
+        fp = sum(a != lab and b == lab for a, b in zip(y_true, y_pred))
+        fn = sum(a == lab and b != lab for a, b in zip(y_true, y_pred))
+        p = tp / (tp + fp) if tp + fp else 0.0
+        r = tp / (tp + fn) if tp + fn else 0.0
+        per[lab] = {"f1": 2 * p * r / (p + r) if p + r else 0.0,
+                    "support": tp + fn, "tp": tp, "fp": fp, "fn": fn}
+    n = len(y_true)
+    macro = sum(v["f1"] for v in per.values()) / len(labels)
+    weighted = sum(v["f1"] * v["support"] for v in per.values()) / n
+    micro = sum(a == b for a, b in zip(y_true, y_pred)) / n
+    confused = Counter((a, b) for a, b in zip(y_true, y_pred) if a != b).most_common(3)
+    return {"per_class": per, "macro_f1": macro, "weighted_f1": weighted,
+            "micro_f1": micro, "top_confused_pairs": confused}</code></pre>
+</div>
+
+<h3>The trade-off and the ceiling</h3>
+<p>Zoom out from 22 emails to thousands. The two humps show where real legit emails and real spam land on the score line. Drag the threshold first, then raise model quality.</p>
+<div class="widget" id="w-cl-humps">
+  <div class="wtitle">The threshold picks a spot, the model sets the limit</div>
+  <div class="wsub">With a weak model, every threshold cuts through both humps. Watch the "Best F1 possible" card: only model quality moves it.</div>
+  <div class="controls">
+    <div class="ctl"><label for="cl-ht">Threshold: <output id="cl-ht-o">0.50</output></label><input type="range" id="cl-ht" min="5" max="95" step="1" value="50"></div>
+    <div class="ctl"><label for="cl-hq">Model quality: <output id="cl-hq-o">Weak</output></label><input type="range" id="cl-hq" min="5" max="70" step="1" value="20"></div>
+  </div>
+  <svg viewBox="0 0 640 220" width="100%" role="img" aria-label="Two score distributions with a threshold line"></svg>
+  <div class="legend"><span><span class="sw" style="background:var(--tp)"></span>TP</span><span><span class="sw" style="background:var(--fn)"></span>FN</span><span><span class="sw" style="background:var(--fp)"></span>FP</span><span><span class="sw" style="background:var(--tn)"></span>TN</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Precision</div><div class="v" data-p></div></div>
+    <div class="mc"><div class="l">Recall</div><div class="v" data-r></div></div>
+    <div class="mc"><div class="l">F1 now</div><div class="v" data-f></div></div>
+    <div class="mc roc"><div class="l">Best F1 possible</div><div class="v" data-bf></div><div class="l" data-bt></div></div>
+  </div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">You can only choose which mistakes to make</span></div>
+  <p>With a weak model, the humps overlap. Wherever you put the threshold, it cuts through both, so you only get to choose which mistakes to make. Raise model quality and the humps pull apart. Then one threshold can catch most spam while flagging almost no legit mail.</p>
+</div>
+<div class="callout key"><span class="tag">Key idea</span><div>This is the precision-recall trade-off. The only way to improve precision and recall together is to separate the humps, which means a better model, not a better threshold.</div></div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Threshold work versus model work</span></div>
+  <p>When a team reports that precision went up, ask whether recall went down. If it did, the threshold moved and the model did not get better. That can still be the right call, but it is a product decision about error costs, not a research result. Real improvement shows up as a higher curve (a higher AUC), or as both precision and recall improving at a fixed threshold. Budget accordingly: threshold tuning is cheap and fast; separating the humps takes better features, better data on the hard cases, or a stronger model.</p>
+</div>
+
+<h3>Building an ROC curve</h3>
+<p>An ROC curve shows what happens at every threshold at once. Each threshold gives one dot. The dot goes <b>up</b> for spam caught and <b>right</b> for good emails wrongly flagged. Up is good. Right is bad.</p>
+<div class="widget" id="w-cl-rocsteps">
+  <div class="wtitle">Every threshold becomes one dot</div>
+  <div class="wsub">Step through ten emails. Watch each threshold land as a dot, then connect them.</div>
+  <div class="btnrow"><button class="b" data-prev aria-label="Previous step">← Back</button><button class="b" data-next>Next step →</button><span class="mono" style="color:var(--faint);font-size:13px;align-self:center" data-n></span></div>
+  <div class="cl-cap" data-cap></div>
+  <svg data-line viewBox="0 0 640 122" width="100%" role="img" aria-label="Ten emails on a score line"></svg>
+  <div class="cl-split" style="grid-template-columns:minmax(0,190px) minmax(0,1fr)">
+    <div class="cards" style="grid-template-columns:1fr;margin-top:0">
+      <div class="mc"><div class="l">Spam caught (up)</div><div class="v" data-up></div></div>
+      <div class="mc"><div class="l">Good emails flagged (right)</div><div class="v" data-rt></div></div>
+      <div class="mc roc" data-area style="visibility:hidden"><div class="l">Area under curve</div><div class="v">0.88</div></div>
+    </div>
+    <svg data-roc viewBox="0 0 300 285" width="100%" role="img" aria-label="ROC chart built from the dots"></svg>
+  </div>
+</div>
+<p>A great model climbs straight up before it moves right, hugging the top-left corner. A useless model moves up and right at the same pace along the diagonal: coin flipping. ROC stands for "receiver operating characteristic," a name left over from radar engineering. Read it as the "caught versus wrongly flagged" chart.</p>
+
+<h3>AUC: one number for the whole curve</h3>
+<p><b>AUC</b> means area under the curve: how much of the box the curve fills. A perfect model scores 1.0. Random guessing scores 0.5. Because it covers every threshold, AUC ignores the threshold you picked and measures how far apart the humps are.</p>
+<div class="callout key"><span class="tag">Key idea</span><div>Plain-English meaning of ROC-AUC: pick one random spam email and one random legit email. AUC is the chance the model gives the spam the higher score. In the ten-email example, spam outscores legit in 22 of 25 pairs, and 22 ÷ 25 = 0.88.</div></div>
+<div class="widget" id="w-cl-auc">
+  <div class="wtitle">ROC and PR curves, with spam share</div>
+  <div class="wsub">Move the threshold and only the dot moves. Change model quality and the curves move. Drop spam share to 5% and watch ROC-AUC stay put while PR-AUC sinks.</div>
+  <div class="controls">
+    <div class="ctl"><label for="cl-at">Threshold: <output id="cl-at-o">0.50</output></label><input type="range" id="cl-at" min="2" max="98" step="1" value="50"></div>
+    <div class="ctl"><label for="cl-aq">Model quality: <output id="cl-aq-o">Weak</output></label><input type="range" id="cl-aq" min="0" max="70" step="1" value="22"></div>
+    <div class="ctl"><label for="cl-api">Spam share: <output id="cl-api-o">50%</output></label><input type="range" id="cl-api" min="5" max="50" step="1" value="50"></div>
+  </div>
+  <svg data-dist viewBox="0 0 640 170" width="100%" role="img" aria-label="Score distributions"></svg>
+  <div class="cl-charts">
+    <div><div class="cl-ch">ROC curve: recall vs false alarm rate</div><svg data-roc viewBox="0 0 300 285" width="100%" role="img" aria-label="ROC curve"></svg></div>
+    <div><div class="cl-ch">PR curve: precision vs recall</div><svg data-pr viewBox="0 0 300 285" width="100%" role="img" aria-label="Precision recall curve"></svg></div>
+  </div>
+  <div class="cards">
+    <div class="mc"><div class="l">Precision</div><div class="v" data-p></div></div>
+    <div class="mc"><div class="l">Recall</div><div class="v" data-r></div></div>
+    <div class="mc"><div class="l">False alarm rate</div><div class="v" data-f></div></div>
+    <div class="mc roc"><div class="l">ROC-AUC</div><div class="v" data-ra></div></div>
+    <div class="mc prc"><div class="l">PR-AUC</div><div class="v" data-pa></div></div>
+  </div>
+  <div class="btnrow noprint" style="margin-top:14px;align-items:center"><button class="b" data-draw>Draw 1,000 random spam vs legit pairs</button><span class="small muted" data-pairs>See how often spam scores higher.</span></div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Why there is a second curve</span></div>
+  <p>Drag spam share down to 5%. ROC-AUC does not change, because ROC never looks at how common each class is. The PR curve sinks, because even a small false alarm rate on a huge pile of legit email produces lots of false positives. ROC-AUC can look excellent while precision is poor. When the thing you are hunting for is rare, PR-AUC is the more honest number. Its random-guessing line sits at the spam share, so a PR-AUC of 0.3 is great when spam is 5% and poor when it is 50%.</p>
+  <p class="muted">Rough guide for ROC-AUC: 0.5 random, 0.7 weak, 0.8 decent, 0.9 and up strong. What counts as good depends on the problem.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">AUC chooses the model; the confusion matrix makes the ship decision</span></div>
+  <p>Use AUC to compare models or versions, because it does not depend on a threshold someone picked. Then make the ship decision on the confusion matrix at the operating point you will actually run. A model with higher AUC can be worse at your operating point if its curve crosses the other one there.</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Same classifier, same data, 2% prevalence, in a simulation of 5,000 samples: ROC-AUC 0.928, PR-AUC 0.470, against a PR-AUC baseline of 0.020. ROC-AUC says excellent. PR-AUC says mediocre but far better than chance. For rare-positive problems (safety violations, cheating detection, rare regressions) the PR number is the one telling the truth.</div></div>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul><li>Is this ROC-AUC or PR-AUC, and what is the positive rate?</li><li>Do the two models' curves cross? Where is our operating point relative to the crossing?</li><li>Does the score come with confidence intervals? (AUC on 200 examples has a wide one; see <a href="#intervals">intervals and the bootstrap</a>.)</li></ul></div></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">AUC as a rank statistic, and average precision</span></div>
+  <p>ROC-AUC equals the probability that a random positive outscores a random negative, which is the Mann–Whitney U statistic scaled to [0, 1]:</p>
+  <div class="eq">\[ \mathrm{AUC}=P(S^+ &gt; S^-) + \tfrac12 P(S^+=S^-) = \frac{R_+ - n_+(n_+ + 1)/2}{n_+\,n_-} \]<span class="eqcap">\(R_+\) is the sum of the ranks of the positive examples when all scores are ranked together (ties get average ranks); \(n_+\) and \(n_-\) are the class counts.</span></div>
+  <p>PR-AUC is usually computed as average precision: walk down the ranking and average the precision at each point where a positive appears.</p>
+  <div class="eq">\[ \mathrm{AP}=\frac{1}{n_+}\sum_{k:\,y_{(k)}=1} \mathrm{Precision}@k \]<span class="eqcap">The baseline for a random ranking is the prevalence \(\pi = n_+/n\), which is why PR-AUC must always be read next to \(\pi\).</span></div>
+  <p>Precision depends on prevalence directly. If a classifier has true positive rate \(\mathrm{TPR}\) and false positive rate \(\mathrm{FPR}\), its precision at prevalence \(\pi\) is</p>
+  <div class="eq">\[ \mathrm{Precision}(\pi)=\frac{\mathrm{TPR}\cdot\pi}{\mathrm{TPR}\cdot\pi+\mathrm{FPR}\cdot(1-\pi)} \]<span class="eqcap">TPR and FPR (the ROC axes) do not change with \(\pi\); precision does. That single line explains why ROC is prevalence-blind and PR is not.</span></div>
+  <pre class="code" data-lang="python"><code>def roc_auc(y_true, scores):
+    """Probability a random positive outscores a random negative (ties count half)."""
+    order = sorted(range(len(scores)), key=lambda i: scores[i])
+    ranks = [0.0] * len(scores)
+    i = 0
+    while i &lt; len(order):
+        j = i
+        while j + 1 &lt; len(order) and scores[order[j + 1]] == scores[order[i]]:
+            j += 1
+        avg = (i + j) / 2 + 1            # tied items share the average rank
+        for k in range(i, j + 1):
+            ranks[order[k]] = avg
+        i = j + 1
+    n_pos = sum(y_true)
+    n_neg = len(y_true) - n_pos
+    r_pos = sum(r for r, y in zip(ranks, y_true) if y == 1)
+    return (r_pos - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)
+
+
+def average_precision(y_true, scores):
+    """Step-wise PR-AUC: mean precision at each rank where a positive appears."""
+    order = sorted(range(len(scores)), key=lambda i: -scores[i])
+    tp, ap = 0, 0.0
+    for rank, i in enumerate(order, start=1):
+        if y_true[i] == 1:
+            tp += 1
+            ap += tp / rank
+    return ap / sum(y_true)</code></pre>
+</div>
+
+<h3>Better single numbers: MCC, balanced accuracy, kappa</h3>
+<p>If you must report one number, these are better choices than F1. Each still has a catch.</p>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Which single number for which audience</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Number</th><th>Reads as</th><th>Best for</th><th>Catch</th></tr></thead>
+    <tbody>
+      <tr><td>Balanced accuracy</td><td>Average of "right on positives" and "right on negatives"; 0.5 is always chance</td><td>Executive summaries</td><td>Still hides which error you make</td></tr>
+      <tr><td>MCC</td><td>Correlation between prediction and truth, −1 to +1</td><td>Comparing models with one number</td><td>Unintuitive scale; undefined when the model predicts one class</td></tr>
+      <tr><td>Cohen's kappa</td><td>Agreement above chance, 0 is chance, 1 is perfect</td><td>Judge versus human, human versus human</td><td>Depends on prevalence; report it with the pass-rate gap</td></tr>
+    </tbody>
+  </table></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Definitions</span></div>
+  <div class="eq">\[ \mathrm{MCC}=\frac{\mathrm{TP}\cdot\mathrm{TN}-\mathrm{FP}\cdot\mathrm{FN}}{\sqrt{(\mathrm{TP}+\mathrm{FP})(\mathrm{TP}+\mathrm{FN})(\mathrm{TN}+\mathrm{FP})(\mathrm{TN}+\mathrm{FN})}},\qquad \mathrm{BA}=\tfrac12\Big(\tfrac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FN}}+\tfrac{\mathrm{TN}}{\mathrm{TN}+\mathrm{FP}}\Big) \]<span class="eqcap">MCC uses all four margins, so swapping the class labels leaves it unchanged. F1 does not have that property.</span></div>
+  <div class="eq">\[ \kappa=\frac{p_o-p_e}{1-p_e},\qquad p_e=\frac{(\mathrm{TP}+\mathrm{FP})(\mathrm{TP}+\mathrm{FN})+(\mathrm{TN}+\mathrm{FN})(\mathrm{TN}+\mathrm{FP})}{n^2} \]<span class="eqcap">\(p_o\) is observed agreement (plain accuracy); \(p_e\) is the agreement two independent raters with the same marginals would reach by luck. On a 95/5 split, luck alone gives about 90%.</span></div>
+  <pre class="code" data-lang="python"><code>import math
+
+def mcc(tp, fp, fn, tn):
+    den = math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+    return (tp * tn - fp * fn) / den if den else 0.0   # 0 = chance when undefined
+
+def balanced_accuracy(tp, fp, fn, tn):
+    return (tp / (tp + fn) + tn / (tn + fp)) / 2
+
+def kappa(tp, fp, fn, tn):
+    n = tp + fp + fn + tn
+    po = (tp + tn) / n
+    pe = ((tp + fp) * (tp + fn) + (tn + fn) * (tn + fp)) / (n * n)
+    return (po - pe) / (1 - pe) if pe != 1 else 0.0
+
+# The "flag nothing" model on 1% positives: accuracy 0.99, MCC 0, BA 0.5, kappa 0
+print(mcc(0, 0, 10, 990), balanced_accuracy(0, 0, 10, 990), kappa(0, 0, 10, 990))</code></pre>
+  <p>MCC and kappa are often nearly identical on binary problems. Prefer MCC when scoring a model and kappa when scoring agreement between raters, because that is what each was designed to communicate.</p>
+</div>
+
+<h3>Calibration: is the confidence honest?</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A weather forecaster who says 70%</span></div>
+  <p>If a forecaster says "70% chance of rain" on 100 days, it should rain on about 70 of them. That is calibration. A model can rank emails perfectly (every spam above every legit) and still be badly wrong about how sure it should be. Ranking and honesty about confidence are different skills.</p>
+</div>
+<div class="widget" id="w-cal"><div class="wtitle">Calibration</div><div class="wsub">Sharpening pushes confidence toward 0 and 1 without changing the ranking at all. Accuracy and AUC do not move. Watch ECE and Brier come apart. If you route, abstain or auto approve on a confidence score, this is the property that matters.</div><div class="controls"><div class="ctl"><label data-l1>confidence sharpening</label><input type="range" data-temp min="0.5" max="6" step="0.1" value="1"></div><div class="ctl"><label data-l2>label noise</label><input type="range" data-noise min="0" max="0.4" step="0.02" value="0.2"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">When calibration is the whole ballgame</span></div>
+  <p>Calibration matters whenever a downstream decision uses the confidence number itself: routing to a bigger model, abstaining and asking a human, auto-approving an action, or combining scores from several judges. Accuracy and AUC are blind to it. If a system makes decisions on confidence, require a reliability diagram and ECE in the review. The usual fix, temperature scaling on a held-out set, is cheap and does not change rankings, so there is rarely an excuse to ship miscalibrated scores.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Brier score and expected calibration error</span></div>
+  <div class="eq">\[ \mathrm{Brier}=\frac1n\sum_{i=1}^n (p_i-y_i)^2,\qquad \mathrm{ECE}=\sum_{b=1}^{B}\frac{|S_b|}{n}\,\big|\mathrm{acc}(S_b)-\mathrm{conf}(S_b)\big| \]<span class="eqcap">Brier is a proper scoring rule: it is minimised by reporting your true belief. ECE buckets predictions by confidence \(S_b\) and compares mean confidence to observed accuracy in each bucket. ECE depends on the number of bins, so always state \(B\).</span></div>
+  <pre class="code" data-lang="python"><code>def brier(y_true, probs):
+    # squared, not absolute: squaring is what makes it a proper scoring rule
+    return sum((p - y) ** 2 for p, y in zip(probs, y_true)) / len(y_true)
+
+def ece(y_true, probs, bins=10):
+    n, total = len(y_true), 0.0
+    for b in range(bins):
+        lo, hi = b / bins, (b + 1) / bins
+        idx = [i for i, p in enumerate(probs) if (lo &lt; p &lt;= hi) or (b == 0 and p == 0)]
+        if not idx:
+            continue
+        conf = sum(probs[i] for i in idx) / len(idx)
+        acc = sum(y_true[i] for i in idx) / len(idx)
+        total += len(idx) / n * abs(acc - conf)
+    return total</code></pre>
+  <div class="callout note"><span class="tag">Note</span><div>In a simulation with 20% label noise, a moderately confident model scored Brier 0.162 and ECE 0.050. The same model pushed to 0.99 / 0.01 confidence scored Brier 0.196 and ECE 0.190: identical ranking, identical accuracy, nearly four times worse calibration.</div></div>
+</div>
+
+<h3>Selective prediction: when the system can abstain</h3>
+<p>Instead of one accuracy number you get a curve: error as a function of how often the system is willing to answer. This is the right frame for any judge that can say "unsure," any agent that can ask the user before acting, and any classifier that can hand cases to a human.</p>
+<div class="widget" id="w-selective"><div class="wtitle">Auto approve threshold picker</div><div class="wsub">An agent that auto-approves its own tool calls, framed as a coverage risk curve. Set the cost of asking the user and the widget finds the coverage that minimises total cost. Drag confidence quality to zero and watch the curve go flat.</div><div class="controls"><div class="ctl"><label data-l1>confidence quality</label><input type="range" data-q min="0.0" max="1.0" step="0.05" value="0.8"></div><div class="ctl"><label data-l2>coverage</label><input type="range" data-cov min="0.05" max="1.0" step="0.05" value="0.8"></div><div class="ctl"><label data-l3>cost of asking</label><input type="range" data-cost min="0.0" max="0.2" step="0.005" value="0.02"></div></div><canvas></canvas><div class="readout" data-out></div></div>
+<div class="callout example"><span class="tag">Worked problem</span><div>
+  <p><b>Where do you set auto-approve?</b> An agent's proposed actions are right 92.8% of the time overall. Sort by the model's confidence and only auto-approve the most confident fraction:</p>
+  <div class="tw"><table><thead><tr><th>Coverage</th><th>Auto-approved</th><th>Asked the user</th><th>Error rate</th><th>vs full coverage</th></tr></thead><tbody>
+    <tr><td class="n">100%</td><td class="n">4,000</td><td class="n">0</td><td class="n">0.0717</td><td>—</td></tr>
+    <tr><td class="n">90%</td><td class="n">3,600</td><td class="n">400</td><td class="n">0.0550</td><td>1.3× fewer</td></tr>
+    <tr><td class="n">80%</td><td class="n">3,200</td><td class="n">800</td><td class="n">0.0350</td><td><b>2.0× fewer</b></td></tr>
+    <tr><td class="n">70%</td><td class="n">2,800</td><td class="n">1,200</td><td class="n">0.0232</td><td>3.1× fewer</td></tr>
+    <tr><td class="n">50%</td><td class="n">2,000</td><td class="n">2,000</td><td class="n">0.0090</td><td>8.0× fewer</td></tr>
+  </tbody></table></div>
+  <p>Giving up 20% of the decisions halves the error rate. That turns a product argument into arithmetic: the design question is what an interruption costs relative to a mistake. If the curve comes back flat, the confidence signal does not track correctness and no threshold will help. Fix the signal before tuning the threshold.</p>
+</div></div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The coverage–risk curve</span></div>
+  <p>Sort by confidence \(c_i\) descending and answer only the top fraction \(\kappa\) (coverage). Risk is the error rate over the answered set only; abstained items are handed off, not counted wrong.</p>
+  <div class="eq">\[ \mathrm{risk}(\kappa)=\frac{1}{\lfloor\kappa n\rfloor}\sum_{i\in \text{top }\lfloor\kappa n\rfloor}\mathbb{1}[\hat y_i\neq y_i],\qquad \text{total cost}(\kappa)=\kappa\,\mathrm{risk}(\kappa)\,c_{\text{error}}+(1-\kappa)\,c_{\text{ask}} \]<span class="eqcap">The area under the risk–coverage curve (AURC) summarises how well confidence tracks correctness; lower is better.</span></div>
+  <pre class="code" data-lang="python"><code>def coverage_risk(y_true, preds, conf, coverages=(1.0, 0.9, 0.8, 0.6, 0.5)):
+    order = sorted(range(len(y_true)), key=lambda i: -conf[i])
+    out = []
+    for cov in coverages:
+        k = max(1, int(cov * len(order)))
+        err = sum(preds[i] != y_true[i] for i in order[:k]) / k
+        out.append({"coverage": cov, "risk": err, "answered": k})
+    return out</code></pre>
+</div>
+
+<h3>Expected cost: the metric that is actually about your problem</h3>
+<p>Everything above is a proxy. If you know the relative costs of the two errors, skip the proxies and minimise expected cost directly.</p>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Get the cost ratio on the table</span></div>
+  <p>Most metric arguments are cost arguments in disguise. One team wants precision, another wants recall, and neither has said what a false alarm and a miss each cost. Force that number out, even as a rough ratio ("a missed harmful output is about 20 times worse than a wrongly blocked request"). Once it exists, the threshold choice is arithmetic and the argument ends.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Cost per decision and the Bayes-optimal threshold</span></div>
+  <div class="eq">\[ \mathrm{Cost}(\tau)=\frac{c_{FP}\,\mathrm{FP}(\tau)+c_{FN}\,\mathrm{FN}(\tau)}{n},\qquad \tau^\ast=\frac{c_{FP}}{c_{FP}+c_{FN}}\ \text{ if scores are calibrated probabilities} \]<span class="eqcap">Flag an item when \(p\,c_{FN} &gt; (1-p)\,c_{FP}\). With equal costs that is \(p&gt;0.5\); if a miss costs 9 times a false alarm, flag at \(p&gt;0.1\). If scores are not calibrated, sweep thresholds on held-out data instead.</span></div>
+  <pre class="code" data-lang="python"><code>def best_threshold(y_true, scores, c_fp, c_fn):
+    """Only observed scores can change the confusion matrix, so sweep those."""
+    best = None
+    for t in sorted(set(scores)):
+        fp = sum(s &gt;= t and y == 0 for s, y in zip(scores, y_true))
+        fn = sum(s &lt; t and y == 1 for s, y in zip(scores, y_true))
+        cost = (c_fp * fp + c_fn * fn) / len(y_true)
+        if best is None or cost &lt; best["cost"]:
+            best = {"threshold": t, "cost": cost}
+    return best   # tune on a validation split, report on a separate test split</code></pre>
+</div>
+
+<p>The advanced playground below puts every metric from this chapter on one screen, including a cost ratio slider that finds the cost-minimising threshold.</p>
+<div class="widget" id="w-clf"><div class="wtitle">Classification playground</div><div class="wsub">Two score distributions, a threshold, and every metric in this chapter updating live. Drop prevalence to 0.02 and watch accuracy stay high while MCC collapses and ROC-AUC keeps flattering the model that PR-AUC exposes. Then move the cost ratio and find the threshold that actually minimizes expected cost.</div><div class="controls"><div class="ctl"><label data-l1>separation</label><input type="range" data-sep min="0.05" max="0.9" step="0.05" value="0.45"></div><div class="ctl"><label data-l2>prevalence</label><input type="range" data-prev min="0.01" max="0.5" step="0.01" value="0.3"></div><div class="ctl"><label data-l3>threshold</label><input type="range" data-thr min="0.05" max="0.95" step="0.01" value="0.5"></div><div class="ctl"><label data-l4>cost ratio</label><input type="range" data-cost min="1" max="20" step="1" value="1"></div></div><canvas data-cv=dist></canvas><div class="cmgrid" data-grid></div><canvas data-cv=curves></canvas><div class="readout" data-out></div></div>
+<div class="callout drill"><span class="tag">Try this</span><div>Set separation to 0.45 and threshold to 0.50, then drag prevalence from 0.30 down to 0.02. Accuracy barely moves (0.924 to 0.925) and ROC-AUC rises slightly (0.978 to 0.985). Meanwhile precision falls from 0.845 to 0.199, F1 from 0.881 to 0.328, and MCC from 0.828 to 0.412: 294 false positives for 73 true positives. Same classifier, same threshold. Accuracy and ROC-AUC mislead here; the other three do not.</div></div>
+
+<h3>Choosing, and the ceiling nobody mentions</h3>
+<div class="tw"><table>
+  <thead><tr><th>Situation</th><th>Report</th><th>Do not report alone</th></tr></thead>
+  <tbody>
+    <tr><td>Balanced classes, symmetric costs</td><td>Accuracy plus confusion matrix</td><td>F1 (adds nothing here)</td></tr>
+    <tr><td>Rare positive class</td><td>Precision, recall, PR-AUC, prevalence</td><td>Accuracy, ROC-AUC</td></tr>
+    <tr><td>One number for a model comparison</td><td>MCC</td><td>F1</td></tr>
+    <tr><td>Judge versus human agreement</td><td>Kappa, prevalence, and the pass-rate gap</td><td>Raw agreement</td></tr>
+    <tr><td>Known asymmetric costs</td><td>Expected cost at the tuned threshold</td><td>F1 at 0.5</td></tr>
+    <tr><td>Confidence used downstream</td><td>Brier, ECE, reliability diagram</td><td>Accuracy</td></tr>
+    <tr><td>System can abstain</td><td>Coverage–risk curve</td><td>A single accuracy number</td></tr>
+    <tr><td>Multiclass</td><td>Per class, macro and weighted, top confused pairs</td><td>Weighted F1</td></tr>
+  </tbody>
+</table></div>
+<div class="callout warn"><span class="tag">Watch out</span><div>Your metric cannot exceed your label quality. If two humans agree at kappa 0.7 on a taxonomy, a classifier scoring 0.85 against one human's labels is not beating humans; it is fitting one annotator. Measure human-to-human agreement first and report every classifier number against that ceiling. The full decision guide is in <a href="#choosing">Which metric or test, when</a>.</div></div>
+<div class="callout eval"><span class="tag">Eval lens</span><div>Every number in this chapter is itself an estimate from a finite sample. A precision of 0.85 on 40 flagged items has a 95% interval roughly 0.71 to 0.93. Put intervals on classifier metrics the same way you would on pass rates; see <a href="#evalstats">statistics for eval sets</a> and <a href="#bigideas">sampling distributions</a>.</div></div>
+</section>

@@ -1,0 +1,70 @@
+<section id="triage" data-title="Diagnosing a regression">
+<h2>Diagnosing a regression: model, harness, data, or infrastructure?</h2>
+<p>An eval suite comes back with an anomalous number a few hours before a decision. The job is to say, quickly and with evidence, whether anything is actually wrong, and if so whether it is the model, the harness, the data, or the infrastructure. This chapter gives an order of operations that answers the cheapest questions first.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The thermometer before the doctor</span></div>
+  <p>If a child's temperature reading looks high, a sensible parent first checks the thermometer. Is it working? Did they measure right after a hot bath? Only then do they worry about illness.</p>
+  <p>A falling eval score is the same. Before blaming the model, check whether the drop is bigger than normal noise, whether the measuring setup changed, and whether the computers running the test had problems. Most "regressions" turn out to be the thermometer.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Incident response for a number</span></div>
+  <p>Treat an eval regression like a production incident: one owner, a fixed checklist, a written timeline, and a clear exit. The first question is not "what broke" but "did anything break". Asking it first protects the team's time and stops a launch being blocked by noise, or approved past a real problem.</p>
+  <p>A useful operating rule: the triage owner reports within a fixed window (a few hours) with one of four verdicts, each with its evidence.</p>
+  <div class="four">
+    <div class="tile"><h4>Noise</h4><p>The change is inside the confidence interval. No action; note it and move on.</p></div>
+    <div class="tile"><h4>Measurement</h4><p>Harness, judge, prompt, or task set changed. Fix the measurement and rerun before anyone discusses the model.</p></div>
+    <div class="tile"><h4>Infrastructure</h4><p>Timeouts, rate limits, or errors spiked. Rerun under healthy conditions.</p></div>
+    <div class="tile"><h4>Model</h4><p>Reproduces on replay and is concentrated in specific capabilities. Escalate with example outputs and the affected slices.</p></div>
+  </div>
+  <p><b>What goes in the launch review afterwards:</b> the verdict, the interval, the slice breakdown, twenty example outputs that show the failure, and what changes in the harness or checks so this class of problem is caught automatically next time.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>
+    <ul>
+      <li>Is this outside the noise band? What is the interval on the delta, computed paired?</li>
+      <li>Is the drop uniform or concentrated? Which slice contributes most of the total?</li>
+      <li>What changed besides the model? Show me the config diff.</li>
+      <li>Did the previous model also drop when rerun on today's harness?</li>
+      <li>Have you read the failing outputs yourself?</li>
+    </ul></div></div>
+</div>
+
+<h3>The order to check things in</h3>
+<ol class="steps">
+  <li><div><b>Is it real?</b> Compute the interval before you investigate. Use the paired comparison from <a href="#evalstats">eval statistics</a>: the same tasks, both models, discordant pairs. A 3 point drop inside the noise band is not an incident. This step alone saves days and is the one people skip.</div></li>
+  <li><div><b>Is it everywhere or somewhere?</b> Break the delta down by task category, language, input length, source. A uniform drop points at the model or the harness. A drop concentrated in one slice points at data or a specific capability.</div></li>
+  <li><div><b>Did anything non-model change?</b> Harness version, judge model or prompt, timeout, concurrency, temperature, task set membership, dependency versions. Diff the config before you diff the model.</div></li>
+  <li><div><b>Error and retry rates.</b> A drop that arrives with a spike in timeouts is infrastructure wearing a model costume. See <a href="#harness">the harness chapter</a> for why errors and retries bias scores.</div></li>
+  <li><div><b>Replay.</b> Rerun a sample of the regressed tasks against the previous model with today's harness. If the old model also drops, it is not the model.</div></li>
+  <li><div><b>Read the outputs.</b> Twenty of them, by hand, every time. The failure mode is usually visible and usually not what the metric suggested.</div></li>
+</ol>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Slice by contribution, not by percentage change</span></div>
+  <p>The total change in mean score decomposes exactly into slice contributions. With \(N\) tasks split into slices \(s\) of size \(n_s\) and per-slice mean change \(\bar d_s\):</p>
+  <div class="eq">\[ \Delta_{\text{total}} = \frac{1}{N}\sum_{s} n_s\,\bar d_s \]<span class="eqcap">Each slice's contribution is \(n_s \bar d_s / N\). Rank slices by this, not by \(\bar d_s\) alone, or a tiny slice with a big swing will send you down the wrong path. This identity holds when slices partition the tasks.</span></div>
+  <pre class="code" data-lang="python"><code>def slice_deltas(before: dict[str, float], after: dict[str, float],
+                 slices: dict[str, list[str]]) -> list[tuple[str, float, int]]:
+    """Where did the drop actually happen. Sort by contribution to the total
+    delta, not by percentage change, or a tiny slice with a big swing will
+    send you down the wrong path."""
+    out = []
+    for name, task_ids in slices.items():
+        ids = [t for t in task_ids if t in before and t in after]
+        if not ids:
+            continue
+        d = sum(after[t] - before[t] for t in ids) / len(ids)
+        contribution = d * len(ids)
+        out.append((name, d, len(ids), contribution))
+    out.sort(key=lambda x: x[3])            # most negative contribution first
+    return [(n, round(d, 4), k) for n, d, k, _ in out]</code></pre>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Slicing is a multiple comparison. With twenty slices, one will look significant by chance at the 5% level. Treat the slice view as a way to decide where to read outputs, not as a finding in itself, or apply a correction such as Benjamini–Hochberg (see <a href="#evalstats">multiple comparisons</a>).</div></div>
+  <h4>Replay as a two-by-two</h4>
+  <p>The replay step is cleanest as a small factorial: old and new model crossed with old and new harness. If the drop appears only in the new-harness column, the harness is the cause. If it appears only in the new-model row, it is the model. If it appears in only one cell, look for an interaction, such as a new prompt template that only the new model handles badly.</p>
+  <div class="tw"><table>
+    <thead><tr><th></th><th>Old harness</th><th>New harness</th></tr></thead>
+    <tbody>
+      <tr><td>Old model</td><td>Baseline</td><td>Harness effect alone</td></tr>
+      <tr><td>New model</td><td>Model effect alone</td><td>What you observed</td></tr>
+    </tbody></table></div>
+</div>
+
+<div class="callout eval"><span class="tag">Eval lens</span><div>Every triage should end with a change to the harness or the automated checks, so the same class of false alarm or real regression is caught without a human next time. A regression you diagnosed twice is a missing test.</div></div>
+</section>

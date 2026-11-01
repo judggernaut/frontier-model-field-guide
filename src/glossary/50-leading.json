@@ -1,0 +1,9 @@
+[
+ {"term": "Winner's curse", "def": "The upward bias in the observed score of whichever variant you selected as best; with many variants and noisy scores, the winner looks better than it is.", "see": "leading"},
+ {"term": "Sealed holdout", "def": "An evaluation set owned and run by someone independent of the training team, used only for final decisions so nobody can optimise toward it.", "see": "leading"},
+ {"term": "Pre-registration", "def": "Writing down the hypothesis, the deciding metrics, and the success threshold before running the experiment.", "see": "leading"},
+ {"term": "Compute-matched comparison", "def": "Comparing two methods at the same training FLOPs or tokens, so a gain reflects the method rather than extra compute.", "see": "leading"},
+ {"term": "Seed variance", "def": "How much a final score changes when the same training recipe is rerun with a different random seed.", "see": "leading"},
+ {"term": "Goodhart's law", "def": "When a measure becomes a target, it stops being a good measure; optimisation pressure finds ways to raise the metric without the underlying quality.", "see": "leading"},
+ {"term": "Kill criteria", "def": "A result, stated in advance, that would end a research project.", "see": "leading"}
+]

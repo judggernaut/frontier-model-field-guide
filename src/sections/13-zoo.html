@@ -1,0 +1,578 @@
+<section id="zoo" data-title="The distribution zoo">
+<h2>The distribution zoo: seventeen shapes and the stories that make them</h2>
+<p>Seventeen distributions. For each one: the picture, the story that generates it, what it looks like in eval work, and when not to use it. The generating story is the most useful part. If you can match the story, you have found your distribution.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Match the story, find the shape</span></div>
+  <p>Each distribution is the fingerprint of a process. Flip one coin and you get a Bernoulli. Count heads in 200 flips and you get a binomial. Add up many small nudges and you get a bell curve. Multiply many small nudges, like a slow network times a big payload times a cold cache, and you get a lopsided lognormal. You do not need to memorise formulas. You need to ask "what process made these numbers?" and match it to a story below.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why the choice of shape changes decisions</span></div>
+  <p>Picking a distribution sounds academic until it changes a ship decision. The common failure is assuming a simple shape when the real process is messier, which makes uncertainty look smaller than it is.</p>
+  <ul>
+    <li><b>Assuming independence that is not there.</b> Treating tool calls inside one session as independent coin flips (binomial) understates uncertainty, often by a factor of two or more. Results look significant that are not.</li>
+    <li><b>Assuming Poisson for agent counts.</b> Tool calls, turns and retries vary with task difficulty, so variance runs several times the mean. A Poisson model will flag a routine long session as a one-in-a-million event and send engineers chasing noise.</li>
+    <li><b>Reporting a mean for a heavy tail.</b> For lognormal data the mean describes nobody; for a genuine power law it may not even settle as data grows. Percentiles are the defensible summary.</li>
+    <li><b>Fitting one shape to a mixture.</b> Two populations on one axis need to be split, not modelled.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>"What is the variance-to-mean ratio of that count metric, and what model did the interval assume?" If the answer is Poisson and the ratio is 4, the error bars on the dashboard are about half as wide as they should be.</div></div>
+</div>
+
+<h3>Quick reference</h3>
+<div class="tw"><table><thead><tr><th>Distribution</th><th>The story</th><th>Typical eval quantity</th></tr></thead><tbody>
+<tr><td><a href="#zoo-bernoulli">Bernoulli</a></td><td>One yes/no trial</td><td>One task result</td></tr>
+<tr><td><a href="#zoo-binomial">Binomial</a></td><td>Successes in n independent trials</td><td>Tasks passed out of 200</td></tr>
+<tr><td><a href="#zoo-uniform">Uniform</a></td><td>Every value equally likely</td><td>p values under a true null</td></tr>
+<tr><td><a href="#zoo-normal-gaussian">Normal</a></td><td>Sum of many small independent effects</td><td>Averages, test statistics</td></tr>
+<tr><td><a href="#zoo-student-s-t">Student's t</a></td><td>Normal mean with estimated spread</td><td>Small-sample means</td></tr>
+<tr><td><a href="#zoo-lognormal">Lognormal</a></td><td>Product of many small effects</td><td>Latency, token counts</td></tr>
+<tr><td><a href="#zoo-exponential">Exponential</a></td><td>Waiting time, constant rate</td><td>Time between failures</td></tr>
+<tr><td><a href="#zoo-gamma">Gamma</a></td><td>Sum of several waits</td><td>Multi-stage pipeline latency</td></tr>
+<tr><td><a href="#zoo-poisson">Poisson</a></td><td>Events in a window, constant rate</td><td>Requests per minute</td></tr>
+<tr><td><a href="#zoo-negative-binomial">Negative binomial</a></td><td>Counts when the rate varies</td><td>Tool calls per session</td></tr>
+<tr><td><a href="#zoo-geometric">Geometric</a></td><td>Attempts until first success</td><td>Retry counts</td></tr>
+<tr><td><a href="#zoo-beta">Beta</a></td><td>Belief about a rate</td><td>Uncertainty about a pass rate</td></tr>
+<tr><td><a href="#zoo-chi-square">Chi square</a></td><td>Sum of squared normal deviations</td><td>Test statistics</td></tr>
+<tr><td><a href="#zoo-f">F</a></td><td>Ratio of two variances</td><td>ANOVA</td></tr>
+<tr><td><a href="#zoo-pareto-power-law">Pareto / power law</a></td><td>Scale free, no typical size</td><td>Repo and file sizes</td></tr>
+<tr><td><a href="#zoo-categorical-multinomial">Categorical / multinomial</a></td><td>One draw picks one class</td><td>Intent labels, failure codes</td></tr>
+<tr><td><a href="#zoo-mixture">Mixture</a></td><td>Several populations on one axis</td><td>Cache hits and cold starts</td></tr>
+</tbody></table></div>
+
+<div class="widget" id="w-fdist"><div class="wtitle">Distribution explorer</div>
+<div class="wsub">Every distribution below, live. The top panel is the density, the bottom is the cumulative view with the median and p95 marked. Move the parameters and watch the mean detach from the median as skew grows.</div>
+<div class="controls"><div class="ctl"><label>distribution</label><select data-k></select></div>
+<div class="ctl" data-w1><label data-l1></label><input type="range" data-p1></div>
+<div class="ctl" data-w2><label data-l2></label><input type="range" data-p2></div>
+</div>
+<canvas data-c1></canvas><canvas data-c2></canvas><div class="readout" data-out></div>
+</div>
+
+<h3 id="zoo-bernoulli">Bernoulli</h3>
+<p class="muted"><i>One yes/no trial.</i></p>
+<figure><img src="figs/stats-027.png" alt="Bernoulli distribution shape"><figcaption>Bernoulli: one yes/no trial.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>A single task either passes or fails. That is it. The building block everything else in pass/fail land is made from.</span></div>
+<div class="zrow"><b>In eval work</b><span>One task result. One tool call succeeding. One thumbs up.</span></div>
+<div class="zrow"><b>Use when</b><span>Use for a single binary outcome. It has one parameter, p. Its variance is p(1-p), which is largest at p = 0.5 and shrinks to nothing at the extremes, which is why rates near 0 or 1 are easier to pin down.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>There is nothing to misuse. The mistakes come one level up, in how you aggregate them.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Bernoulli: formulas and code</span></div>
+<div class="eq">\[ P(X=k) = p^k(1-p)^{1-k}, \quad k \in \{0,1\} \]<br>\[ E[X] = p \qquad \operatorname{Var}(X) = p(1-p) \]</div>
+<pre class="code" data-lang="python"><code>import random
+
+# GENERATE: one task result. This is the atom everything else is built from.
+def one_task(p_pass: float, rng) -&gt; int:
+    return 1 if rng.random() &lt; p_pass else 0        # 1 = passed, 0 = failed
+
+rng = random.Random(0)
+results = [one_task(0.7, rng) for _ in range(200)]  # 200 independent tasks
+
+# SUMMARISE
+n = len(results)
+k = sum(results)                                    # how many passed
+print(k / n)                                        # the pass rate, e.g. 0.705
+
+# NOTE the variance: p(1-p) is largest at p = 0.5 and shrinks toward the edges.
+# That is WHY a model at 50% needs more tasks to pin down than one at 95%.
+for p in (0.5, 0.7, 0.95):
+    print(p, &quot;variance per task:&quot;, round(p * (1 - p), 4))</code></pre>
+</div>
+
+<h3 id="zoo-binomial">Binomial</h3>
+<p class="muted"><i>Count of successes in n independent trials.</i></p>
+<figure><img src="figs/stats-030.png" alt="Binomial distribution shape"><figcaption>Binomial: count of successes in n independent trials.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Run n tasks, each passing with probability p, count the passes. The distribution of that count is binomial.</span></div>
+<div class="zrow"><b>In eval work</b><span>Number of tasks passed out of 200. Number of sessions with a successful tool call, IF sessions are independent.</span></div>
+<div class="zrow"><b>Use when</b><span>Use when trials are independent and share the same p. Wilson intervals are built on this.</span></div>
+<div class="zrow con"><b>Avoid when</b><span><b>Do not use when trials are not independent</b>, which is the big one. Multiple tool calls inside one session are not independent, and treating them as binomial understates your uncertainty, sometimes by a factor of two or more.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Binomial: formulas and code</span></div>
+<div class="eq">\[ P(X=k) = \binom{n}{k} p^k (1-p)^{n-k} \]<br>\[ E[X] = np \qquad \operatorname{Var}(X) = np(1-p) \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+import math
+
+# The count of passes out of n tasks IS binomial, if the tasks are independent.
+n, p = 200, 0.62
+print(&quot;expected passes:&quot;, n * p)                       # 124.0
+print(&quot;sd of that count:&quot;, math.sqrt(n * p * (1 - p))) # 6.86
+
+# How likely is exactly 130 passes? And 130 or more?
+print(stats.binom.pmf(130, n, p))     # exactly     -&gt; 0.0401
+print(stats.binom.sf(129, n, p))      # 130 or more -&gt; 0.2121
+
+# The interval you should report for an observed rate.
+def wilson(k, n, z=1.96):
+    p_hat = k / n
+    den = 1 + z * z / n
+    centre = (p_hat + z * z / (2 * n)) / den
+    half = z * math.sqrt(p_hat * (1 - p_hat) / n + z * z / (4 * n * n)) / den
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+print(wilson(124, 200))   # (0.5511, 0.6844)
+
+# THE TRAP: this is only valid if tasks are independent.
+# 200 tool calls from 25 sessions are NOT 200 independent trials.</code></pre>
+</div>
+
+<h3 id="zoo-uniform">Uniform</h3>
+<p class="muted"><i>Every value in a range equally likely.</i></p>
+<figure><img src="figs/stats-033.png" alt="Uniform distribution shape"><figcaption>Uniform: every value in a range equally likely.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Nothing favours any part of the range. Flat.</span></div>
+<div class="zrow"><b>In eval work</b><span>P values under a true null hypothesis are uniform. That fact is what makes the multiple comparisons problem work the way it does: run 40 benchmarks with no real effect and you get 40 uniform draws, so about 2 land below 0.05.</span></div>
+<div class="zrow"><b>Use when</b><span>Use as a null model, for random baselines, and for reasoning about p values.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>Almost no real measurement is uniform. If your data looks flat, suspect a rounding or bucketing artefact.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Uniform: formulas and code</span></div>
+<div class="eq">\[ f(x) = \frac{1}{b-a}, \quad a \le x \le b \]<br>\[ E[X] = \frac{a+b}{2} \qquad \operatorname{Var}(X) = \frac{(b-a)^2}{12} \]</div>
+<pre class="code" data-lang="python"><code>import random
+
+# The single most useful fact about the uniform distribution in eval work:
+# p values from a TRUE NULL are uniform. That is the whole multiple
+# comparisons problem in one line.
+rng = random.Random(1)
+suite = 40                                    # benchmarks in your standing suite
+p_values = [rng.random() for _ in range(suite)]   # all nulls, no real effect
+
+false_alarms = sum(1 for p in p_values if p &lt; 0.05)
+print(false_alarms)      # about 2, every single run, purely by luck
+
+# Expected number of spurious &quot;significant&quot; results:
+print(suite * 0.05)      # 2.0</code></pre>
+</div>
+
+<h3 id="zoo-normal-gaussian">Normal (Gaussian)</h3>
+<p class="muted"><i>The sum of many small independent effects.</i></p>
+<figure><img src="figs/stats-036.png" alt="Normal (Gaussian) distribution shape"><figcaption>Normal (Gaussian): the sum of many small independent effects.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>When lots of small independent things add up, the total is normal. That is the only story it tells, and it is why normality shows up in averages and test statistics rather than in raw measurements.</span></div>
+<div class="zrow"><b>In eval work</b><span>Averages of large samples. Test statistics. Almost never your raw latency or token counts.</span></div>
+<div class="zrow"><b>Use when</b><span>Use for averages, for differences of averages, and as the reference for QQ plots and z scores.</span></div>
+<div class="zrow con"><b>Avoid when</b><span><b>Do not assume your raw data is normal.</b> Latency is not. Token counts are not. Counts are not. Assuming it and then using a t test on skewed data is the classic error.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Normal (Gaussian): formulas and code</span></div>
+<div class="eq">\[ f(x) = \frac{1}{\sigma\sqrt{2\pi}} \exp\!\left(-\frac{(x-\mu)^2}{2\sigma^2}\right) \]<br>\[ E[X] = \mu \qquad \operatorname{Var}(X) = \sigma^2 \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+import numpy as np
+
+# Raw eval data is almost never normal. AVERAGES of it are.
+latency = stats.lognorm.rvs(0.9, scale=3, size=5000, random_state=0)  # skewed
+print(stats.skew(latency))                    # ~2.5, strongly right skewed
+
+means = latency[:5000].reshape(-1, 50).mean(axis=1)   # averages of 50
+print(stats.skew(means))                      # ~0.35, close to symmetric
+
+# The 68 / 95 / 99.7 rule, for genuinely normal data:
+for k in (1, 2, 3):
+    print(k, &quot;sd covers&quot;, round(100 * (stats.norm.cdf(k) - stats.norm.cdf(-k)), 1), &quot;%&quot;)
+
+# Test normality rather than assuming it. Small p = not normal.
+print(stats.shapiro(latency[:500]).pvalue)    # ~0 -&gt; definitely not normal
+print(stats.shapiro(means[:80]).pvalue)       # large -&gt; consistent with normal</code></pre>
+</div>
+
+<h3 id="zoo-student-s-t">Student's t</h3>
+<p class="muted"><i>A normal mean when you had to estimate the spread too.</i></p>
+<figure><img src="figs/stats-039.png" alt="Student's t distribution shape"><figcaption>Student's t: a normal mean when you had to estimate the spread too.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Same bell shape but with fatter tails, because estimating the standard deviation from a small sample adds uncertainty. As n grows it converges on the normal.</span></div>
+<div class="zrow"><b>In eval work</b><span>Small sample comparisons of means, under about 30 observations.</span></div>
+<div class="zrow"><b>Use when</b><span>Use for means of small samples where the data is roughly symmetric.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>The fatter tails do not rescue you from skew. On lognormal latency, t is still the wrong tool. Bootstrap or work on the log scale instead.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Student's t: formulas and code</span></div>
+<div class="eq">\[ f(x) \propto \left(1 + \frac{x^2}{\nu}\right)^{-\frac{\nu+1}{2}} \]<br>\[ E[X] = 0 \ (\nu > 1) \qquad \operatorname{Var}(X) = \frac{\nu}{\nu-2} \ (\nu > 2) \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+
+# t is what you use when you estimated the spread from the same small sample.
+# Compare the critical value at 95% as the sample grows:
+for df in (5, 10, 30, 100, 1000):
+    print(df, round(stats.t.ppf(0.975, df), 3))
+# 5 -&gt; 2.571,  30 -&gt; 2.042,  1000 -&gt; 1.962.  It converges on the normal 1.96.
+
+# A paired t test on per task score differences:
+import numpy as np
+rng = np.random.default_rng(0)
+model_a = rng.normal(0.62, 0.20, 40)
+model_b = rng.normal(0.58, 0.20, 40)
+print(stats.ttest_rel(model_a, model_b))
+
+# BUT: check the differences are roughly symmetric first. On skewed data
+# this is the wrong tool no matter how fat the t tails are.</code></pre>
+</div>
+
+<h3 id="zoo-lognormal">Lognormal</h3>
+<p class="muted"><i>The PRODUCT of many small independent effects.</i></p>
+<figure><img src="figs/stats-042.png" alt="Lognormal distribution shape"><figcaption>Lognormal: the PRODUCT of many small independent effects.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Where normal comes from adding, lognormal comes from multiplying. Latency is multiplicative: a slow network multiplies with a big payload multiplies with a cold cache. So the log of latency is normal, and latency itself is lognormal.</span></div>
+<div class="zrow"><b>In eval work</b><span><b>Latency. Token counts. Session durations. Repo sizes.</b> This is the workhorse shape of eval engineering.</span></div>
+<div class="zrow"><b>Use when</b><span>Use for anything strictly positive with a long right tail. Analyse on the log scale, report percentiles in the original units. The geometric mean is its natural centre.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>Do not report the arithmetic mean unless you need a total. Do not run a t test on it raw. And distinguish it from a genuine power law: lognormal has a finite, well behaved mean, a power law may not.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Lognormal: formulas and code</span></div>
+<div class="eq">\[ f(x) = \frac{1}{x\sigma\sqrt{2\pi}} \exp\!\left(-\frac{(\ln x-\mu)^2}{2\sigma^2}\right) \]<br>\[ E[X] = e^{\mu+\sigma^2/2} \qquad \text{median} = e^{\mu} \qquad \operatorname{Var}(X) = \left(e^{\sigma^2}-1\right)e^{2\mu+\sigma^2} \]</div>
+<pre class="code" data-lang="python"><code>import numpy as np
+from scipy import stats
+
+lat = stats.lognorm.rvs(0.85, scale=2.5, size=5000, random_state=3)
+
+# WRONG: the arithmetic mean sits between the median and p95 and
+# describes nobody's actual experience.
+print(&quot;mean  &quot;, lat.mean())                    # 3.48
+print(&quot;median&quot;, np.median(lat))                # 2.42
+print(&quot;p95   &quot;, np.quantile(lat, 0.95))        # 9.90
+
+# RIGHT: work on the log scale, where it is symmetric.
+logs = np.log(lat)
+print(&quot;log data is symmetric:&quot;, round(stats.skew(logs), 3))   # 0.037
+
+# The geometric mean is the natural centre, and it recovers the median.
+geo = np.exp(logs.mean())
+print(&quot;geometric mean:&quot;, geo)                  # 2.42, matches the median exactly
+
+# Fit and read off the parameters:
+shape, loc, scale = stats.lognorm.fit(lat, floc=0)
+print(&quot;sigma:&quot;, shape, &quot; median:&quot;, scale)      # 0.846, 2.42 - recovered</code></pre>
+</div>
+
+<h3 id="zoo-exponential">Exponential</h3>
+<p class="muted"><i>Waiting time when the event rate is constant.</i></p>
+<figure><img src="figs/stats-045.png" alt="Exponential distribution shape"><figcaption>Exponential: waiting time when the event rate is constant.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>How long until the next event, when the chance of it happening in the next instant never changes. It is memoryless: having waited 10 seconds tells you nothing about how much longer you will wait.</span></div>
+<div class="zrow"><b>In eval work</b><span>Time between independent failures. Idle time between requests, roughly.</span></div>
+<div class="zrow"><b>Use when</b><span>Use for waiting times with a constant hazard rate.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>Real systems are rarely memoryless. If a request has already run 60 seconds it is probably stuck, and its remaining time is not the same as a fresh request's. Use gamma or lognormal when the hazard changes.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Exponential: formulas and code</span></div>
+<div class="eq">\[ f(x) = \lambda e^{-\lambda x}, \quad x \ge 0 \]<br>\[ E[X] = \frac{1}{\lambda} \qquad \operatorname{Var}(X) = \frac{1}{\lambda^2} \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+import numpy as np
+
+# Waiting time with a CONSTANT hazard rate.
+gaps = stats.expon.rvs(scale=4.0, size=4000, random_state=1)  # mean 4 seconds
+
+# Memorylessness, demonstrated. Among requests that already waited 5 seconds,
+# the REMAINING wait still averages 4 seconds. Waiting tells you nothing.
+already = gaps[gaps &gt; 5] - 5
+print(gaps.mean(), already.mean())     # 4.0  vs  4.0
+
+# THE TEST: is your data actually memoryless? Compare the mean and sd.
+# For an exponential they are equal.
+print(gaps.mean(), gaps.std())         # 4.0, 4.0 -&gt; consistent
+
+lat = stats.lognorm.rvs(0.9, scale=3, size=4000, random_state=1)
+print(lat.mean(), lat.std())           # 4.5, 4.9 -&gt; not exponential</code></pre>
+</div>
+
+<h3 id="zoo-gamma">Gamma</h3>
+<p class="muted"><i>Total time for several sequential steps.</i></p>
+<figure><img src="figs/stats-048.png" alt="Gamma distribution shape"><figcaption>Gamma: total time for several sequential steps.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Add up several exponential waits and you get a gamma. Shape parameter = how many steps.</span></div>
+<div class="zrow"><b>In eval work</b><span>End to end latency through a multi stage pipeline. Total time for an agent loop with several tool calls.</span></div>
+<div class="zrow"><b>Use when</b><span>Use for sums of waiting times. With shape 1 it IS exponential; with large shape it approaches normal.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>Needs the steps to be independent and similarly scaled. A pipeline with one dominant slow stage is not gamma, it is basically that stage's own distribution.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Gamma: formulas and code</span></div>
+<div class="eq">\[ f(x) = \frac{\lambda^k x^{k-1} e^{-\lambda x}}{\Gamma(k)} \]<br>\[ E[X] = \frac{k}{\lambda} \qquad \operatorname{Var}(X) = \frac{k}{\lambda^2} \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+import numpy as np
+
+# Total time through a pipeline of k independent stages.
+# Sum of k exponentials with the same rate IS a gamma with shape k.
+rng = np.random.default_rng(0)
+stages = rng.exponential(2.0, size=(5000, 3))     # 3 stages, mean 2s each
+total = stages.sum(axis=1)
+
+print(total.mean(), 3 * 2.0)                      # 6.0 - matches k/lambda
+print(stats.gamma.fit(total, floc=0)[0])          # recovers shape ~3
+
+# Shape 1 IS exponential; large shape approaches normal.
+for k in (1, 3, 20):
+    print(k, round(stats.skew(stats.gamma.rvs(k, size=20000, random_state=1)), 2))
+# 1 -&gt; 2.0 (very skewed),  3 -&gt; 1.15,  20 -&gt; 0.44 (nearly symmetric)</code></pre>
+</div>
+
+<h3 id="zoo-poisson">Poisson</h3>
+<p class="muted"><i>Count of events in a fixed window, at a constant rate.</i></p>
+<figure><img src="figs/stats-051.png" alt="Poisson distribution shape"><figcaption>Poisson: count of events in a fixed window, at a constant rate.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Events happen independently at a steady average rate; you count how many landed in one window. Its defining property: <b>variance equals the mean</b>.</span></div>
+<div class="zrow"><b>In eval work</b><span>Requests per minute during steady traffic. Errors per hour when nothing unusual is happening.</span></div>
+<div class="zrow"><b>Use when</b><span>Use when your variance/mean ratio comes out near 1.</span></div>
+<div class="zrow con"><b>Avoid when</b><span><b>Check that ratio first, because it usually is not near 1.</b> Tool calls per session run 3 to 6, not 1. Assuming Poisson there makes your intervals roughly sqrt(ratio) times too narrow, and you will call noise a change.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Poisson: formulas and code</span></div>
+<div class="eq">\[ P(X=k) = \frac{\lambda^k e^{-\lambda}}{k!} \]<br>\[ E[X] = \lambda \qquad \operatorname{Var}(X) = \lambda \qquad \frac{\operatorname{Var}}{E} = 1 \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+import numpy as np
+
+# THE defining property: variance equals the mean. Test this FIRST,
+# before you use any Poisson based interval.
+counts = stats.poisson.rvs(6, size=3000, random_state=0)
+print(counts.mean(), counts.var(ddof=1))          # 5.90, 6.01 -&gt; ratio 1.02
+
+def dispersion_test(counts):
+    m = np.mean(counts)
+    v = np.var(counts, ddof=1)
+    ratio = v / m if m else float(&quot;inf&quot;)
+    return {&quot;mean&quot;: m, &quot;var&quot;: v, &quot;ratio&quot;: ratio,
+            &quot;verdict&quot;: &quot;Poisson ok&quot; if ratio &lt; 1.5 else &quot;OVERDISPERSED&quot;}
+
+print(dispersion_test(counts))                    # Poisson ok
+
+# Real agent data almost never passes this.
+real = np.concatenate([stats.poisson.rvs(2, size=1000, random_state=1),
+                       stats.poisson.rvs(15, size=1000, random_state=2)])
+print(dispersion_test(real))                      # ratio ~4.5, OVERDISPERSED</code></pre>
+</div>
+
+<h3 id="zoo-negative-binomial">Negative binomial</h3>
+<p class="muted"><i>Counts when the rate itself varies.</i></p>
+<figure><img src="figs/stats-054.png" alt="Negative binomial distribution shape"><figcaption>Negative binomial: counts when the rate itself varies.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>A mixture of Poissons with different rates is a negative binomial. Easy tasks take two tool calls, hard ones take twenty. The rate is not constant across tasks, so the counts spread far wider than Poisson allows.</span></div>
+<div class="zrow"><b>In eval work</b><span><b>Tool calls per session. Turns per conversation. Retries per task.</b> Nearly every count in agent evaluation.</span></div>
+<div class="zrow"><b>Use when</b><span>Use whenever variance/mean is well above 1, which for agent counts is essentially always.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>It has one more parameter than Poisson, so it needs a bit more data. If you only need an interval rather than a model, bootstrapping quantiles is simpler and just as defensible.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Negative binomial: formulas and code</span></div>
+<div class="eq">\[ P(X=k) = \binom{k+r-1}{k}(1-p)^k p^r \]<br>\[ E[X] = \mu \qquad \operatorname{Var}(X) = \mu + \frac{\mu^2}{r} \;>\; \mu \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+import numpy as np
+
+# A mixture of Poissons with DIFFERENT rates is a negative binomial.
+# That is exactly what varied task difficulty produces.
+rng = np.random.default_rng(0)
+rates = rng.gamma(shape=2.0, scale=3.0, size=4000)   # difficulty varies
+calls = rng.poisson(rates)                           # tool calls per session
+
+m, v = calls.mean(), calls.var(ddof=1)
+print(m, v, v / m)                    # 6.15, 25.6, ratio 4.16 -&gt; not Poisson
+
+# Fit: parameterise by mean and dispersion r. Var = mu + mu^2 / r.
+mu = m
+r = mu ** 2 / (v - mu)                # method of moments estimate
+print(&quot;dispersion r:&quot;, r)             # 1.94, recovering the gamma shape of 2.0
+
+# Compare what each model says about seeing 20+ calls in a session:
+print(&quot;Poisson says: &quot;, stats.poisson.sf(19, mu))            # 7.3e-06 (absurd)
+print(&quot;NegBinom says:&quot;, stats.nbinom.sf(19, r, r / (r + mu)))  # 0.022 (real)
+# The Poisson model would flag a routine session as a once-in-a-million event.</code></pre>
+</div>
+
+<h3 id="zoo-geometric">Geometric</h3>
+<p class="muted"><i>How many attempts until the first success.</i></p>
+<figure><img src="figs/stats-057.png" alt="Geometric distribution shape"><figcaption>Geometric: how many attempts until the first success.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Keep retrying until something works; count the attempts. The discrete cousin of the exponential, and also memoryless.</span></div>
+<div class="zrow"><b>In eval work</b><span><b>Retry counts.</b> Attempts before a flaky tool call succeeds.</span></div>
+<div class="zrow"><b>Use when</b><span>Use for attempts-until-success with a constant success chance.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>Assumes the success chance does not change between attempts. If a retry is more likely to succeed because a cache warmed up, or less likely because the task is genuinely broken, this is the wrong model.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Geometric: formulas and code</span></div>
+<div class="eq">\[ P(X=k) = (1-p)^{k-1}p, \quad k = 1, 2, \ldots \]<br>\[ E[X] = \frac{1}{p} \qquad \operatorname{Var}(X) = \frac{1-p}{p^2} \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+import numpy as np
+
+# Attempts until the first success. Directly models harness retries.
+p_success = 0.7
+attempts = stats.geom.rvs(p_success, size=5000, random_state=0)
+
+print(&quot;mean attempts:&quot;, attempts.mean(), &quot; theory:&quot;, 1 / p_success)   # 1.43
+
+# What fraction of tasks need more than one attempt?
+print((attempts &gt; 1).mean())                    # 0.30, i.e. 1 - p
+
+# Retry budget: what share of tasks are still unfinished after k attempts?
+for k in (1, 2, 3, 4):
+    print(k, &quot;attempts leaves&quot;, round((1 - p_success) ** k, 4), &quot;unfinished&quot;)
+# 4 attempts leaves 0.8% - that residue is your silently dropped tasks.
+
+# ASSUMPTION CHECK: this needs a constant success chance per attempt.
+# If a retry succeeds because a cache warmed up, the model does not hold.</code></pre>
+</div>
+
+<h3 id="zoo-beta">Beta</h3>
+<p class="muted"><i>A distribution over a RATE you are uncertain about.</i></p>
+<figure><img src="figs/stats-060.png" alt="Beta distribution shape"><figcaption>Beta: a distribution over a RATE you are uncertain about.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Everything else here describes data. Beta describes your belief about a probability. After seeing 8 passes and 4 fails, Beta(8,4) is the shape of your uncertainty about the true pass rate. More evidence, tighter shape.</span></div>
+<div class="zrow"><b>In eval work</b><span>Uncertainty about a pass rate. Priors when you have very few tasks. Smoothing a rate estimated from a handful of observations.</span></div>
+<div class="zrow"><b>Use when</b><span>Use for reasoning about rates, especially with small samples. It is the natural partner to the binomial.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>It is a belief, not a measurement. Do not report a Beta as if it described your data, and be explicit about any prior you chose, because with small n the prior is doing real work.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Beta: formulas and code</span></div>
+<div class="eq">\[ f(x) = \frac{x^{\alpha-1}(1-x)^{\beta-1}}{B(\alpha,\beta)}, \quad 0 \le x \le 1 \]<br>\[ E[X] = \frac{\alpha}{\alpha+\beta} \qquad \operatorname{Var}(X) = \frac{\alpha\beta}{(\alpha+\beta)^2(\alpha+\beta+1)} \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+
+# Beta describes your BELIEF about a rate, not the data itself.
+# Start with no information, then add evidence.
+passes, fails = 8, 4
+post = stats.beta(1 + passes, 1 + fails)          # uniform prior + evidence
+
+print(&quot;best guess:&quot;, post.mean())                 # 0.643
+print(&quot;95% credible interval:&quot;, post.interval(0.95))   # (0.386, 0.861)
+
+# With only 12 tasks the interval is enormous. Watch it tighten:
+for n in (12, 50, 200, 1000):
+    a = 1 + round(0.65 * n)
+    b = 1 + n - round(0.65 * n)
+    lo, hi = stats.beta(a, b).interval(0.95)
+    print(n, &quot;tasks -&gt;&quot;, round(hi - lo, 3), &quot;wide&quot;)
+# 12 -&gt; 0.476,  200 -&gt; 0.131,  1000 -&gt; 0.059
+
+# Probability model A truly beats a 0.60 baseline, given the data:
+print(1 - stats.beta(1 + 8, 1 + 4).cdf(0.60))     # 0.647 - genuinely unsure</code></pre>
+</div>
+
+<h3 id="zoo-chi-square">Chi square</h3>
+<p class="muted"><i>Sum of squared normal deviations.</i></p>
+<figure><img src="figs/stats-063.png" alt="Chi square distribution shape"><figcaption>Chi square: sum of squared normal deviations.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Add up squared standardised differences. You rarely measure something chi square distributed; you compute a test statistic that follows it.</span></div>
+<div class="zrow"><b>In eval work</b><span>The distribution behind chi square tests of independence, Cochran's Q, and variance tests.</span></div>
+<div class="zrow"><b>Use when</b><span>Use as the reference distribution for those tests.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>Its approximations get unreliable when expected cell counts fall below about 5. On small eval sets prefer exact tests or a permutation test, which is why the exact McNemar and permutation approaches are worth having.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Chi square: formulas and code</span></div>
+<div class="eq">\[ X = \sum_{i=1}^{k} Z_i^2, \quad Z_i \sim \mathcal{N}(0,1) \]<br>\[ E[X] = k \qquad \operatorname{Var}(X) = 2k \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+import numpy as np
+
+# You rarely MEASURE something chi square. You compute a statistic that follows it.
+# Example: are failure reasons distributed the same across two models?
+observed = np.array([[42, 31, 27],       # model A: timeout / wrong / crash
+                     [18, 55, 29]])      # model B
+chi2, p, dof, expected = stats.chi2_contingency(observed)
+print(chi2, p, dof)                      # 19.3, 6.5e-05, 2
+
+# THE ASSUMPTION nobody checks: every expected count should exceed ~5.
+print(expected.min())                    # 22.6 -&gt; fine here
+# If it is below 5, the chi square approximation is unreliable.
+# Use an exact test or a permutation test instead:
+print(stats.fisher_exact(observed[:, :2]))</code></pre>
+</div>
+
+<h3 id="zoo-f">F</h3>
+<p class="muted"><i>Ratio of two variances.</i></p>
+<figure><img src="figs/stats-066.png" alt="F distribution shape"><figcaption>F: ratio of two variances.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Signal variance over noise variance. Large F means the differences between groups are big relative to the scatter inside them.</span></div>
+<div class="zrow"><b>In eval work</b><span>The distribution behind ANOVA.</span></div>
+<div class="zrow"><b>Use when</b><span>Use as the reference for ANOVA.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>Sensitive to non-normality and unequal variances. On skewed eval data, prefer Friedman or a permutation test.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">F: formulas and code</span></div>
+<div class="eq">\[ F = \frac{\chi^2_{d_1}/d_1}{\chi^2_{d_2}/d_2} = \frac{\text{MS}_{\text{between}}}{\text{MS}_{\text{within}}} \]<br>\[ E[F] = \frac{d_2}{d_2-2} \quad (d_2 > 2) \]</div>
+<pre class="code" data-lang="python"><code>from scipy import stats
+import numpy as np
+
+# F is a ratio of variances: between-group signal over within-group noise.
+rng = np.random.default_rng(0)
+config_a = rng.normal(2.0, 0.4, 60)      # latency under three serving configs
+config_b = rng.normal(2.1, 0.4, 60)
+config_c = rng.normal(2.6, 0.4, 60)
+
+F, p = stats.f_oneway(config_a, config_b, config_c)
+print(F, p)                              # 34.5, 4e-13
+
+# ALWAYS report the effect size next to F. Eta squared = share of variance explained.
+groups = [config_a, config_b, config_c]
+allv = np.concatenate(groups)
+ss_between = sum(len(g) * (g.mean() - allv.mean()) ** 2 for g in groups)
+ss_total = ((allv - allv.mean()) ** 2).sum()
+print(&quot;eta squared:&quot;, ss_between / ss_total)     # 0.28
+
+# On skewed data (latency usually is), prefer the rank based version:
+print(stats.kruskal(config_a, config_b, config_c))</code></pre>
+</div>
+
+<h3 id="zoo-pareto-power-law">Pareto / power law</h3>
+<p class="muted"><i>Scale free: no typical size.</i></p>
+<figure><img src="figs/stats-069.png" alt="Pareto / power law distribution shape"><figcaption>Pareto / power law: scale free: no typical size.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>The heaviest tail you will meet in practice. Doubling the value divides its frequency by a constant, which produces a straight line on log-log axes. Depending on the tail index, the mean and even the variance may not converge.</span></div>
+<div class="zrow"><b>In eval work</b><span>Repo sizes. File sizes. Occasionally session lengths in a long tailed product.</span></div>
+<div class="zrow"><b>Use when</b><span>Use when a log-log plot is straight and the tail refuses to settle down.</span></div>
+<div class="zrow con"><b>Avoid when</b><span><b>Never report a mean for a genuine power law.</b> It may not exist, and your sample mean will keep drifting as you collect more data. Percentiles and log scales only. Distinguish carefully from lognormal, which looks similar but is much better behaved.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Pareto / power law: formulas and code</span></div>
+<div class="eq">\[ P(X > x) = \left(\frac{x_m}{x}\right)^{\alpha} \]<br>\[ E[X] = \frac{\alpha x_m}{\alpha-1} \ \ (\alpha > 1), \ \text{ else undefined} \]</div>
+<pre class="code" data-lang="python"><code>import numpy as np
+from scipy import stats
+
+# The test that separates a power law from a lognormal: does the MEAN settle?
+heavy = stats.pareto.rvs(1.2, size=200000, random_state=0)     # power law
+mild = stats.lognorm.rvs(1.0, scale=3, size=200000, random_state=0)
+
+for n in (1000, 10000, 100000, 200000):
+    print(n, &quot;power law mean:&quot;, round(heavy[:n].mean(), 1),
+             &quot; lognormal mean:&quot;, round(mild[:n].mean(), 2))
+# lognormal: 4.67 -&gt; 4.94 -&gt; 4.95, settling down.
+# power law: 5.7 -&gt; 5.4 -&gt; 5.9, still wandering at 200,000 samples.
+
+# Estimate the tail index. alpha &lt;= 1 means the mean does not exist at all.
+def hill_estimator(x, k=500):
+    s = np.sort(x)[::-1][:k + 1]
+    return 1.0 / np.mean(np.log(s[:k] / s[k]))
+
+print(&quot;alpha:&quot;, hill_estimator(heavy))     # 1.135, close to the true 1.2
+# alpha &lt; 2 -&gt; infinite variance. Never report a mean or an sd.</code></pre>
+</div>
+
+<h3 id="zoo-categorical-multinomial">Categorical / multinomial</h3>
+<p class="muted"><i>One draw picks one class.</i></p>
+<figure><img src="figs/stats-072.png" alt="Categorical / multinomial distribution shape"><figcaption>Categorical / multinomial: one draw picks one class.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Each observation lands in exactly one of k buckets, with a probability per bucket. Multinomial is the count version across many draws.</span></div>
+<div class="zrow"><b>In eval work</b><span><b>Intent classification.</b> Task categories. Failure reason codes.</span></div>
+<div class="zrow"><b>Use when</b><span>Use for any labelled class assignment. The counts across classes are multinomial.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>Class shares are not independent: they must sum to 1, so pushing one up pulls the others down. Treating each class as its own separate binomial ignores that constraint.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Categorical / multinomial: formulas and code</span></div>
+<div class="eq">\[ P(X=i) = p_i, \qquad \sum_{i=1}^{k} p_i = 1 \]<br>\[ E[\text{count}_i] = np_i \qquad \operatorname{Cov}(n_i, n_j) = -np_ip_j \]</div>
+<pre class="code" data-lang="python"><code>from collections import Counter
+from scipy import stats
+import numpy as np
+
+# Intent classification: each session gets exactly one label.
+labels = [&quot;fix_bug&quot;, &quot;refactor&quot;, &quot;explain&quot;, &quot;add_test&quot;, &quot;docs&quot;]
+counts = np.array([340, 220, 190, 150, 100])
+n = counts.sum()
+
+for lab, c in zip(labels, counts):
+    print(lab, round(c / n, 3))
+
+# THE CONSTRAINT people forget: shares must sum to 1, so they are NOT
+# independent. Pushing one class up pulls the others down, and the
+# covariance between two class counts is negative.
+p = counts / n
+print(&quot;cov(fix_bug, refactor):&quot;, -n * p[0] * p[1])    # negative, by construction
+
+# Did the intent mix shift between two releases?
+before = np.array([340, 220, 190, 150, 100])
+after = np.array([290, 260, 185, 165, 100])
+print(stats.chisquare(after, f_exp=before * after.sum() / before.sum()))</code></pre>
+</div>
+
+<h3 id="zoo-mixture">Mixture</h3>
+<p class="muted"><i>Two or more populations sharing an axis.</i></p>
+<figure><img src="figs/stats-075.png" alt="Mixture distribution shape"><figcaption>Mixture: two or more populations sharing an axis.</figcaption></figure>
+<div class="zoo"><div class="zrow"><b>The story</b><span>Not a distribution family so much as a warning. Any two distributions can be blended, and the result often looks like one distribution with strange outliers.</span></div>
+<div class="zrow"><b>In eval work</b><span><b>Cache hits and cold starts. Retried and first-try requests. Easy and hard task categories.</b> Very common and very often missed.</span></div>
+<div class="zrow"><b>Use when</b><span>Use it as a diagnosis, not a model. When you see two humps, go find the variable that separates them.</span></div>
+<div class="zrow con"><b>Avoid when</b><span>Do not fit a single distribution to a mixture and then report its mean or median. The median can land in the empty valley between the humps, describing a case that never occurs.</span></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Mixture: formulas and code</span></div>
+<div class="eq">\[ f(x) = \sum_j w_j f_j(x), \qquad \sum_j w_j = 1 \]<br>\[ E[X] = \sum_j w_j \mu_j \quad \text{(but the mean may describe nobody)} \]</div>
+<pre class="code" data-lang="python"><code>import numpy as np
+from sklearn.mixture import GaussianMixture   # or fit by hand
+
+lat = np.concatenate([
+    np.random.default_rng(0).normal(1.2, 0.3, 2200),   # cached
+    np.random.default_rng(1).normal(6.5, 1.5, 800),    # cold start
+])
+
+# DIAGNOSIS, not a model. Two components fit far better than one?
+logs = np.log(lat).reshape(-1, 1)
+one = GaussianMixture(1, random_state=0).fit(logs)
+two = GaussianMixture(2, random_state=0).fit(logs)
+print(&quot;BIC one component:&quot;, round(one.bic(logs)))     # higher = worse
+print(&quot;BIC two components:&quot;, round(two.bic(logs)))    # much lower -&gt; mixture
+
+# Why the median is dangerous here:
+print(&quot;median:&quot;, np.median(lat))          # 1.45 - describes the fast group only
+print(&quot;mean:  &quot;, lat.mean())              # 2.61 - describes nobody
+
+# THE RIGHT MOVE: stop modelling and go find the variable that splits them.
+# Then report each segment separately, with its own share of traffic.</code></pre>
+</div>
+</section>

@@ -1,0 +1,207 @@
+[
+ {
+  "term": "Bias",
+  "def": "A systematic error that does not shrink with more data. The opposite of noise.",
+  "see": "bigideas"
+ },
+ {
+  "term": "Bootstrap",
+  "def": "Resample your data with replacement many times to see how much an estimate would wobble.",
+  "see": "tails"
+ },
+ {
+  "term": "Censoring",
+  "def": "You know a value exceeded some cap but not by how much. Timeouts and token limits create this.",
+  "see": "reading"
+ },
+ {
+  "term": "Central limit theorem",
+  "def": "Averages tend toward a bell shape regardless of the raw data's shape, with variance shrinking as one over n.",
+  "see": "bigideas"
+ },
+ {
+  "term": "Confidence interval",
+  "def": "A range produced by a procedure that captures the truth a stated share of the time.",
+  "see": "bigideas"
+ },
+ {
+  "term": "Discordant pair",
+  "def": "A task where two models disagreed. The only tasks that carry information in a paired test.",
+  "see": "lookup"
+ },
+ {
+  "term": "Effect size",
+  "def": "How big the difference is, as opposed to how confident you are that it exists.",
+  "see": "bigideas"
+ },
+ {
+  "term": "Heteroscedasticity",
+  "def": "Spread that changes with the value. Common in latency: slow things vary more.",
+  "see": "reading"
+ },
+ {
+  "term": "ICC",
+  "def": "Intraclass correlation: the share of variance that lives between clusters rather than within them.",
+  "see": "lookup"
+ },
+ {
+  "term": "IQR",
+  "def": "Interquartile range: the middle 50% of the data, p75 minus p25. Outliers cannot move it.",
+  "see": "basics"
+ },
+ {
+  "term": "Kurtosis",
+  "def": "How heavy the tails are. High kurtosis means extremes are more common than a bell predicts.",
+  "see": "zoo"
+ },
+ {
+  "term": "Memoryless",
+  "def": "How long you have already waited tells you nothing about the remaining wait. True of the exponential and geometric.",
+  "see": "zoo"
+ },
+ {
+  "term": "Overdispersion",
+  "def": "Count data with variance well above its mean. Poisson does not apply; use negative binomial or bootstrap.",
+  "see": "zoo"
+ },
+ {
+  "term": "Paired",
+  "def": "The same tasks were given to both models, so comparisons can use within-task differences.",
+  "see": "lookup"
+ },
+ {
+  "term": "Percentile / quantile",
+  "def": "The value below which a given share of the data falls. p95 is the 0.95 quantile.",
+  "see": "basics"
+ },
+ {
+  "term": "Power",
+  "def": "The chance of detecting a real effect of a given size, if it exists.",
+  "see": "bigideas"
+ },
+ {
+  "term": "p value",
+  "def": "How often you would see a result this extreme if there were genuinely no effect. Not the probability the null is true.",
+  "see": "bigideas"
+ },
+ {
+  "term": "Prior",
+  "def": "What you believed before seeing this data. With small samples it does real work in a Bayesian estimate.",
+  "see": "zoo"
+ },
+ {
+  "term": "Proper scoring rule",
+  "def": "A score minimised by reporting your true belief. Brier score is one; ECE is not.",
+  "see": "lookup"
+ },
+ {
+  "term": "Robust",
+  "def": "Resistant to outliers. The median is robust, the mean is not.",
+  "see": "tails"
+ },
+ {
+  "term": "Sampling distribution",
+  "def": "The spread of results you would get from repeating the whole experiment on fresh samples.",
+  "see": "bigideas"
+ },
+ {
+  "term": "Skew",
+  "def": "Asymmetry, named for the side the tail is on. Mean divided by median above 1.2 signals right skew.",
+  "see": "basics"
+ },
+ {
+  "term": "Standard deviation",
+  "def": "Typical distance of a single measurement from the mean. Does not shrink with more data.",
+  "see": "basics"
+ },
+ {
+  "term": "Standard error",
+  "def": "Typical distance of your estimate from the truth. Shrinks as one over the square root of n.",
+  "see": "bigideas"
+ },
+ {
+  "term": "Variance",
+  "def": "Standard deviation squared. Adds cleanly across independent sources.",
+  "see": "basics"
+ },
+ {
+  "term": "Winsorize",
+  "def": "Cap extreme values at a percentile rather than removing them. Justified only for confirmed measurement errors.",
+  "see": "tails"
+ },
+ {
+  "term": "Mean",
+  "def": "The arithmetic average: add everything, divide by n. Right for totals, misleading on skewed data.",
+  "see": "basics"
+ },
+ {
+  "term": "Median",
+  "def": "The middle value when sorted. The robust centre for skewed data like latency.",
+  "see": "basics"
+ },
+ {
+  "term": "Mode",
+  "def": "The most common value. Useful for categories and for spotting two humps.",
+  "see": "basics"
+ },
+ {
+  "term": "MAD",
+  "def": "Median absolute deviation: the median distance from the median. Multiply by 1.4826 to compare with the sd.",
+  "see": "basics"
+ },
+ {
+  "term": "PDF",
+  "def": "Probability density function: how common values are around each point. The familiar humped curve.",
+  "see": "basics"
+ },
+ {
+  "term": "CDF",
+  "def": "Cumulative distribution function: the share of values at or below each point. Rises from 0 to 1.",
+  "see": "basics"
+ },
+ {
+  "term": "QQ plot",
+  "def": "A plot of your data's quantiles against a reference distribution's. A straight line means a good match.",
+  "see": "reading"
+ },
+ {
+  "term": "Mixture",
+  "def": "Two or more populations sharing an axis, often visible as two humps. Split them before summarising.",
+  "see": "reading"
+ },
+ {
+  "term": "Lognormal",
+  "def": "The distribution of a quantity whose log is normal. Arises from multiplicative effects; the shape of latency and token counts.",
+  "see": "zoo"
+ },
+ {
+  "term": "Negative binomial",
+  "def": "A count distribution with variance above the mean, arising when the event rate varies across units. Fits tool calls per session.",
+  "see": "zoo"
+ },
+ {
+  "term": "Power law",
+  "def": "A distribution with no typical size, straight on log-log axes. Its mean may not exist; report percentiles only.",
+  "see": "zoo"
+ },
+ {
+  "term": "Wilson interval",
+  "def": "A confidence interval for a proportion that stays inside 0 to 1 and behaves well at small n and extreme rates.",
+  "see": "bigideas"
+ },
+ {
+  "term": "Geometric mean",
+  "def": "The exponential of the average log. On lognormal data it equals the median.",
+  "see": "tails"
+ },
+ {
+  "term": "Trimmed mean",
+  "def": "The mean after dropping a fixed share from each end. Rarely right for a one-sided tail.",
+  "see": "tails"
+ },
+ {
+  "term": "Survival analysis",
+  "def": "Methods such as Kaplan-Meier that handle censored data correctly, for example requests cut off by a timeout.",
+  "see": "lookup"
+ }
+]

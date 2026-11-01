@@ -1,0 +1,97 @@
+<section id="choosing" data-title="Which metric or test, when">
+<style>
+.ch-pq{display:grid;gap:6px;margin-bottom:14px}
+.ch-pq .q{font-size:15px;font-weight:700}
+.ch-pq .opts{display:flex;gap:8px;flex-wrap:wrap;flex-direction:row}
+.ch-rec{margin-top:8px;border-top:1px solid var(--line);padding-top:4px}
+.ch-rec>div{display:grid;grid-template-columns:180px minmax(0,1fr);gap:14px;padding:10px 0;border-bottom:1px solid var(--line)}
+.ch-rec>div:last-child{border-bottom:0}
+.ch-rec .k{font-family:var(--font-mono);font-size:11.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;padding-top:3px}
+@media(max-width:640px){.ch-rec>div{grid-template-columns:minmax(0,1fr);gap:2px}}
+</style>
+<h2>Which metric or test, when</h2>
+<p>This chapter is a decision guide. It pulls together the metrics from <a href="#classification">classification</a> and <a href="#judges">judges</a> and the tests from <a href="#evalstats">statistics for eval sets</a> and <a href="#intervals">intervals and the bootstrap</a>. For "my data has this shape, which method fits," use the lookup in <a href="#lookup">from shape to method</a>.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Pick the metric by the question you are asking</span></div>
+  <p>Every metric answers a different question. "When it says yes, is it right?" is precision. "Did it find them all?" is recall. "Does it rank good above bad?" is AUC. "Is this difference real or luck?" is a statistical test. Start from the question, then pick the number. Picking the number first and inventing the question afterwards is how dashboards end up misleading people.</p>
+</div>
+
+<h3>A recommendation for your classifier or judge</h3>
+<div class="widget" id="w-ch-picker">
+  <div class="wtitle">Metric picker</div>
+  <div class="wsub">Answer three questions about your judge or classifier and get the numbers to compare versions with, how to set the operating point, and what else to report.</div>
+  <div class="ch-pq"><div class="q">Does it give a score, or only yes/no?</div><div class="opts" data-k="score">
+    <button class="b" data-v="no" aria-pressed="true">Only yes/no</button><button class="b" data-v="yes" aria-pressed="false">A score (logprobs or votes)</button></div></div>
+  <div class="ch-pq"><div class="q">Is the thing you are catching rare (under about 20%)?</div><div class="opts" data-k="rare">
+    <button class="b" data-v="yes" aria-pressed="true">Yes, it is rare</button><button class="b" data-v="no" aria-pressed="false">No, it is common</button></div></div>
+  <div class="ch-pq"><div class="q">Which mistake hurts more?</div><div class="opts" data-k="cost">
+    <button class="b" data-v="fp" aria-pressed="true">False alarms</button><button class="b" data-v="fn" aria-pressed="false">Misses</button><button class="b" data-v="eq" aria-pressed="false">About equal</button></div></div>
+  <div class="ch-rec" data-rec></div>
+</div>
+
+<h3>Metric reference</h3>
+<div class="tw"><table>
+  <thead><tr><th>Metric</th><th>Formula</th><th>Question it answers</th><th>Reach for it when</th><th>Watch out</th></tr></thead>
+  <tbody>
+    <tr><td>Accuracy</td><td class="n">(TP+TN) / n</td><td>How often is it right overall?</td><td>Balanced classes, symmetric costs</td><td>Misleading when one class is rare</td></tr>
+    <tr><td>Precision</td><td class="n">TP / (TP+FP)</td><td>When it says yes, is it right?</td><td>False alarms are costly</td><td>High while missing most positives</td></tr>
+    <tr><td>Recall (TPR)</td><td class="n">TP / (TP+FN)</td><td>Did it find all the positives?</td><td>Misses are costly</td><td>Flagging everything scores 100%</td></tr>
+    <tr><td>Specificity (TNR)</td><td class="n">TN / (TN+FP)</td><td>Did negatives get through untouched?</td><td>Protecting the negative class matters</td><td>It is recall for the other class</td></tr>
+    <tr><td>F1 / F-beta</td><td class="n">2PR / (P+R)</td><td>Good at both precision and recall?</td><td>One number for a rare class</td><td>Ignores TN; depends on threshold</td></tr>
+    <tr><td>Balanced accuracy</td><td class="n">(TPR+TNR) / 2</td><td>Right on both classes, equally weighted?</td><td>Executive summary under imbalance</td><td>Hides which error dominates</td></tr>
+    <tr><td>MCC</td><td class="n">see chapter</td><td>How correlated are prediction and truth?</td><td>One number to compare models</td><td>Unintuitive scale</td></tr>
+    <tr><td>Macro F1</td><td class="n">mean of class F1</td><td>Good on every class?</td><td>Rare classes matter</td><td>Small classes swing it</td></tr>
+    <tr><td>ROC-AUC</td><td class="n">P(s+ &gt; s−)</td><td>Does it rank positives above negatives?</td><td>Comparing scored models, moderate imbalance</td><td>Flatters when positives are rare</td></tr>
+    <tr><td>PR-AUC (AP)</td><td class="n">area under PR</td><td>How precise across recall levels?</td><td>Comparing scored models, rare positives</td><td>Baseline is prevalence; same data only</td></tr>
+    <tr><td>Brier / ECE</td><td class="n">mean (p−y)²</td><td>Is the confidence honest?</td><td>Confidence drives routing or abstention</td><td>ECE depends on binning</td></tr>
+    <tr><td>Coverage–risk</td><td class="n">risk at coverage κ</td><td>How much error if we only answer when sure?</td><td>The system can abstain or ask</td><td>Needs a confidence signal that tracks correctness</td></tr>
+    <tr><td>Expected cost</td><td class="n">(c_FP·FP + c_FN·FN)/n</td><td>What does this threshold cost us?</td><td>You can price the errors</td><td>Needs an agreed cost ratio</td></tr>
+    <tr><td>Cohen's kappa</td><td class="n">(p_o − p_e)/(1 − p_e)</td><td>Agreement beyond luck?</td><td>Judge versus human, human versus human</td><td>Check human ceiling first</td></tr>
+  </tbody>
+</table></div>
+
+<h3>Statistical tests reference</h3>
+<div class="tw"><table>
+  <thead><tr><th>Question</th><th>Method</th><th>Why</th><th>Chapter</th></tr></thead>
+  <tbody>
+    <tr><td>Interval on one pass rate</td><td>Wilson interval</td><td>Stays inside [0, 1] and holds coverage at small n and extreme rates</td><td><a href="#evalstats">Eval statistics</a></td></tr>
+    <tr><td>Two models, same tasks, binary outcome</td><td>McNemar (exact) or paired bootstrap</td><td>Only discordant tasks carry information; unpaired tests waste power</td><td><a href="#evalstats">Eval statistics</a></td></tr>
+    <tr><td>Two models, same tasks, continuous score</td><td>Paired bootstrap or Wilcoxon signed-rank</td><td>Uses the pairing, no normality assumption</td><td><a href="#intervals">Intervals and bootstrap</a></td></tr>
+    <tr><td>Three or more models, same tasks</td><td>Cochran's Q (binary) or Friedman (ranked)</td><td>One omnibus test before pairwise comparisons</td><td><a href="#evalstats">Eval statistics</a></td></tr>
+    <tr><td>Many benchmarks at once</td><td>Benjamini–Hochberg</td><td>Controls the share of false discoveries</td><td><a href="#evalstats">Eval statistics</a></td></tr>
+    <tr><td>Interval on a median, p95, or AUC</td><td>Bootstrap (percentile or BCa)</td><td>No closed form exists</td><td><a href="#intervals">Intervals and bootstrap</a></td></tr>
+    <tr><td>Items nested in sessions or tasks</td><td>Cluster bootstrap</td><td>Naive intervals are far too narrow when items correlate</td><td><a href="#intervals">Intervals and bootstrap</a></td></tr>
+    <tr><td>How many tasks do I need?</td><td>Power analysis on discordance</td><td>Detecting a 2-point move usually needs about a thousand tasks</td><td><a href="#evalstats">Eval statistics</a></td></tr>
+  </tbody>
+</table></div>
+
+<h3>Walk the decision tree</h3>
+<div class="widget" id="w-tree"><div class="wtitle">Which test or metric should I use</div><div class="wsub">Answer a few questions and get a recommendation with its reason and its drawback. Every leaf carries a con, because the drawback is the part that gets asked about. Click a crumb to go back.</div><div data-tree></div></div>
+<div class="callout drill"><span class="tag">Drill</span><div>Work through every branch once. There are about twenty leaves, and each is a short answer you should be able to give without the widget: the recommendation, the reason, and the drawback.</div></div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The metric pack for a launch review</span></div>
+  <p>Agree on the metric pack before results exist, and keep it fixed. A one-page eval readout for a classifier, judge, or safety filter should contain:</p>
+  <ol class="steps">
+    <li><div>The question being answered and which error costs more, in one sentence each.</div></li>
+    <li><div>n, the positive rate in the test set, and the positive rate expected in production.</div></li>
+    <li><div>The confusion matrix at the chosen operating point, and how that point was chosen (on which split).</div></li>
+    <li><div>The headline metric with a confidence interval, and the comparison to the baseline with a paired test.</div></li>
+    <li><div>Per-class or per-slice results for anything rare that carries risk.</div></li>
+    <li><div>For judge-scored results: judge version, judge-to-human kappa, and the human ceiling.</div></li>
+  </ol>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul><li>Was this metric chosen before or after seeing the results?</li><li>If the positive rate in production differs from the test set, what precision should we actually expect? (Recompute it from TPR and FPR.)</li><li>Which result would have made us not ship? If none, the evaluation was not a decision input.</li></ul></div></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Two formulas that settle most arguments</span></div>
+  <p><b>Precision under prevalence shift.</b> TPR and FPR are properties of the classifier; precision is not. If you validated at prevalence \(\pi\) and production runs at \(\pi'\):</p>
+  <div class="eq">\[ \mathrm{Precision}(\pi')=\frac{\mathrm{TPR}\,\pi'}{\mathrm{TPR}\,\pi'+\mathrm{FPR}\,(1-\pi')} \]<span class="eqcap">A filter with TPR 0.90 and FPR 0.05 has precision 0.95 at \(\pi=0.5\), but only 0.15 at \(\pi'=0.01\).</span></div>
+  <p><b>The cost-optimal threshold.</b> With calibrated scores, flag when the expected cost of not flagging exceeds the expected cost of flagging:</p>
+  <div class="eq">\[ p\,c_{FN} &gt; (1-p)\,c_{FP}\iff p &gt; \frac{c_{FP}}{c_{FP}+c_{FN}} \]<span class="eqcap">If the scores are not calibrated, sweep thresholds on a validation split, pick the minimum-cost one, and report its cost on a separate test split.</span></div>
+  <pre class="code" data-lang="python"><code>def precision_at(tpr, fpr, prevalence):
+    return tpr * prevalence / (tpr * prevalence + fpr * (1 - prevalence))
+
+print(round(precision_at(0.90, 0.05, 0.50), 2))  # 0.95
+print(round(precision_at(0.90, 0.05, 0.01), 2))  # 0.15</code></pre>
+</div>
+<div class="callout eval"><span class="tag">Eval lens</span><div>The most common failure is not the wrong metric. It is a metric whose definition, threshold, or test set quietly changed between the baseline and the candidate. Pin all three, and the choice of metric becomes much less contentious.</div></div>
+</section>

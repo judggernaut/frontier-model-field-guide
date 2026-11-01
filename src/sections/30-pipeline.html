@@ -1,0 +1,81 @@
+<section id="pipeline" data-title="The training pipeline">
+<h2>The training pipeline, end to end</h2>
+<p>A frontier model is not trained once. It is assembled in stages, and each stage changes different things about the model. If you know what each stage buys, you can usually guess where a problem came from before anyone opens a log.</p>
+
+<div class="pipeline">
+  <div class="stage"><b>Data</b>Crawl, filter, dedup, mix</div>
+  <div class="stage"><b>Pretraining</b>Next-token prediction on trillions of tokens</div>
+  <div class="stage"><b>Mid-training</b>Annealing, long context, domain boosts</div>
+  <div class="stage"><b>SFT</b>Demonstrations of the format and behaviour</div>
+  <div class="stage"><b>Preference and RL</b>RLHF, DPO, RL on verifiable rewards</div>
+  <div class="stage"><b>Safety</b>Refusals, policy, red-team fixes</div>
+  <div class="stage"><b>Evals and launch</b>Gates, staged rollout</div>
+  <div class="stage"><b>Feedback</b>Logs, ratings, failures become data</div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">School, then apprenticeship, then coaching</span></div>
+  <p>Pretraining is like reading a whole library. The model learns language, facts, and how ideas connect, but it has no manners and does not know it is supposed to help anyone. It just continues whatever text you hand it.</p>
+  <p>Supervised fine-tuning (SFT) is an apprenticeship. The model watches thousands of examples of a good assistant answering questions and learns to copy that style.</p>
+  <p>Preference tuning and reinforcement learning (RL) are coaching. The model tries answers, someone or something scores them, and the model shifts toward the answers that score well. This is where it learns to be helpful, careful, and, for reasoning models, to think through a problem step by step.</p>
+  <p>Most raw knowledge comes from the library stage. Most of the personality and the polish comes from the later stages.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What each stage buys, costs, and breaks</span></div>
+  <div class="tw"><table>
+  <thead><tr><th>Stage</th><th>What it buys</th><th>Rough compute share</th><th>Typical owner</th><th>Classic failure</th></tr></thead>
+  <tbody>
+  <tr><td>Data</td><td>The ceiling on everything after it</td><td>Small in FLOPs, large in people</td><td>Data / pretraining team</td><td>Contamination, duplicates, a bad mixture weight</td></tr>
+  <tr><td>Pretraining</td><td>Knowledge, language, raw capability</td><td>Historically the vast majority (often quoted above 90%)</td><td>Pretraining team, infra</td><td>Loss spikes, a missing domain, a tokenizer quirk you live with forever</td></tr>
+  <tr><td>Mid-training</td><td>Long context, quality boost, domain depth (code, math)</td><td>A few percent</td><td>Pretraining team</td><td>Forgetting, context extension that passes needle tests but fails real tasks</td></tr>
+  <tr><td>SFT</td><td>Format, instruction following, tool syntax</td><td>Well under 1%</td><td>Post-training team</td><td>Style over substance, hallucinated confidence copied from demos</td></tr>
+  <tr><td>Preference and RL</td><td>Helpfulness, reasoning, agentic skill</td><td>Small for RLHF; growing fast for reasoning RL (some 2025 labs report RL compute on the same order as pretraining)</td><td>Post-training / RL team</td><td>Reward hacking, sycophancy, length inflation</td></tr>
+  <tr><td>Safety</td><td>Policy compliance, refusal boundaries</td><td>Small</td><td>Safety / alignment team</td><td>Over-refusal or under-refusal, jailbreak gaps</td></tr>
+  <tr><td>Evals and launch</td><td>Confidence that it works and is safe</td><td>Small but continuous</td><td>Evals team, product</td><td>Benchmarks that do not predict real use</td></tr>
+  </tbody></table></div>
+  <p class="small muted">Compute shares are illustrative. They vary by lab and by year, and the RL share has been rising since reasoning models arrived in late 2024.</p>
+  <p>Two things matter for planning. First, pretraining decisions are the most expensive to reverse: a tokenizer or a data mixture is baked into a run that may cost tens of millions of dollars. Post-training is cheap enough to iterate weekly. Second, post-training mostly <em>elicits</em> capability rather than creating it. If the base model cannot do something even with good prompting and many samples, no amount of SFT will make it reliable. RL on verifiable tasks is the partial exception, which is why it gets so much attention (see <a href="#grpo">GRPO and RL with verifiable rewards</a>).</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul>
+    <li>Is this a capability problem (pretraining) or a behaviour problem (post-training)? What evidence separates the two?</li>
+    <li>Does the base model show the skill at pass@k? If not, why do we expect fine-tuning to create it?</li>
+    <li>Which eval would have caught this one stage earlier, where it is cheaper to fix?</li>
+    <li>What did this stage cost in compute and in people, and what is the next most valuable use of that budget?</li>
+  </ul></div></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Objectives by stage</span></div>
+  <p>Each stage optimizes a different objective, which is why each stage fails differently.</p>
+  <div class="tw"><table>
+  <thead><tr><th>Stage</th><th>Objective</th><th>Data</th></tr></thead>
+  <tbody>
+  <tr><td>Pretraining</td><td>\(\min_\theta -\sum_t \log p_\theta(x_t \mid x_{&lt;t})\) over all tokens</td><td>Trillions of web, code, book, and synthetic tokens</td></tr>
+  <tr><td>Mid-training</td><td>Same loss, different data: high-quality and long documents, often with the learning rate decaying to zero</td><td>Billions to hundreds of billions of curated tokens</td></tr>
+  <tr><td>SFT</td><td>Same loss, but only on response tokens: \(-\sum_{t \in \text{response}} \log p_\theta(y_t \mid x, y_{&lt;t})\)</td><td>Thousands to millions of prompt and response pairs</td></tr>
+  <tr><td>RLHF / RL</td><td>\(\max_\theta \mathbb{E}_{y \sim \pi_\theta}[r(x,y)] - \beta\,\mathrm{KL}(\pi_\theta \,\|\, \pi_{\text{ref}})\)</td><td>Prompts plus a reward model or a verifier</td></tr>
+  <tr><td>DPO and relatives</td><td>A classification loss on preferred versus rejected responses</td><td>Preference pairs</td></tr>
+  </tbody></table></div>
+  <p>The KL term in the RL objective keeps the policy close to the SFT model. Without it, the policy drifts toward whatever the reward model mistakenly loves. Chapters <a href="#sft">SFT</a>, <a href="#reward-models">reward models</a>, <a href="#rlhf">RLHF</a>, and <a href="#dpo">DPO</a> unpack each line.</p>
+</div>
+
+<h3>Where evals sit</h3>
+<p>Evaluation is not a gate at the end. Every stage has its own checks, and the cheapest bug is the one caught at the stage that caused it.</p>
+<div class="tw"><table>
+<thead><tr><th>Stage</th><th>What you measure</th><th>Typical tools</th></tr></thead>
+<tbody>
+<tr><td>Data</td><td>Quality, duplication, contamination against eval sets, mixture proportions</td><td>n-gram overlap checks, classifier scores, sampled human review</td></tr>
+<tr><td>Pretraining</td><td>Held-out loss by domain, few-shot benchmarks on checkpoints, loss spikes</td><td>Loss dashboards, small "proxy" eval suites run every few thousand steps</td></tr>
+<tr><td>Mid-training</td><td>Long-context retrieval and reasoning, regression on general benchmarks</td><td>Needle tests plus real long-document tasks</td></tr>
+<tr><td>SFT</td><td>Instruction following, format validity, refusal rate</td><td>Rule-based checks, LLM judges</td></tr>
+<tr><td>Preference and RL</td><td>Win rate, reward versus KL, length, verifier pass rate, held-out tasks</td><td>Judges, verifiers, human preference studies</td></tr>
+<tr><td>Safety</td><td>Harmful compliance, over-refusal, jailbreak robustness</td><td>Red-team suites, policy classifiers</td></tr>
+<tr><td>Launch</td><td>Online metrics against offline predictions</td><td>A/B tests, staged rollout</td></tr>
+</tbody></table></div>
+<div class="callout eval"><span class="tag">Eval lens</span><div>When a metric moves, first ask which stage changed. A base-model benchmark that drops after RL is a forgetting problem, not a pretraining problem. A judge win rate that rises with response length is probably a reward or judge bias, not a capability gain (see <a href="#judges">LLM as judge</a>).</div></div>
+
+<div class="widget" id="w-pl-diag">
+  <div class="wtitle">Where did this failure come from?</div>
+  <div class="wsub">Pick a symptom. The stages most likely responsible light up, with the first thing to check.</div>
+  <div class="btnrow" data-sym></div>
+  <div class="pipeline" data-stages></div>
+  <div class="readout" data-out></div>
+</div>
+</section>

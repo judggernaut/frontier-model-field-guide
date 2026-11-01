@@ -1,0 +1,179 @@
+<section id="pretraining" data-title="Pretraining">
+<h2>Pretraining: learning from the whole library</h2>
+<p>Pretraining is where almost all of a model's knowledge and raw capability comes from. The task is simple to state: given some text, predict the next piece. Doing it well across trillions of tokens forces the model to learn grammar, facts, code, and a surprising amount of reasoning.</p>
+
+<h3>Next-token prediction and its loss</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A guessing game with a scoreboard</span></div>
+  <p>Cover the next word of a sentence and guess it. "The cat sat on the ___." You would bet on "mat" or "floor", not "volcano". The model plays this game billions of times. Each time, it spreads its bets across every possible next piece of text, then the real answer is revealed.</p>
+  <p>The score is called <b>loss</b>. If the model put a big bet on the right answer, the loss is small. If it put almost nothing on the right answer, the loss is large. Training nudges the model, a tiny bit at a time, to bet better.</p>
+  <p><b>Perplexity</b> turns that score into something intuitive: it is roughly how many options the model feels it is choosing between. A perplexity of 3 means it is about as unsure as picking among three equally likely words.</p>
+</div>
+
+<div class="widget" id="w-pt-softmax">
+  <div class="wtitle">Next-token bets and the loss they earn</div>
+  <div class="wsub">The model's raw scores (logits) for the next token after "The cat sat on the". Change the temperature, pick which token was actually next, and watch the loss.</div>
+  <div class="controls">
+    <div class="ctl"><label for="pt-temp">Temperature: <output id="pt-temp-o">1.0</output></label><input type="range" id="pt-temp" min="0.2" max="3" step="0.1" value="1"></div>
+    <div class="ctl"><label for="pt-true">Token that actually came next</label><select id="pt-true"></select></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">p(correct token)</div><div class="v" data-p>—</div></div>
+    <div class="mc"><div class="l">Loss (nats)</div><div class="v" data-ce>—</div></div>
+    <div class="mc"><div class="l">Loss (bits)</div><div class="v" data-bits>—</div></div>
+    <div class="mc"><div class="l">Perplexity if every token were like this</div><div class="v" data-ppl>—</div></div>
+    <div class="mc"><div class="l">Entropy of the bet (bits)</div><div class="v" data-h>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why the whole field watches one number</span></div>
+  <p>Pretraining loss is the single most reliable signal in model development. It falls smoothly and predictably as you add compute, data, and parameters, which is what makes scaling laws (see <a href="#scaling">Scaling laws</a>) possible. Teams decide whether a run is healthy, whether an architecture change helped, and when to stop, mostly by looking at held-out loss.</p>
+  <p>Three cautions keep that number honest:</p>
+  <ul>
+    <li><b>Loss is only comparable with the same tokenizer and the same held-out data.</b> Two models with different vocabularies produce losses in different units. Use bits per byte when comparing across tokenizers.</li>
+    <li><b>Average loss hides the tokens you care about.</b> Most tokens are easy (the second half of a word, a closing bracket). A model can lower average loss while not improving on the hard tokens that carry a reasoning step.</li>
+    <li><b>Lower loss does not guarantee better behaviour.</b> It predicts capability well on average and poorly for any single task. That is why every lab pairs loss curves with downstream eval suites run on checkpoints.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Softmax, cross-entropy, perplexity, bits per byte</span></div>
+  <p>The network outputs a vector of logits \(z \in \mathbb{R}^{V}\), one per vocabulary item. Softmax with temperature \(\tau\) turns them into probabilities:</p>
+  <div class="eq">\[ p_i = \frac{\exp(z_i/\tau)}{\sum_{j=1}^{V} \exp(z_j/\tau)} \]<span class="eqcap">Training uses \(\tau = 1\). Temperature is a sampling knob at inference time; it does not change what the model learned.</span></div>
+  <p>The per-token loss is the negative log probability of the token that actually came next. Averaged over a sequence of \(T\) tokens:</p>
+  <div class="eq">\[ \mathcal{L} = -\frac{1}{T}\sum_{t=1}^{T}\log p_\theta(x_t \mid x_{&lt;t}), \qquad \text{PPL} = e^{\mathcal{L}} \]<span class="eqcap">\(\mathcal{L}\) in nats when using natural log. Divide by \(\ln 2\) for bits.</span></div>
+  <p>This is cross-entropy between the data distribution and the model. It decomposes as \(H(p_{\text{data}}) + \mathrm{KL}(p_{\text{data}} \,\|\, p_\theta)\): the irreducible entropy of language plus how far the model is from the truth. Only the KL part can be trained away, which is why loss curves flatten toward a floor rather than zero.</p>
+  <p><b>Bits per byte</b> removes the tokenizer from the comparison: total bits over a document divided by its length in UTF-8 bytes.</p>
+  <div class="eq">\[ \text{BPB} = \frac{T \cdot \mathcal{L}_{\text{nats}}}{B \cdot \ln 2} \]<span class="eqcap">\(T\) tokens, \(B\) bytes in the same text. A tokenizer with more bytes per token has fewer, harder tokens; BPB corrects for that.</span></div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+
+def log_softmax(z):
+    z = z - z.max()                      # subtract max for numerical stability
+    return z - np.log(np.exp(z).sum())
+
+def token_loss(logits, target):
+    return -log_softmax(logits)[target]  # nats
+
+logits = np.array([3.1, 2.4, 1.2, 0.3, -1.0])   # mat, floor, sofa, roof, volcano
+for name, idx in [("mat", 0), ("floor", 1), ("volcano", 4)]:
+    print(name, round(float(token_loss(logits, idx)), 3))
+# mat 0.544   floor 1.244   volcano 4.644
+
+# bits per byte for a document: 1,000 tokens, 4,300 bytes, mean loss 2.1 nats
+print(round(1000 * 2.1 / (4300 * np.log(2)), 3))   # 0.705 bits per byte</code></pre>
+</div>
+
+<h3>Tokenization: the model never sees letters</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Chopping text into reusable pieces</span></div>
+  <p>Models do not read letters or whole words. They read <b>tokens</b>: chunks of text chosen so that common pieces get their own symbol. "unbelievable" might become "un", "believ", "able". A common word like "the" is one token. A rare name might be five.</p>
+  <p>This is why models can write an essay but stumble when asked how many r's are in "strawberry". The word arrives as a couple of chunks, so the individual letters were never directly in view.</p>
+</div>
+
+<div class="widget" id="w-pt-bpe">
+  <div class="wtitle">Byte-pair encoding, one merge at a time</div>
+  <div class="wsub">BPE starts from single characters and repeatedly merges the most frequent adjacent pair. Step through the merges on a tiny corpus and watch common words collapse into single tokens.</div>
+  <div class="btnrow"><button class="b" type="button" data-next>Next merge</button><button class="b" type="button" data-all>Run 10 merges</button><button class="b" type="button" data-reset>Reset</button></div>
+  <div class="split">
+    <div><div class="small muted">Corpus, as tokens (word × count)</div><div data-words style="font-family:var(--font-mono);font-size:13.5px;line-height:2"></div></div>
+    <div><div class="small muted">Merges learned, in order</div><ol data-merges style="font-family:var(--font-mono);font-size:13.5px;margin-top:4px"></ol></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">A decision you live with for the life of the model</span></div>
+  <p>The tokenizer is fixed before pretraining and is very expensive to change later, because every embedding was learned against it. Choices that matter:</p>
+  <ul>
+    <li><b>Vocabulary size.</b> GPT-2 used 50,257 tokens; Llama 3 moved to about 128,000; OpenAI's o200k tokenizer (GPT-4o) has about 200,000. Larger vocabularies compress text into fewer tokens, which means cheaper inference and more text per context window, especially for non-English languages and code. The cost is a bigger embedding table and rarer tokens that get fewer training updates.</li>
+    <li><b>Fairness across languages.</b> A tokenizer trained mostly on English can need several times more tokens for the same sentence in Hindi or Amharic. Users in those languages pay more per request and get less effective context. This is a product and policy question, not just an engineering one.</li>
+    <li><b>Numbers and code.</b> How digits are split affects arithmetic. Many modern tokenizers split numbers into single digits or groups of up to three so that place value is consistent. Whitespace handling matters a lot for code.</li>
+  </ul>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>Character-level failures (spelling, counting letters, reversing strings) are mostly tokenization artifacts, not reasoning failures. Do not let them drive training decisions about reasoning. When comparing models with different tokenizers, report cost and context in characters or bytes, not tokens.</div></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The BPE training loop</span></div>
+  <p>Byte-pair encoding (Sennrich et al., 2016, adapted from a 1994 compression method) is greedy: count every adjacent symbol pair weighted by word frequency, merge the most frequent pair everywhere, repeat until the vocabulary hits its target size. Modern tokenizers usually run BPE on bytes rather than characters so that any input string can be encoded, and apply a regex pre-split so merges never cross word or digit-group boundaries.</p>
+  <pre class="code" data-lang="python"><code>from collections import Counter
+
+def bpe(word_counts, n_merges):
+    vocab = {tuple(w): c for w, c in word_counts.items()}     # words as tuples of symbols
+    merges = []
+    for _ in range(n_merges):
+        pairs = Counter()
+        for syms, c in vocab.items():
+            for a, b in zip(syms, syms[1:]):
+                pairs[(a, b)] += c                             # weight by word frequency
+        if not pairs:
+            break
+        best = max(pairs, key=pairs.get)
+        merges.append(best)
+        new = {}
+        for syms, c in vocab.items():
+            out, i = [], 0
+            while i &lt; len(syms):
+                if i + 1 &lt; len(syms) and (syms[i], syms[i + 1]) == best:
+                    out.append(syms[i] + syms[i + 1]); i += 2
+                else:
+                    out.append(syms[i]); i += 1
+            new[tuple(out)] = c
+        vocab = new
+    return merges, vocab
+
+merges, vocab = bpe({"low": 5, "lower": 2, "newest": 6, "widest": 3}, 4)
+print(merges)  # [('e', 's'), ('es', 't'), ('l', 'o'), ('lo', 'w')]</code></pre>
+</div>
+
+<h3>Data: the ceiling on everything</h3>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">You are what you read</span></div>
+  <p>A model trained on junk learns junk. Most of the internet is spam, boilerplate, duplicated pages, and machine-generated filler. Pretraining teams spend enormous effort throwing most of it away and deciding how much of each kind of text to keep: web pages, books, code, math, science, and many languages. That recipe is called the <b>data mixture</b>, and it is one of the most closely guarded secrets at any lab.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Where data quality comes from</span></div>
+  <ol class="steps">
+    <li><div><b>Extraction and filtering.</b> Pull clean text out of HTML, drop pages by language, length, and heuristics (too many symbols, too few sentences), and remove personal information and unsafe content.</div></li>
+    <li><div><b>Deduplication.</b> Exact and near-duplicate removal, typically with MinHash over n-grams. Lee et al. (2022) showed deduplication reduces memorization and improves models at the same compute.</div></li>
+    <li><div><b>Quality classifiers.</b> A small model scores each document for "educational value" or similarity to trusted sources, and only the top slice is kept. FineWeb-Edu (Penedo et al., 2024) used labels from a large LLM to train such a classifier; DCLM (Li et al., 2024) used a fastText classifier and showed filtering choices move benchmark scores more than many architecture changes.</div></li>
+    <li><div><b>Mixture weights.</b> How many tokens of code, math, multilingual, and web text. Code and math are usually upweighted because they appear to improve reasoning broadly. Weights are tuned with small proxy models before the big run.</div></li>
+    <li><div><b>Decontamination.</b> Remove documents that overlap with evaluation benchmarks so later scores mean something.</div></li>
+  </ol>
+  <p><b>Running out of data.</b> Repeating data is not free but is not useless either. Muennighoff et al. (2023) found that up to about four epochs of repeated data are nearly as good as fresh data, with returns falling toward zero by around sixteen epochs. High-quality text is finite, which is one reason labs invest heavily in synthetic data (see <a href="#distillation">Distillation and synthetic data</a>).</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul>
+    <li>How was this mixture chosen, and at what scale were the ablations run? Do the conclusions hold at the target scale?</li>
+    <li>What is our decontamination method, and what overlap threshold did we use against each eval we report?</li>
+    <li>How many epochs is our highest-quality data seeing? Are we in the regime where repetition starts to hurt?</li>
+    <li>What fraction of the mixture is synthetic, and what model generated it?</li>
+  </ul></div></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Near-duplicate detection with MinHash</span></div>
+  <p>Represent each document as a set of word n-grams (shingles). The Jaccard similarity of two sets is \(J(A,B) = |A\cap B| / |A\cup B|\). MinHash estimates it cheaply: for a random hash function \(h\), \(\Pr[\min h(A) = \min h(B)] = J(A,B)\). With \(k\) hash functions, the fraction of matching minimums estimates \(J\). Locality-sensitive hashing then groups signatures into bands so that only likely duplicates are compared.</p>
+  <pre class="code" data-lang="python"><code>import hashlib
+
+def shingles(text, n=5):
+    w = text.lower().split()
+    return {" ".join(w[i:i + n]) for i in range(len(w) - n + 1)}
+
+def minhash(s, k=64):
+    return [min(int(hashlib.md5(f"{i}:{x}".encode()).hexdigest(), 16) for x in s) for i in range(k)]
+
+def est_jaccard(a, b):
+    return sum(x == y for x, y in zip(a, b)) / len(a)
+
+d1 = "the quick brown fox jumps over the lazy dog near the river bank today"
+d2 = "the quick brown fox jumps over the lazy dog near the river bank tonight"
+print(round(est_jaccard(minhash(shingles(d1)), minhash(shingles(d2))), 2))  # about 0.8: near duplicate</code></pre>
+</div>
+
+<h3>What loss predicts, and what it does not</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Reading a loss curve in a review</span></div>
+  <div class="four">
+    <div class="tile"><h4>Smooth decline</h4><p>Healthy. Compare the slope to the scaling-law prediction for this compute. A curve above prediction usually means a data or architecture problem.</p></div>
+    <div class="tile"><h4>Sudden spike</h4><p>Optimisation instability. Usually recovers; if not, teams roll back to a checkpoint and skip the offending batches (see <a href="#optimization">Optimisation</a>).</p></div>
+    <div class="tile"><h4>Drop at the end</h4><p>Learning-rate decay or annealing on high-quality data. Expected, and it can flatter a run that was mediocre before the decay.</p></div>
+    <div class="tile"><h4>Train falls, held-out flat</h4><p>Memorization or repeated data. Check epochs on the high-quality slices and contamination.</p></div>
+  </div>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>Held-out loss predicts average downstream ability well, which is how the GPT-4 report (OpenAI, 2023) and the Llama 3 report (Meta, 2024) forecast final performance from small runs. For a single benchmark the link is noisy and can look like a sudden jump (see the emergence discussion in <a href="#scaling">Scaling laws</a>). Track per-domain held-out loss (code, math, each language) alongside the average, and treat benchmark scores on early checkpoints as noisy: use the interval methods in Part II before reading a trend.</div></div>
+</div>
+</section>

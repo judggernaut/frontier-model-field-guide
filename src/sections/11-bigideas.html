@@ -1,0 +1,138 @@
+<section id="bigideas" data-title="Sampling, error bars, p values">
+<h2>Two big ideas: the sampling distribution and the standard error</h2>
+<p>If you take only two things from Part I, take these. Nearly every statistical mistake in eval work is a misunderstanding of one of them, and every confidence interval and p value later in the guide is built on them.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Your score is one draw from a lottery of possible scores</span></div>
+  <p>You ran 200 tasks and got 62%. If you had run a <i>different</i> 200 tasks you would have got something else, maybe 59%, maybe 65%. The spread of all those hypothetical alternative answers is the <b>sampling distribution</b>. Every confidence interval and every p value is a statement about it, not about your data.</p>
+  <p>The <b>standard error</b> is how wide that lottery is. It shrinks as you test more tasks, but slowly: to cut the uncertainty in half you need four times as many tasks.</p>
+</div>
+
+<h3>The sampling distribution, and why the bell curve is everywhere</h3>
+<p>Here is the part that surprises people. The raw data can be any shape at all. But the <i>average</i> of many draws is always roughly a bell, and it gets more bell-like as you average more. That is the central limit theorem.</p>
+<div class="eq">\[ \bar{X}_n \;\longrightarrow\; \mathcal{N}\!\left(\mu,\ \frac{\sigma^2}{n}\right) \quad \text{as } n \text{ grows} \]<span class="eqcap">The average of n draws tends toward a normal shape centred on the true mean, with variance shrinking as one over n.</span></div>
+<figure><img src="figs/stats-015.png" alt="A skewed raw distribution and the distributions of averages of 5, 30, and 200 draws"><figcaption>The raw data on the left is wildly skewed. Average 5 of them and it is still skewed. Average 30 and it is nearly a bell. Average 200 and it is a bell.</figcaption></figure>
+<div class="callout key"><span class="tag">Key idea</span><div>This is why so much of statistics assumes normality even though almost no real data is normal. The assumption is not about your measurements, it is about their average. Your latency data is lognormal and always will be; the mean of 500 latencies is close to normal.</div></div>
+
+<div class="widget" id="w-fclt"><div class="wtitle">Watch the central limit theorem happen</div>
+<div class="wsub">Pick any starting shape, however ugly. The top panel is a single measurement. The bottom is the average of n measurements. Push n up and watch the bottom become a bell regardless of what the top looks like.</div>
+<div class="controls"><div class="ctl"><label>starting shape</label><select data-k></select></div>
+<div class="ctl" data-w><label data-l1>sample size</label><input type="range" data-n min="1" max="200" step="1" value="1"></div>
+</div>
+<canvas data-c1></canvas><canvas data-c2></canvas><div class="readout" data-out></div>
+</div>
+<div class="callout drill"><span class="tag">Try it</span><div>Set the starting shape to Pareto and push n to 200. It becomes a bell far more slowly than the others. That is what a genuinely heavy tail does: the central limit theorem still applies, but it needs much more data before you can lean on it.</div></div>
+
+<h3>Standard deviation is not standard error</h3>
+<p>This is the single most common confusion in applied statistics, and the two get swapped in dashboards constantly.</p>
+<figure><img src="figs/stats-018.png" alt="Standard deviation stays flat as n grows while standard error falls"><figcaption>The standard deviation of your data does not shrink as you collect more. The standard error of the mean does, as one over the square root of n.</figcaption></figure>
+<div class="tw"><table><thead><tr><th></th><th>Standard deviation</th><th>Standard error</th></tr></thead><tbody>
+<tr><td><b>Describes</b></td><td>How spread out the individual measurements are</td><td>How precisely you know the average</td></tr>
+<tr><td><b>Formula</b></td><td>\(s\)</td><td>\(s/\sqrt{n}\)</td></tr>
+<tr><td><b>As n grows</b></td><td>Stays put. More data does not make users more alike</td><td>Shrinks, but slowly</td></tr>
+<tr><td><b>Use for</b></td><td>Describing variability, setting SLOs</td><td>Error bars on a mean, confidence intervals</td></tr>
+</tbody></table></div>
+<div class="callout key"><span class="tag">Key idea</span><div>Because standard error shrinks as one over the square root of n, <b>quadrupling your sample halves your error bar</b>. Not doubling, quadrupling. That single fact explains why every sample size answer feels so unsatisfying and why chasing small effects gets expensive so fast.</div></div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The square-root law, in code</span></div>
+  <div class="eq">\[ \text{SE} = \frac{s}{\sqrt{n}} \qquad\qquad \text{SE} \propto n^{-1/2} \;\Rightarrow\; 4n \text{ gives half the error bar} \]</div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+
+rng = np.random.default_rng(0)
+population_sd = 12.0
+
+for n in (25, 100, 400, 1600):
+    sample = rng.normal(60, population_sd, n)
+
+    sd = sample.std(ddof=1)          # spread of the MEASUREMENTS
+    se = sd / np.sqrt(n)             # spread of the ESTIMATE of their mean
+
+    print(n, "sd:", round(sd, 2), " se:", round(se, 3),
+          " 95% CI half width:", round(1.96 * se, 3))
+
+# n=25   sd 11.5   se 2.303   CI half width 4.514
+# n=100  sd 12.1   se 1.211   CI half width 2.373
+# n=400  sd 11.9   se 0.596   CI half width 1.169
+# n=1600 sd 12.0   se 0.301   CI half width 0.589
+#
+# The sd column does not move. More data does not make users more alike.
+# The se column halves every time n quadruples. That is the whole story.</code></pre>
+</div>
+
+<h3>What a confidence interval actually means</h3>
+<div class="callout eli5"><span class="tag">In plain words</span><div>A 95% confidence interval is produced by a procedure that captures the true value 95 times out of 100. It is <b>not</b> a 95% chance the truth is inside the one interval in front of you. The truth is a fixed number; the interval is the thing that moves from experiment to experiment.</div></div>
+<div class="widget" id="w-fci"><div class="wtitle">Sixty experiments, sixty intervals</div>
+<div class="wsub">Each bar is one experiment on the same underlying truth. Green bars caught it, orange missed. The truth never moves; the bars do. Shrink n and watch the bars get wider but the hit rate stay near 95%.</div>
+<div class="controls"><div class="ctl" data-w><label data-l1>tasks per experiment</label><input type="range" data-n min="10" max="500" step="10" value="100"></div>
+<div class="ctl" data-w><label data-l2>true rate</label><input type="range" data-p min="0.05" max="0.95" step="0.05" value="0.6"></div>
+</div>
+<canvas data-c1></canvas><div class="readout" data-out></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The textbook interval and the Wilson interval</span></div>
+  <div class="eq">\[ \bar{x} \;\pm\; 1.96 \cdot \frac{s}{\sqrt{n}} \qquad\qquad \frac{\hat{p} + \frac{z^2}{2n} \;\pm\; z\sqrt{\frac{\hat{p}(1-\hat{p})}{n} + \frac{z^2}{4n^2}}}{1 + \frac{z^2}{n}} \]<span class="eqcap">Left: the textbook interval for a mean. Right: Wilson, for a proportion \(\hat p = k/n\). Use Wilson for pass rates: the textbook version breaks near 0 and 1, and can hand you an upper bound above 100 percent.</span></div>
+  <pre class="code" data-lang="python"><code>import math
+
+def wilson(k: int, n: int, z: float = 1.96):
+    """Interval for a pass rate. k passed out of n."""
+    if n == 0:
+        return (0.0, 1.0)
+    p = k / n
+    den = 1 + z * z / n                       # shrink factor, -&gt; 1 as n grows
+
+    # The centre is NOT p. It is pulled toward 0.5 by z^2/(2n), and that pull
+    # is what keeps the interval inside [0, 1] at extreme rates.
+    centre = (p + z * z / (2 * n)) / den
+
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
+def naive(k, n, z=1.96):
+    p = k / n
+    h = z * math.sqrt(p * (1 - p) / n)
+    return (p - h, p + h)                     # note: no clamping
+
+print(wilson(49, 50))    # (0.8950, 0.9965)  stays inside [0, 1]
+print(naive(49, 50))     # (0.9412, 1.0188)  claims a rate above 100%</code></pre>
+</div>
+
+<h3>What a p value is, and the four things it is not</h3>
+<p>A p value answers exactly one question: <b>if there were genuinely no difference, how often would I see a result at least this extreme by chance alone?</b> Small p means your result would be surprising in a world with no real effect.</p>
+<div class="eq">\[ p = P\big(T \ge t_{\text{obs}} \;\big|\; H_0 \text{ true}\big) \]<span class="eqcap">The probability of a result at least this extreme, assuming there is no real effect. Note which side of the bar the assumption sits on.</span></div>
+<ul>
+  <li>It is <b>not</b> the probability that the null hypothesis is true.</li>
+  <li>It is <b>not</b> the probability your result was a fluke.</li>
+  <li>It is <b>not</b> a measure of effect size. A tiny, useless difference gets a tiny p value with enough data.</li>
+  <li>p = 0.06 is <b>not</b> "no effect". It is slightly weaker evidence than p = 0.04. The 0.05 line is a convention, not a law of nature.</li>
+</ul>
+<div class="callout key"><span class="tag">Key idea</span><div>Always report the effect size next to the p value. "Model B is better, p = 0.003" is nearly useless on its own. "Model B passes 4.2 points more, 95% CI [1.1, 7.3], p = 0.003" tells someone whether to ship.</div></div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A useless effect becomes "significant" with enough data</span></div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+from scipy import stats
+
+rng = np.random.default_rng(0)
+
+# A tiny, useless difference. 0.2 percentage points.
+def experiment(n):
+    a = rng.random(n) &lt; 0.602
+    b = rng.random(n) &lt; 0.600
+    return stats.fisher_exact([[a.sum(), n - a.sum()],
+                               [b.sum(), n - b.sum()]]).pvalue
+
+for n in (200, 2_000, 20_000, 200_000):
+    print(n, round(experiment(n), 4))
+
+# The effect never changes. Only n does. With enough data a difference
+# nobody could notice becomes "statistically significant".
+# THIS is why a p value alone tells you nothing about whether to ship.</code></pre>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What these two ideas let you demand</span></div>
+  <p>The sampling distribution is the reason an eval number is never just a number. It comes with a margin, and that margin decides whether a result can carry a decision.</p>
+  <ul>
+    <li><b>No interval, no decision.</b> A pass rate without a confidence interval cannot support a ship call. On 200 tasks at around 60%, the 95% interval is roughly ±7 points. Two models 3 points apart on that suite are usually indistinguishable unless the comparison is paired (Part II covers how pairing shrinks the margin).</li>
+    <li><b>Budget with the square-root law.</b> Halving the error bar costs four times the eval compute and four times the labelling. Detecting a 1 point change typically needs thousands of tasks. Put that in planning documents before someone promises "we'll know by Friday".</li>
+    <li><b>Separate "real" from "matters".</b> A p value says whether a difference is likely real. It says nothing about whether it is big enough to care about. Ask for the effect size and its interval, and agree in advance on the smallest difference worth acting on.</li>
+    <li><b>Watch for SD and SE swaps.</b> Error bars drawn with the standard deviation look alarmingly wide; error bars drawn with the standard error look reassuringly tight. Both are legitimate for different questions, and dashboards frequently mix them up.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>"If we reran this eval on a fresh draw of tasks, how much would the headline move?" A team that can answer with a number, and knows where it came from, understands its own result. A team that cannot has a point estimate and a hope.</div></div>
+</div>
+</section>

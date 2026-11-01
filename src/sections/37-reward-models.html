@@ -1,0 +1,173 @@
+<section id="reward-models" data-title="Preferences and reward models">
+<h2>Preferences and reward models: turning taste into a number</h2>
+<p>Pretraining and supervised fine-tuning teach a model to imitate text. They cannot teach it which of two good-looking answers people actually prefer. Reward models close that gap. They learn a scoring function from human (or AI) comparisons, and that score becomes the target for RLHF, the selector for best-of-N sampling, and the yardstick many teams quietly use as an eval. This chapter covers how comparisons are collected, the Bradley–Terry model behind almost every reward model, how to evaluate one, and how optimizing against it goes wrong.</p>
+
+<h3>Why preferences instead of labels</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Picking is easier than scoring</span></div>
+  <p>Ask ten people to score a poem from 1 to 10 and you get ten different scales: one person's 6 is another's 8. Ask the same ten people which of two poems is better and they agree far more often. Comparing is easier and more consistent than scoring on an absolute scale.</p>
+  <p>So instead of asking people "how good is this answer?", labs show them two answers to the same question and ask "which is better?" After collecting many of these picks, they train a separate model, the <b>reward model</b>, to predict which answer people would pick. Once trained, it can score any answer instantly, which lets you train the main model against it millions of times without a person in the loop.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What you are actually buying</span></div>
+  <p>A preference dataset is a product decision encoded as data. The rubric you give annotators defines what "better" means, and the reward model will learn that definition, including its blind spots. Four decisions dominate quality and cost:</p>
+  <ul>
+    <li><b>Who labels.</b> Crowd annotators are cheap and fast but drift toward surface features (length, confident tone). Domain experts (doctors, lawyers, senior engineers) cost 5 to 20 times more per comparison and are the only reliable source for specialized correctness. Most frontier programs mix both and route by topic.</li>
+    <li><b>The rubric.</b> Helpfulness, honesty, and harmlessness pull against each other. A single "overall better" judgment hides which one won. Many teams collect per-dimension preferences or a written rationale so they can reweight later without relabeling.</li>
+    <li><b>Agreement.</b> On open-ended chat, independent labelers agree with each other only about 70 to 77 percent of the time (InstructGPT, Ouyang et al. 2022, reported roughly 73 percent among its trained labelers). That number is the <b>ceiling</b> on reward model accuracy. A reward model at 72 percent is near the ceiling, not mediocre.</li>
+    <li><b>Freshness.</b> Comparisons collected on an old model's outputs describe old mistakes. As the policy improves, its outputs leave the distribution the reward model was trained on. Plan for repeated collection rounds on current samples, not a one-time dataset.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>What was inter-annotator agreement, measured on the same items? What fraction of pairs were ties or "both bad", and what did you do with them? Which dimensions does the rubric privilege when they conflict? How old are the samples the reward model was trained on relative to the current policy?</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The data format</span></div>
+  <p>A preference record is a triple \((x, y_w, y_l)\): a prompt \(x\), a preferred ("winning") response \(y_w\), and a dispreferred ("losing") response \(y_l\). Common variations:</p>
+  <ul>
+    <li><b>Rankings of K responses.</b> InstructGPT showed labelers 4 to 9 responses and asked for a full ranking, which yields \(\binom{K}{2}\) pairs. They kept all pairs from one prompt in the same batch element, because treating them as independent samples caused the reward model to overfit within one epoch.</li>
+    <li><b>Strength labels.</b> "Significantly better" versus "slightly better". Llama 2 (Touvron et al. 2023) fed this in as a margin term in the loss, below.</li>
+    <li><b>Ties and "both bad".</b> Usually dropped for Bradley–Terry training, which has no tie outcome. Dropping them silently biases the dataset toward easy, clear-cut pairs.</li>
+  </ul>
+</div>
+
+<h3>The Bradley–Terry model</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Chess ratings for answers</span></div>
+  <p>Chess ratings work like this: every player has a hidden strength number. When two players meet, the bigger the gap in their numbers, the more likely the stronger one wins, but upsets still happen. You never see the strengths directly, only who won. After enough games you can work backward to good estimates of everyone's number.</p>
+  <p>A reward model does the same with answers. Each answer gets a hidden score. The bigger the score gap between two answers, the more confident the model is that people prefer the higher one. Only the <b>gap</b> means anything. Adding 100 to every score changes nothing.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The model and its loss</span></div>
+  <p>Bradley–Terry (1952) says the probability that \(y_w\) beats \(y_l\) depends only on the difference of their scores, passed through a logistic function:</p>
+  <div class="eq">\[ P(y_w \succ y_l \mid x) = \sigma\big(r(x, y_w) - r(x, y_l)\big) = \frac{1}{1 + e^{-(r_w - r_l)}} \]<span class="eqcap">\(r(x,y)\) is the scalar score, \(\sigma\) is the logistic sigmoid. A gap of 0 means a coin flip; a gap of 2 means about 88 percent; a gap of 4 means about 98 percent.</span></div>
+  <p>Training a reward model \(r_\phi\) is maximum likelihood under this model, which is binary cross-entropy on the score difference:</p>
+  <div class="eq">\[ \mathcal{L}_{\text{RM}}(\phi) = -\,\mathbb{E}_{(x, y_w, y_l)}\Big[\log \sigma\big(r_\phi(x, y_w) - r_\phi(x, y_l) - m\big)\Big] \]<span class="eqcap">\(m = 0\) in the plain version. Llama 2 used a margin \(m &gt; 0\) that grows with the labeled preference strength, which pushes clearly better pairs further apart.</span></div>
+  <p>Two consequences matter in practice. First, the scores are only identified up to an additive constant per prompt, so raw reward values are not comparable across prompts or across reward model versions. Teams normalize (subtract the mean reward on a reference set) before using them. Second, the scale is set by labeler consistency: noisy labels compress all score gaps toward zero, because the model learns that even large quality differences only win 70 percent of the time.</p>
+  <pre class="code" data-lang="python"><code>import torch
+import torch.nn.functional as F
+
+def bradley_terry_loss(r_chosen, r_rejected, margin=None):
+    """r_chosen, r_rejected: tensors of shape [batch], scalar scores from the reward model."""
+    diff = r_chosen - r_rejected
+    if margin is not None:          # Llama 2 style: demand a bigger gap for clearer preferences
+        diff = diff - margin
+    # -log sigmoid(diff) == softplus(-diff), and the softplus form is numerically stable
+    return F.softplus(-diff).mean()
+
+r_w = torch.tensor([1.2, 0.3, 2.0])
+r_l = torch.tensor([0.2, 0.9, -1.0])
+print(round(bradley_terry_loss(r_w, r_l).item(), 3))                  # 0.466
+print(round(((r_w - r_l) &gt; 0).float().mean().item(), 3))             # pairwise accuracy 0.667</code></pre>
+</div>
+
+<div class="widget" id="w-rm-bt">
+  <div class="wtitle">Bradley–Terry explorer</div>
+  <div class="wsub">Left: how a score gap turns into a preference probability. Right: four responses with known true scores, simulated votes, and the scores Bradley–Terry recovers. Cut the votes or raise the annotator noise and watch the fitted ranking become unreliable.</div>
+  <div class="controls">
+    <div class="ctl"><label for="rm-bt-d">Score gap r<sub>w</sub> − r<sub>l</sub>: <output id="rm-bt-d-o">1.0</output></label><input type="range" id="rm-bt-d" min="-4" max="4" step="0.1" value="1"></div>
+    <div class="ctl"><label for="rm-bt-n">Votes per pair: <output id="rm-bt-n-o">20</output></label><input type="range" id="rm-bt-n" min="3" max="300" step="1" value="20"></div>
+    <div class="ctl"><label for="rm-bt-t">Annotator noise: <output id="rm-bt-t-o">1.0</output></label><input type="range" id="rm-bt-t" min="0.3" max="4" step="0.1" value="1"></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">P(prefer higher score)</div><div class="v" data-p>—</div></div>
+    <div class="mc"><div class="l">Pairs ranked correctly</div><div class="v" data-acc>—</div></div>
+    <div class="mc"><div class="l">Fitted P(A beats D)</div><div class="v" data-ad>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What the score does and does not mean</span></div>
+  <p>A reward score is a <b>relative</b> preference estimate within one prompt. It is not a quality grade, not a probability of correctness, and not comparable between reward model versions. If a dashboard shows "average reward went from 1.3 to 1.9", ask what it was normalized against, because a retrained reward model can shift every score without the policy changing at all.</p>
+  <p>Annotator noise is the hidden lever in the widget above. Doubling noise does not just make labels messier; it shrinks the learned scale, so the reward model becomes less confident everywhere, and downstream RL pushes less hard. That can look like "RLHF stopped working" when the real cause is a labeling vendor change.</p>
+</div>
+
+<h3>Training a reward model</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Size, data volume, cadence</span></div>
+  <p>Reward models are usually initialized from the same family as the policy, often the SFT checkpoint, because the reward model must understand the responses at least as well as the policy that produces them. A reward model much smaller than the policy is cheaper to run during RL but is easier for the policy to fool. Published programs range from tens of thousands of comparisons (InstructGPT used about 33,000 prompts for reward model training) to well over a million (Llama 2 reported roughly 1.4 million Meta-collected comparisons plus open datasets). Collection is typically done in rounds against the latest policy, so the budget question is less "how many comparisons" than "how many per round, and how many rounds".</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Reward models overfit fast. Several reports train for a single epoch on comparison data, because a second pass raises training accuracy and lowers held-out accuracy. If a team reports a reward model at 90 percent training accuracy on chat preferences, the first question is what held-out accuracy looks like.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Architecture</span></div>
+  <p>Take a transformer language model, drop the vocabulary projection, and add a linear head that maps the final hidden state of the last token to one scalar. Run the prompt and response through, read the scalar, done. Chosen and rejected responses are run as two sequences that share the prompt.</p>
+  <pre class="code" data-lang="python"><code>import torch.nn as nn
+
+class RewardModel(nn.Module):
+    def __init__(self, backbone, hidden_size):
+        super().__init__()
+        self.backbone = backbone                 # e.g. the SFT model without its LM head
+        self.value_head = nn.Linear(hidden_size, 1)
+
+    def forward(self, input_ids, attention_mask):
+        h = self.backbone(input_ids, attention_mask=attention_mask).last_hidden_state
+        last = attention_mask.sum(dim=1) - 1     # index of the final real token in each row
+        h_last = h[torch.arange(h.size(0)), last]
+        return self.value_head(h_last).squeeze(-1)   # one scalar reward per sequence</code></pre>
+  <p>Alternatives you will hear about: <b>generative reward models</b> that write a critique and then a verdict (an LLM judge trained on preference data, see <a href="#judges">LLM as judge</a>), <b>multi-objective</b> heads that score helpfulness and harmlessness separately (Llama 2 trained two separate reward models), and <b>pairwise</b> models that read both responses at once and output which is better.</p>
+</div>
+
+<h3>Evaluating a reward model</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Grading the grader</span></div>
+  <p>A reward model is a judge. Before you let it train your model, check its picks against people's picks on comparisons it has never seen. If it agrees as often as two people agree with each other, it is about as good as it can get. Then check the cases that matter: does it prefer a long wrong answer over a short right one? Does it reward flattery?</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The four numbers to ask for</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Measure</th><th>What it tells you</th><th>Typical trap</th></tr></thead>
+    <tbody>
+      <tr><td>Held-out pairwise accuracy</td><td>How often it agrees with human picks on unseen pairs</td><td>Reported without the human agreement ceiling next to it</td></tr>
+      <tr><td>Accuracy by slice</td><td>Where it fails: code, math, safety, long answers, multi-turn</td><td>A good average hiding a 55 percent slice that RL will exploit</td></tr>
+      <tr><td>Calibration</td><td>Whether a predicted 80 percent preference wins 80 percent of the time</td><td>Overconfident reward models make RL push too hard on noise</td></tr>
+      <tr><td>Downstream effect</td><td>Best-of-N or RL results using this reward model, scored by humans or a held-out judge</td><td>Static accuracy correlates only loosely with how good a policy it trains</td></tr>
+    </tbody>
+  </table></div>
+  <p>Public suites such as RewardBench (Lambert et al. 2024) and its successor RewardBench 2 (2025) give comparable numbers across categories like chat, hard chat, safety, and reasoning. They are useful for comparing reward models from different groups, and weak as a ship criterion, because your policy's failure modes are not in a public benchmark.</p>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>Reward model evaluation is a binary classification problem on pairs, so everything in <a href="#classification">classification metrics</a> applies. Pairwise accuracy on randomly ordered pairs is a concordance measure, the same quantity ROC-AUC estimates. Report it with a confidence interval (a few thousand held-out pairs gives roughly ±1.5 points), report it per slice, and compare it to the human-human agreement on the same items. A 2-point gain between reward model versions on 1,000 pairs is inside the noise.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Known biases and how to probe them</span></div>
+  <ul>
+    <li><b>Length.</b> Annotators tend to prefer longer, more thorough-looking answers, and reward models amplify this. Probe with counterfactual pairs: the same answer with and without padding. Singhal et al. (2023) showed much of the reward gain from RLHF on several datasets could be explained by length alone.</li>
+    <li><b>Sycophancy.</b> Answers that agree with the user's stated opinion get rated higher. Sharma et al. (2023) found this in human preference data and in reward models trained on it. Probe with paired prompts that differ only in the user's stated belief.</li>
+    <li><b>Formatting and tone.</b> Markdown headers, bullet lists, and confident phrasing earn reward independent of content. Probe by stripping formatting or swapping hedged for confident wording.</li>
+    <li><b>Position and self-preference.</b> Pairwise generative reward models can prefer whichever response comes first, or responses that sound like their own outputs. Score both orders and average.</li>
+  </ul>
+  <p>The standard mitigations are to balance the comparison data (include pairs where the shorter answer wins), add an explicit length penalty or length-normalized reward, train on counterfactual augmentations, and report length-controlled win rates in evaluation.</p>
+</div>
+
+<h3>Reward overoptimization: Goodhart in one chart</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Teaching to the test</span></div>
+  <p>If you reward students only for test scores, they first learn the material, then they learn the test. Past some point, scores keep climbing while real understanding stops improving or even gets worse. A reward model is a test. Push a language model hard enough against it and the model finds the reward model's quirks: longer answers, more confident tone, flattering phrasing. The reward model's score keeps rising. What people actually want peaks and then falls.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The scaling law</span></div>
+  <p>Gao, Schulman and Hilton (2022) made this measurable. They used a large "gold" reward model as a stand-in for humans, trained smaller proxy reward models on its labels, optimized policies against the proxies, and tracked gold reward as a function of how far the policy moved from its starting point, measured by \(d = \sqrt{\mathrm{KL}(\pi \,\|\, \pi_{\text{ref}})}\). Gold reward followed simple functional forms:</p>
+  <div class="eq">\[ R_{\text{bon}}(d) = d\,(\alpha_{\text{bon}} - \beta_{\text{bon}}\, d), \qquad R_{\text{RL}}(d) = d\,(\alpha_{\text{RL}} - \beta_{\text{RL}} \log d) \]<span class="eqcap">Best-of-N sampling (left) and RL (right). Both rise, peak, and fall. Larger proxy reward models had larger \(\alpha\) and smaller \(\beta\): a later, higher peak. More proxy training data helped in the same direction.</span></div>
+  <p>Two practical lessons follow. The KL distance at which gold reward peaks is a budget, and it grows with reward model quality. And the proxy score is useless for finding that peak, because it keeps rising straight through it. You need an independent signal: fresh human ratings, a different reward model, or task-specific checks.</p>
+</div>
+
+<div class="widget" id="w-rm-oo">
+  <div class="wtitle">Reward overoptimization</div>
+  <div class="wsub">Proxy reward (what the optimizer sees) and gold reward (what people want) as the policy drifts from its reference. Raise reward model quality to push the peak out. Move the KL budget to see where training stops. Curves use the best-of-N form from Gao et al. (2022) with illustrative coefficients.</div>
+  <div class="controls">
+    <div class="ctl"><label for="rm-oo-q">Reward model quality: <output id="rm-oo-q-o">1.5</output></label><input type="range" id="rm-oo-q" min="1" max="3" step="0.1" value="1.5"></div>
+    <div class="ctl"><label for="rm-oo-k">KL budget (nats): <output id="rm-oo-k-o">20</output></label><input type="range" id="rm-oo-k" min="0" max="64" step="1" value="20"></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Proxy reward at budget</div><div class="v" data-px>—</div></div>
+    <div class="mc"><div class="l">Gold reward at budget</div><div class="v" data-gd>—</div></div>
+    <div class="mc"><div class="l">Gold peaks at KL</div><div class="v" data-pk>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Operating against a proxy</span></div>
+  <p>Every RL run against a learned reward is a bet on where the gold curve peaks. The controls are the KL penalty (how hard you hold the policy near its reference), early stopping on an independent eval, reward model ensembles (optimize the minimum or the mean minus the spread, so the policy cannot exploit one model's quirk), and refreshing the reward model on the policy's current outputs.</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>The signature of overoptimization is a training curve where reward rises smoothly while response length climbs, hedging disappears, and human or held-out-judge win rates flatten. If the only chart in a review is the training reward, you cannot tell a great run from a hacked one.</div></div>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>What independent signal told you when to stop? How did KL from the reference evolve, and where did the held-out win rate peak against it? Did response length change, and what is the length-controlled result? Was the reward model refreshed on samples from this policy?</div></div>
+</div>
+
+<h3>Outcome rewards, process rewards, and verifiers</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Grading the answer or grading the working</span></div>
+  <p>A math teacher can mark only the final answer, or check every line of the working. Grading only the answer is cheap but cannot tell lucky guesses from sound reasoning. Grading each step is expensive but pinpoints where things went wrong.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">When you do not need a learned reward at all</span></div>
+  <p>An <b>outcome reward model</b> scores the final response. A <b>process reward model</b> scores each intermediate step of a reasoning chain; Lightman et al. (2023), "Let's Verify Step by Step", found process supervision beat outcome supervision for selecting correct math solutions, at the cost of step-level labels. For tasks with checkable answers (math with a known result, code with tests, formal proofs), a programmatic <b>verifier</b> can replace the learned reward entirely. That removes the reward model as an attack surface for overoptimization, though policies can still exploit weak tests. This is the basis of RL with verifiable rewards, covered in <a href="#grpo">GRPO and RLVR</a>.</p>
+</div>
+
+<h3>AI feedback</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Replacing some of the humans</span></div>
+  <p>Human comparisons are slow and expensive. <b>RLAIF</b> uses a capable model, guided by written principles, to produce the comparisons instead. Anthropic's Constitutional AI (Bai et al. 2022) used model-generated critiques and preferences for harmlessness; Lee et al. (2023) reported RLAIF reaching parity with RLHF on summarization and dialogue tasks they tested. AI feedback scales and is consistent, but it inherits the labeling model's biases and can create a closed loop where models grade models in their own image. Most programs keep a human-labeled slice to audit the AI labels and measure drift. See <a href="#safety">safety training</a> for the constitutional approach in depth.</p>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>An AI labeler is an LLM judge, and should be validated like one (<a href="#judges">LLM as judge</a>): agreement and Cohen's kappa against humans on a held-out set, checks for position and length bias, and a comparison to human-human agreement. If the AI labeler agrees with humans less often than humans agree with each other, the reward model trained on its labels starts below the human ceiling.</div></div>
+</div>
+</section>

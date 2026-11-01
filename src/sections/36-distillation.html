@@ -1,0 +1,131 @@
+<section id="distillation" data-title="Distillation, synthetic data, and merging">
+<h2>Distillation, synthetic data, and merging</h2>
+<p>Most training data for modern post-training is written by models, not people. A large teacher model generates examples, a filter keeps the good ones, and a smaller or newer student learns from them. This chapter covers the three ways models learn from other models: distillation, synthetic data with filtering, and merging weights directly.</p>
+
+<h3>Knowledge distillation</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Learning from the teacher's hesitation</span></div>
+  <p>A student can learn from an answer key: "the answer is Paris." Or they can learn from a teacher who thinks out loud: "Paris, almost certainly. Lyon is a distant second. It's definitely not banana." The second version carries more information. It tells the student which wrong answers are nearly right and which are absurd. Distillation trains a small model on the big model's full set of probabilities, not just its single best answer. Hinton and colleagues called that extra information "dark knowledge."</p>
+</div>
+<div class="widget" id="w-ds-kd">
+  <div class="wtitle">Temperature and soft targets</div>
+  <div class="wsub">Next-word probabilities after "The capital of France is". Raise the temperature to reveal the teacher's ranking of wrong answers. Move the student toward the teacher and watch both KL divergences shrink.</div>
+  <div class="controls">
+    <div class="ctl"><label for="ds-t">Temperature T: <output id="ds-t-o">1.0</output></label><input type="range" id="ds-t" min="0.5" max="8" step="0.25" value="1"></div>
+    <div class="ctl"><label for="ds-l">Student training progress: <output id="ds-l-o">0%</output></label><input type="range" id="ds-l" min="0" max="1" step="0.05" value="0"></div>
+  </div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--accent)"></span>Teacher</span><span><span class="sw" style="background:var(--tp)"></span>Student</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Teacher top-1 prob</div><div class="v" data-top>—</div></div>
+    <div class="mc"><div class="l">Teacher entropy (nats)</div><div class="v" data-ent>—</div></div>
+    <div class="mc"><div class="l">Forward KL(teacher‖student)</div><div class="v" data-fkl>—</div></div>
+    <div class="mc"><div class="l">Reverse KL(student‖teacher)</div><div class="v" data-rkl>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why every lab distils</span></div>
+  <p>Distillation is how a lab turns one expensive frontier model into a family of cheaper ones. Small models trained from a strong teacher usually beat small models trained from scratch on the same compute. Gemma 2 (Google, 2024) trained its 2B and 9B models with distillation from a larger model in place of plain next-token prediction. DeepSeek-R1 (2025) distilled about 800K reasoning samples from R1 into smaller Qwen and Llama models and reported that this beat running RL directly on the small models.</p>
+  <div class="four">
+    <div class="tile"><h4>Logit distillation</h4><p>Match the teacher's full probability distribution at each token. Needs the teacher's logits and a shared tokenizer, so it is mostly done inside one lab.</p></div>
+    <div class="tile"><h4>Sequence distillation</h4><p>Train on text the teacher generated (Kim &amp; Rush, 2016). Works through an API and across tokenizers. This is what "training on model outputs" usually means.</p></div>
+    <div class="tile"><h4>On-policy distillation</h4><p>The student writes the text and the teacher grades every token (Agarwal et al., 2024). Fixes the student's own mistakes instead of only copying perfect examples.</p></div>
+    <div class="tile"><h4>Reasoning-trace distillation</h4><p>Train on the teacher's step-by-step solutions. Fast way to give a small model long-form reasoning; inherits the teacher's errors and verbosity.</p></div>
+  </div>
+  <div class="callout warn"><span class="tag">Watch out</span><div>A distilled student is capped by its teacher and copies its blind spots. If the teacher hallucinates on a topic, the student will too, with the same confidence. Distilling from a model you don't control also raises terms-of-service and licensing questions: many providers' terms restrict using outputs to build competing models, and open-weight licenses carry their own conditions. Get legal review before a data pipeline depends on another company's model.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Soft targets, temperature, and which KL</span></div>
+  <p>With teacher logits \(z^{T}\) and student logits \(z^{S}\), soften both with temperature \(\tau\):</p>
+  <div class="eq">\[ p_i^{(\tau)} = \frac{\exp(z_i/\tau)}{\sum_j \exp(z_j/\tau)}, \qquad \mathcal{L} = (1-\lambda)\,\mathrm{CE}\big(y,\, p^{S,(1)}\big) + \lambda\,\tau^{2}\,\mathrm{KL}\big(p^{T,(\tau)} \,\big\|\, p^{S,(\tau)}\big) \]<span class="eqcap">Hinton, Vinyals &amp; Dean (2015). The \(\tau^2\) factor keeps the soft-target gradients on the same scale as the hard-label term when \(\tau\) changes. \(\lambda\) balances the two.</span></div>
+  <p>The direction of the KL matters for generative models:</p>
+  <ul>
+    <li><b>Forward KL</b>, \(\mathrm{KL}(p^T \| p^S) = \sum_i p_i^T \log \frac{p_i^T}{p_i^S}\), punishes the student for putting low probability anywhere the teacher puts mass. It is <i>mode covering</i>: a small student spreads itself thin and can produce blends of answers.</li>
+    <li><b>Reverse KL</b>, \(\mathrm{KL}(p^S \| p^T)\), punishes the student for putting mass where the teacher doesn't. It is <i>mode seeking</i>: the student commits to the teacher's main modes. MiniLLM (Gu et al., 2024) argued reverse KL suits small generative students better. On-policy distillation minimises a per-token reverse KL on the student's own samples.</li>
+  </ul>
+<pre class="code" data-lang="python"><code>import torch, torch.nn.functional as F
+
+def kd_loss(student_logits, teacher_logits, labels, tau=2.0, lam=0.5):
+    """Hinton-style distillation for a batch of next-token predictions.
+    logits: [batch, vocab]; labels: [batch] token ids (-100 to ignore)."""
+    hard = F.cross_entropy(student_logits, labels, ignore_index=-100)
+    log_ps = F.log_softmax(student_logits / tau, dim=-1)
+    log_pt = F.log_softmax(teacher_logits / tau, dim=-1)
+    # forward KL(teacher || student); kl_div expects log-probs for the input
+    soft = F.kl_div(log_ps, log_pt, log_target=True, reduction="batchmean")
+    return (1 - lam) * hard + lam * tau**2 * soft
+
+s, t = torch.randn(4, 10), torch.randn(4, 10)
+print(kd_loss(s, t, torch.tensor([1, 2, 3, -100])).item() &gt; 0)  # True</code></pre>
+</div>
+
+<h3>Synthetic data and rejection sampling</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Write ten drafts, keep the ones that check out</span></div>
+  <p>If you can check an answer more easily than you can write it, you can make training data cheaply. Ask a model to solve a math problem ten times. Check each answer against the known result. Keep the correct solutions and train on them. Repeat with the improved model. This is the engine behind most reasoning data today.</p>
+</div>
+<div class="widget" id="w-ds-rs">
+  <div class="wtitle">Rejection-sampling yield and bias</div>
+  <div class="wsub">10,000 prompts, each with its own pass rate (drawn from a skewed distribution). Sample k answers per prompt and keep the correct ones. See what you pay per kept example and which prompts your data ends up covering.</div>
+  <div class="controls">
+    <div class="ctl"><label for="ds-k">Samples per prompt k: <output id="ds-k-o">8</output></label><input type="range" id="ds-k" min="1" max="64" step="1" value="8"></div>
+    <div class="ctl"><label for="ds-m">Average pass rate: <output id="ds-m-o">30%</output></label><input type="range" id="ds-m" min="0.05" max="0.9" step="0.05" value="0.3"></div>
+  </div>
+  <div class="btnrow" data-cap>
+    <button class="b" data-c="all" aria-pressed="true">Keep every correct sample</button><button class="b" data-c="one" aria-pressed="false">Keep at most one per prompt</button>
+  </div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--tn)"></span>Share of prompts</span><span><span class="sw" style="background:var(--accent)"></span>Share of kept training examples</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Prompts with ≥1 kept</div><div class="v" data-cov>—</div></div>
+    <div class="mc"><div class="l">Kept examples</div><div class="v" data-kept>—</div></div>
+    <div class="mc"><div class="l">Generations per kept</div><div class="v" data-cost>—</div></div>
+    <div class="mc"><div class="l">Hardest-third share of data</div><div class="v" data-hard>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The filter is the product</span></div>
+  <p>Generating text is cheap. The value of a synthetic data pipeline sits in its filter: unit tests for code, exact-match answers for math, a <a href="#reward-models">reward model</a> or LLM judge for open-ended tasks, and human spot checks throughout. The main methods:</p>
+  <ul>
+    <li><b>Self-Instruct</b> (Wang et al., 2023) and <b>Evol-Instruct</b> (Xu et al., 2023): a model writes new instructions from seed examples, or rewrites existing ones to be harder or more varied.</li>
+    <li><b>STaR</b> (Zelikman et al., 2022): generate reasoning, keep traces that reach the right answer, fine-tune, repeat. For failures, give the answer as a hint and ask for a rationale ("rationalisation").</li>
+    <li><b>Rejection sampling fine-tuning</b> (Yuan et al., 2023; also used in Llama 2): sample many responses, keep the best by verifier or reward model, and fine-tune on them. It is a simple offline relative of <a href="#grpo">RL</a>.</li>
+  </ul>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Rejection sampling quietly reshapes your data toward problems the model can already solve. Prompts with a 1% pass rate rarely produce a kept example, so the training set over-represents easy problems. The model gets better at what it already does well. Watch coverage of hard prompts, cap examples per prompt, and spend extra samples on hard prompts.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Yield, coverage, and model collapse</span></div>
+  <p>For a prompt with pass rate \(p\) and \(k\) samples, the expected number of correct samples is \(kp\), and the chance of at least one is \(1-(1-p)^k\). Averaging over prompts:</p>
+  <div class="eq">\[ \text{coverage} = \mathbb{E}_p\!\left[1-(1-p)^k\right], \qquad \text{kept share from prompt } i \propto p_i \]<span class="eqcap">Without a cap, each prompt contributes in proportion to its pass rate, so easy prompts dominate. Capping at one kept example per prompt changes the weight to \(1-(1-p_i)^k\), which flattens toward uniform as \(k\) grows.</span></div>
+  <p><b>Model collapse.</b> Shumailov et al. (2024, <i>Nature</i>) showed that models trained recursively on their own outputs, generation after generation, lose the tails of the original distribution first and then degrade. Rare facts, unusual styles, and minority languages vanish. Later work (Gerstgrasser et al., 2024) found collapse is avoided when synthetic data is <i>added</i> to real data rather than <i>replacing</i> it. In practice: keep real human data in the mix, filter synthetic data hard, track diversity metrics across rounds, and never let a pipeline train only on its own previous generation.</p>
+</div>
+
+<h3>Model merging</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Averaging two specialists</span></div>
+  <p>Take two copies of the same model. Teach one math and the other coding. Surprisingly, you can often average their weights, number by number, and get one model that is decent at both. It only works when both started from the same parent, like two edits of the same document.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Cheap gains, unclear guarantees</span></div>
+  <p>Merging costs almost no compute and is now a routine post-training step: averaging checkpoints from different data mixes or seeds, combining a reasoning specialist with a chat model, or folding several fine-tunes into one release. It is also unpredictable. A merge can lift one benchmark and quietly break safety behaviour or formatting, so a merged model needs the full regression suite like any other release candidate.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Soups, task vectors, TIES</span></div>
+  <ul>
+    <li><b>Model soups</b> (Wortsman et al., 2022): average the weights of several fine-tunes of one base, trained with different hyperparameters. Often beats the best single model, at no inference cost.</li>
+    <li><b>Task arithmetic</b> (Ilharco et al., 2023): define a task vector \(\tau = \theta_{\text{ft}} - \theta_{\text{base}}\). Add vectors to combine skills, subtract one to remove a behaviour: \(\theta = \theta_{\text{base}} + \sum_i \lambda_i \tau_i\).</li>
+    <li><b>TIES-Merging</b> (Yadav et al., 2023): trim small entries of each task vector, resolve sign conflicts by majority, then average only agreeing entries. Reduces interference between tasks. <b>DARE</b> (Yu et al., 2024) randomly drops most delta entries and rescales the rest before merging.</li>
+  </ul>
+  <p>Merging works because fine-tunes of a shared base tend to stay in one low-loss basin (linear mode connectivity). Models trained from different initialisations are not connected this way, and averaging them produces garbage.</p>
+</div>
+
+<div class="callout eval"><span class="tag">Eval lens</span><div>
+  <p>Models learning from models create eval traps you won't see unless you look:</p>
+  <ul>
+    <li><b>Teacher-induced contamination.</b> If the teacher memorised a benchmark, its synthetic data can contain paraphrases of test items. The student then scores well without the skill. Run overlap checks against every eval set (see <a href="#contamination">contamination</a>), including paraphrase detection, not just exact n-grams.</li>
+    <li><b>Judge self-preference.</b> An <a href="#judges">LLM judge</a> from the same family as the teacher tends to prefer outputs written in its own style. A distilled student can win judge-based comparisons by sounding like the judge. Use a judge from a different family, and validate against human labels.</li>
+    <li><b>Style over substance.</b> Distillation transfers length, formatting, and confident tone faster than correctness. Control for length in win rates and keep verifiable tasks in the suite.</li>
+    <li><b>Diversity loss.</b> Track output diversity (distinct n-grams, embedding spread, pass@k versus pass@1) across synthetic-data rounds. Falling diversity is an early warning of collapse.</li>
+  </ul>
+</div></div>
+<div class="callout ask"><span class="tag">Principal asks</span><div><ul>
+  <li>What fraction of our post-training data is synthetic, which models generated it, and are we allowed to use their outputs this way?</li>
+  <li>What is the filter, how was it validated, and what is its false-accept rate?</li>
+  <li>How does pass rate on the hardest decile of prompts change across rounds, not just the average?</li>
+  <li>Did we check the synthetic data for overlap with every benchmark we report?</li>
+  <li>For a merged model: which components, which method, and what did the full regression suite show compared with each parent?</li>
+</ul></div></div>
+</section>

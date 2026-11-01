@@ -1,0 +1,83 @@
+<section id="tails" data-title="Long tails and outliers">
+<h2>Long tails and outliers: error or product?</h2>
+<p>Latency, token counts, and agent loop lengths all have long tails, and every team eventually argues about what to do with the extreme values. The first question is never which technique. It is whether the outlier is an <b>error</b> or the <b>product</b>.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The slow request is a real customer</span></div>
+  <p>If a restaurant serves most meals in ten minutes but one table waits an hour, that hour is not a typo. It is a customer who left angry. Deleting it from the spreadsheet makes the average look better and the restaurant no better. Only remove a value if you can show the measurement itself was broken, such as a clock error or a logging bug. Otherwise, change how you summarise, not what you measured.</p>
+</div>
+
+<div class="callout key"><span class="tag">Key idea</span><div>In eval data most long tails are signal. A 40 second response is something a real user actually waited through. Winsorizing it makes your chart prettier and your product no better. The honest default is to change the summary statistic, not the data.</div></div>
+<figure><img src="figs/stats-078.png" alt="Five different estimates of the centre for the same 1000 measurements"><figcaption>The same 1000 measurements, five different answers for "the centre". The spread between them is entirely a choice someone made.</figcaption></figure>
+
+<div class="widget" id="w-foutlier"><div class="wtitle">Outlier handling, side by side</div>
+<div class="wsub">Add outliers and watch which estimators move. The median barely notices. The raw mean tracks the tail directly. Move the winsorization percentile and see how much the answer depends on a threshold somebody picked arbitrarily.</div>
+<div class="controls"><div class="ctl" data-w2><label data-l1>outlier magnitude</label><input type="range" data-out2 min="2" max="60" step="1" value="18"></div>
+<div class="ctl" data-w><label data-l2>how many outliers</label><input type="range" data-cnt min="0" max="80" step="1" value="8"></div>
+<div class="ctl" data-w><label data-l3>winsorize percentile</label><input type="range" data-win min="0.90" max="0.999" step="0.005" value="0.99"></div>
+</div>
+<canvas data-c1></canvas><div class="readout" data-out></div>
+</div>
+
+<h3>The options, in the order to try them</h3>
+<div class="tw"><table><thead><tr><th>Option</th><th>What it does</th><th>Cons</th><th>Use when</th></tr></thead><tbody>
+<tr><td><b>1. Change the statistic</b></td><td>Report p50, p95, p99 with bootstrap intervals instead of a mean</td><td>No single headline number; p99 unstable at small n</td><td>The tail is real user experience. Almost always, for latency</td></tr>
+<tr><td><b>2. Segment</b></td><td>Find the variable that separates the tail into its own population</td><td>Needs a plausible mechanism; you can fish until something separates</td><td>You can name a candidate first. <b>Highest value option and the most skipped</b></td></tr>
+<tr><td><b>3. Log transform</b></td><td>Analyse on the log scale, report back in original units</td><td>Geometric mean is not the arithmetic mean, so it cannot answer capacity or cost questions. Breaks on zeros</td><td>Data is roughly lognormal and you want to model it</td></tr>
+<tr><td><b>4. Winsorize</b></td><td>Cap values above a percentile at that percentile</td><td>Biases the mean by an unknown amount; the cap point is arbitrary and two teams will pick differently</td><td>You have <b>confirmed instrumentation errors</b>, not slow requests</td></tr>
+<tr><td><b>5. Trimmed mean</b></td><td>Drop a fixed share from each end, average the rest</td><td>Symmetric trimming on an asymmetric tail removes real data from one side and nothing from the other</td><td>Rarely right for a one sided tail</td></tr>
+<tr><td><b>6. Robust estimators</b></td><td>Huber, Hodges-Lehmann: downweight rather than delete</td><td>Harder to explain; tuning constants are another arbitrary choice</td><td>You need a mean-like number that resists contamination</td></tr>
+<tr><td><b>7. Rank based tests</b></td><td>Mann-Whitney instead of a t test</td><td>No longer a statement about means; effect sizes less intuitive</td><td>Comparing two groups where outliers would flip a t test</td></tr>
+<tr><td><b>8. Model the tail</b></td><td>Fit a generalized Pareto above a threshold</td><td>Real machinery, real assumptions</td><td>The tail itself is the deliverable</td></tr>
+</tbody></table></div>
+<div class="callout warn"><span class="tag">Watch out</span><div><b>Check for censoring before any of this.</b> A spike of values sitting exactly at your timeout means those are not measurements, they are lower bounds. No outlier technique fixes that, and every one of them will quietly make the bias worse.</div></div>
+
+<h3>Per metric</h3>
+<ul>
+  <li><b>Latency:</b> quantiles, never a mean. Segment by cold start and retry status first.</li>
+  <li><b>Token counts:</b> log scale for analysis, quantiles for reporting. Watch for a bimodal split between short answers and agentic loops, which is segmentation, not outliers.</li>
+  <li><b>Tool calls per session:</b> the tail is task difficulty, so it is signal. Negative binomial or quantiles. Never trim.</li>
+  <li><b>Pass rates:</b> bounded at 0 and 1, so no tail. Different problem entirely.</li>
+</ul>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Winsorized, trimmed, and geometric means</span></div>
+  <div class="eq">\[ \tilde{x}_i = \min\!\big(x_i,\ Q(0.99)\big) \qquad\qquad \bar{x}_\alpha = \frac{1}{n-2\lfloor \alpha n\rfloor}\sum_{i=\lfloor \alpha n\rfloor+1}^{n-\lfloor \alpha n\rfloor} x_{(i)} \]<span class="eqcap">Left: winsorizing caps each value at the 99th percentile. Right: the \(\alpha\)-trimmed mean averages the sorted values \(x_{(i)}\) after dropping a share \(\alpha\) from each end.</span></div>
+  <div class="eq">\[ \text{GM} = \exp\!\left(\frac{1}{n}\sum \ln x_i\right) = \left(\prod x_i\right)^{1/n} \]<span class="eqcap">The geometric mean: average on the log scale, then come back. On lognormal data it lands on the median.</span></div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+from scipy import stats
+
+lat = np.concatenate([stats.lognorm.rvs(0.7, scale=2, size=995, random_state=7),
+                      [45, 52, 61, 80, 120]])          # five real slow requests
+
+def centres(x):
+    x = np.asarray(x, dtype=float)
+    cap = np.quantile(x, 0.99)
+    return {
+        "raw mean":        x.mean(),                    # moves with every outlier
+        "median":          np.median(x),                # ignores them entirely
+        "10% trimmed":     stats.trim_mean(x, 0.10),    # drops both tails
+        "winsorized p99":  np.minimum(x, cap).mean(),   # caps rather than drops
+        "geometric mean":  np.exp(np.log(x).mean()),    # centre on the log scale
+        "p95":             np.quantile(x, 0.95),        # when the tail IS the point
+    }
+
+for k, v in centres(lat).items():
+    print(k.ljust(16), round(v, 3))
+
+# CENSORING CHECK FIRST. A pile-up at one value near the top means those
+# are lower bounds, not measurements, and every method above is then biased.
+top = lat[lat &gt;= np.quantile(lat, 0.98)]
+print("distinct values in the top 2%:", len(np.unique(np.round(top, 3))))
+# If that comes back as 1 or 2, you have a timeout, not a tail.</code></pre>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Outlier policy is a product decision</span></div>
+  <p>How a team handles extreme values decides which users the metric speaks for. That choice should be explicit, written down, and fixed before results come in.</p>
+  <ul>
+    <li><b>Pre-register the rule.</b> If the winsorization threshold or exclusion criterion is chosen after seeing the data, it can be tuned (often unconsciously) to produce the desired answer. Two teams picking different cut-offs on the same data can report opposite conclusions.</li>
+    <li><b>Treat "we removed outliers" as a red flag until explained.</b> Ask what was removed, how many, and what evidence shows each was a measurement error rather than a slow or failed run. In agent evals, the tail is often exactly the failures you most need to see.</li>
+    <li><b>Ask for the segment, not the trim.</b> The highest-value response to a long tail is finding the variable that explains it: a task category, a tool, a context length bucket. That turns a statistics argument into a fixable engineering problem.</li>
+    <li><b>Separate cost questions from experience questions.</b> Budgets need means (totals). Users experience percentiles. A report that uses one summary for both is answering one of the two questions wrongly.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>"If we had not excluded anything, would the conclusion change?" Ask for both versions side by side. If the conclusion flips, the exclusion rule is carrying the result, and it needs much stronger justification than a footnote.</div></div>
+</div>
+</section>

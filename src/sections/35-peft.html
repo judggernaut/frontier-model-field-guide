@@ -1,0 +1,142 @@
+<section id="peft" data-title="LoRA and parameter-efficient tuning">
+<h2>LoRA and parameter-efficient tuning</h2>
+<p>Full fine-tuning updates every weight in the model. Parameter-efficient fine-tuning (PEFT) freezes the pretrained weights and trains a small add-on instead. LoRA is by far the most used method. It makes customisation cheap enough to run on one GPU, and lets one server hold thousands of variants of the same base model.</p>
+
+<h3>Why not just fine-tune everything?</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Sticky notes instead of rewriting the book</span></div>
+  <p>Full fine-tuning is like reprinting a 1,000-page encyclopedia every time you want to change how it reads. LoRA leaves the book alone and adds a thin stack of sticky notes that adjust it. The notes are tiny, you can swap them in and out, and you can keep a different stack for each customer. When you want a final copy, you can even print the notes into the pages.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The cost picture</span></div>
+  <p>Full fine-tuning with the Adam optimiser in mixed precision needs about 16 bytes of GPU memory per parameter before activations: the weights, their gradients, a full-precision master copy, and two optimiser statistics. That is roughly 128 GB for an 8B model and over 1 TB for a 70B model, so full fine-tuning means a multi-GPU cluster. LoRA trains well under 1% of the parameters, so the optimiser and gradient memory nearly vanish and the frozen base dominates. QLoRA goes further and stores the frozen base in 4 bits.</p>
+  <div class="four">
+    <div class="tile"><h4>Cheaper training</h4><p>Fits on far fewer GPUs. The original LoRA paper reports about 3× less GPU memory and 10,000× fewer trainable parameters than full fine-tuning GPT-3 175B (Hu et al., 2021).</p></div>
+    <div class="tile"><h4>Cheap storage</h4><p>An adapter is megabytes to a few gigabytes, not a full copy of the model.</p></div>
+    <div class="tile"><h4>Cheap serving</h4><p>Many adapters share one base model in memory. Systems such as S-LoRA (Sheng et al., 2023) and Punica (Chen et al., 2023) batch requests for different adapters together.</p></div>
+    <div class="tile"><h4>Less forgetting</h4><p>Because LoRA changes few directions, it tends to damage general ability less, at the price of learning less from large datasets.</p></div>
+  </div>
+</div>
+
+<h3>How LoRA works</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A big change described by a few knobs</span></div>
+  <p>A weight matrix in a model might have 16 million numbers. LoRA bets that the <i>change</i> you need during fine-tuning is simple, so it can be described with far fewer numbers: two thin matrices that multiply together to make a full-size correction. The thinness is called the <b>rank</b>. Rank 8 means the whole correction is built from 8 basic patterns.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The low-rank update</span></div>
+  <p>For a frozen weight \(W_0 \in \mathbb{R}^{d \times k}\), LoRA learns \(B \in \mathbb{R}^{d \times r}\) and \(A \in \mathbb{R}^{r \times k}\) with \(r \ll \min(d,k)\):</p>
+  <div class="eq">\[ h = W_0 x + \frac{\alpha}{r}\, B A x \]<span class="eqcap">\(A\) starts random (Gaussian), \(B\) starts at zero, so \(BA = 0\) and training begins exactly at the pretrained model. \(\alpha\) is a fixed scale; dividing by \(r\) keeps the update size roughly stable when you change the rank.</span></div>
+  <p>The update has \(r(d+k)\) trainable parameters instead of \(dk\). For a 4096 × 4096 projection at rank 16, that is 131,072 instead of 16.8 million, under 1%. After training, \(W = W_0 + \frac{\alpha}{r}BA\) can be merged into the base weights, so a single-adapter deployment has no extra inference cost.</p>
+<pre class="code" data-lang="python"><code>import torch, torch.nn as nn
+
+class LoRALinear(nn.Module):
+    def __init__(self, base: nn.Linear, r=16, alpha=32):
+        super().__init__()
+        self.base = base
+        for p in self.base.parameters():
+            p.requires_grad = False                     # the pretrained weight stays frozen
+        d_out, d_in = base.weight.shape
+        self.A = nn.Parameter(torch.randn(r, d_in) / r**0.5)
+        self.B = nn.Parameter(torch.zeros(d_out, r))    # zero init: BA = 0 at step 0
+        self.scale = alpha / r
+
+    def forward(self, x):
+        return self.base(x) + self.scale * (x @ self.A.T @ self.B.T)
+
+    @torch.no_grad()
+    def merge(self):
+        # fold the adapter into the weight for zero-overhead serving
+        self.base.weight += self.scale * self.B @ self.A
+
+layer = LoRALinear(nn.Linear(4096, 4096, bias=False), r=16)
+trainable = sum(p.numel() for p in layer.parameters() if p.requires_grad)
+print(trainable, f"{trainable / 4096**2:.2%}")  # 131072 0.78%</code></pre>
+  <p>Practical defaults have shifted since 2021. The original paper adapted only the attention query and value projections. Later work, including QLoRA and the Thinking Machines "LoRA Without Regret" study (2025), found that adapting <i>all</i> linear layers, especially the MLP blocks, matters more than raising the rank. The same study reports that the best LoRA learning rate is about 10× the best full fine-tuning rate. Rank-stabilised LoRA (Kalajdzievski, 2023) scales by \(\alpha/\sqrt{r}\) instead of \(\alpha/r\) so that high ranks keep learning.</p>
+</div>
+
+<div class="widget" id="w-lo-calc">
+  <div class="wtitle">LoRA parameter and memory calculator</div>
+  <div class="wsub">Pick a model shape, the matrices to adapt, and a rank. Memory counts weights, gradients, and Adam state only; activations come on top and depend on batch size and sequence length.</div>
+  <div class="controls">
+    <div class="ctl"><label for="lo-model">Model shape</label><select id="lo-model">
+      <option value="8b" selected>8B (shaped like Llama 3 8B)</option>
+      <option value="70b">70B (shaped like Llama 3 70B)</option>
+      <option value="1b">1B (small dense model)</option>
+    </select></div>
+    <div class="ctl"><label for="lo-r">Rank r: <output id="lo-r-o">16</output></label><input type="range" id="lo-r" min="0" max="8" step="1" value="4"></div>
+    <div class="ctl"><label for="lo-q">Frozen base stored in</label><select id="lo-q"><option value="2">bf16 (LoRA)</option><option value="0.53">4-bit NF4 (QLoRA)</option></select></div>
+  </div>
+  <div class="btnrow" data-mods>
+    <button class="b" data-m="q" aria-pressed="true">q_proj</button><button class="b" data-m="k" aria-pressed="false">k_proj</button><button class="b" data-m="v" aria-pressed="true">v_proj</button><button class="b" data-m="o" aria-pressed="false">o_proj</button><button class="b" data-m="gate" aria-pressed="false">gate_proj</button><button class="b" data-m="up" aria-pressed="false">up_proj</button><button class="b" data-m="down" aria-pressed="false">down_proj</button>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Model parameters</div><div class="v" data-tot>—</div></div>
+    <div class="mc"><div class="l">Trainable (LoRA)</div><div class="v" data-tr>—</div></div>
+    <div class="mc"><div class="l">Share trainable</div><div class="v" data-sh>—</div></div>
+    <div class="mc"><div class="l">Adapter file (bf16)</div><div class="v" data-file>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>Why a low-rank update is enough</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Most changes are simple</span></div>
+  <p>A random scribble needs every pixel to describe it. A photo of the sky is mostly a smooth gradient and can be described by a few numbers. Fine-tuning changes turn out to look more like the sky than the scribble. That's why a few patterns capture most of the change.</p>
+</div>
+<div class="widget" id="w-lo-svd">
+  <div class="wtitle">Low-rank approximation</div>
+  <div class="wsub">A 40 × 40 matrix rebuilt from its top r singular directions (SVD computed in your browser). Structured matrices are captured by a few directions; random noise is not.</div>
+  <div class="btnrow" data-kind>
+    <button class="b" data-k="update" aria-pressed="true">Structured update</button><button class="b" data-k="image" aria-pressed="false">Simple image</button><button class="b" data-k="noise" aria-pressed="false">Random noise</button>
+  </div>
+  <div class="controls"><div class="ctl"><label for="lo-sr">Rank r: <output id="lo-sr-o">4</output></label><input type="range" id="lo-sr" min="1" max="40" step="1" value="4"></div></div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Energy captured</div><div class="v" data-en>—</div></div>
+    <div class="mc"><div class="l">Numbers stored</div><div class="v" data-np>—</div></div>
+    <div class="mc"><div class="l">vs full matrix</div><div class="v" data-ratio>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Intrinsic dimension and the Eckart–Young theorem</span></div>
+  <p>The best rank-\(r\) approximation of a matrix in Frobenius norm keeps its top \(r\) singular values (Eckart–Young). The fraction of squared norm kept is</p>
+  <div class="eq">\[ \frac{\lVert M_r \rVert_F^2}{\lVert M \rVert_F^2} = \frac{\sum_{i=1}^{r}\sigma_i^2}{\sum_{i}\sigma_i^2} \]</div>
+  <p>Aghajanyan et al. (2021) showed that fine-tuning a pretrained language model can reach most of its full performance while optimising in a random subspace of only hundreds to thousands of dimensions, and that larger, better-pretrained models have <i>lower</i> intrinsic dimension. LoRA exploits the same fact per weight matrix. The caveat from Biderman et al. (2024, "LoRA Learns Less and Forgets Less"): on large-scale code and math training, full fine-tuning learns perturbations with rank 10 to 100× higher than typical LoRA settings, and LoRA falls behind. Low rank is a good bet for adapting behaviour, not for teaching large amounts of new knowledge.</p>
+</div>
+
+<h3>QLoRA, DoRA, and the rest of the family</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Which variant, when</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Method</th><th>Idea</th><th>Use when</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td>LoRA (Hu et al., 2021)</td><td>Trainable low-rank update on frozen weights</td><td>The default for adapting behaviour, style, domain format</td><td>Learns less than full FT on large datasets</td></tr>
+      <tr><td>QLoRA (Dettmers et al., 2023)</td><td>LoRA on top of a 4-bit quantised base</td><td>Memory is the constraint. The paper fine-tuned a 65B model on one 48 GB GPU</td><td>Slower steps from dequantisation; small quality risk from quantised base</td></tr>
+      <tr><td>DoRA (Liu et al., 2024)</td><td>Splits each weight into magnitude and direction; LoRA adapts the direction</td><td>You want closer-to-full-FT behaviour at LoRA cost</td><td>Some extra compute; merge still possible</td></tr>
+      <tr><td>Adapters (Houlsby et al., 2019)</td><td>Small bottleneck layers inserted in each block</td><td>Mostly historical in LLMs</td><td>Adds inference latency unless removed</td></tr>
+      <tr><td>Prefix / prompt tuning (Li &amp; Liang, 2021; Lester et al., 2021)</td><td>Learn virtual tokens prepended to the input</td><td>Extremely small storage; many tasks</td><td>Uses context length; usually weaker than LoRA</td></tr>
+      <tr><td>Full fine-tuning</td><td>Update everything</td><td>Large datasets, new capabilities, the lab's own post-training</td><td>Most memory, most forgetting risk</td></tr>
+    </tbody></table></div>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Merging a LoRA adapter into a quantised base is not exact: you must dequantise, add, and requantise, which changes outputs slightly. Evaluate the artefact you actually serve, not the training-time model with adapter attached.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">What QLoRA adds</span></div>
+  <ul>
+    <li><b>NF4 (4-bit NormalFloat).</b> Pretrained weights are roughly normally distributed, so NF4 places its 16 levels at quantiles of a normal distribution. Each block of 64 weights has its own scale.</li>
+    <li><b>Double quantisation.</b> The per-block scales are themselves quantised, saving about 0.37 bits per parameter.</li>
+    <li><b>Paged optimisers.</b> Optimiser state can spill to CPU memory during spikes instead of crashing with out-of-memory errors.</li>
+  </ul>
+  <p>Gradients flow through the dequantised 4-bit weights into the bf16 LoRA parameters; the base itself never updates.</p>
+</div>
+
+<h3>LoRA beyond SFT</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">RL, multi-tenant serving, and when to say no</span></div>
+  <p><b>RL.</b> The Thinking Machines study (2025) found LoRA matches full fine-tuning for reinforcement learning even at very low rank, including rank 1. The intuition: a policy-gradient episode carries only a few bits of information (did it succeed?), so the total information learned is small enough to fit in a tiny adapter. That makes LoRA attractive for <a href="#grpo">RL with verifiable rewards</a>, where many runs and ablations are needed.</p>
+  <p><b>Multi-tenant products.</b> Per-customer or per-task adapters on a shared base are the standard way to offer fine-tuning as a product. The eval burden scales with the number of adapters: each one needs a regression check against the base.</p>
+  <p><b>When to say no.</b> If the goal is a new capability that the base model can't do at all, or the dataset is in the billions of tokens, LoRA is likely to underperform. Expect to need full fine-tuning or continued pretraining.</p>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>
+    <p>A LoRA result needs three comparisons, not one: the adapter versus the base on the target task (did it learn?), the adapter versus the base on a general regression suite (did it forget?), and the merged or quantised serving artefact versus the training-time model (did deployment change it?). Ranks and learning rates interact, so compare tuned configurations, not one LoRA setting against a tuned full fine-tune.</p>
+  </div></div>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul>
+    <li>Which modules did we adapt, at what rank, and did we tune the learning rate separately for LoRA?</li>
+    <li>Is the gap to full fine-tuning on the target metric outside the noise, and what is the gap on the forgetting suite?</li>
+    <li>Are we evaluating the merged, quantised artefact that ships?</li>
+    <li>How many adapters will we serve, and who owns their regression testing?</li>
+  </ul></div></div>
+</div>
+</section>

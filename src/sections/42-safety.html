@@ -1,0 +1,106 @@
+<section id="safety" data-title="Safety and alignment training">
+<h2>Safety and alignment training</h2>
+<p>A capable model that does whatever it is asked is not a product anyone can ship. Safety and alignment training shapes what the model will and will not do, how honestly it reports what it knows, and how it behaves under pressure from adversarial users. This chapter covers the core trade-off, the main training methods, how safety is evaluated, and how it interacts with the capability training from earlier chapters. It is descriptive, not operational: no attack recipes.</p>
+
+<h3>The trade-off: helpful and harmless pull against each other</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A pharmacist, not a vending machine</span></div>
+  <p>A good pharmacist answers almost every question, helps people understand their medicines, and refuses a tiny number of requests that would clearly hurt someone. A pharmacist who refused every question that mentioned a dangerous drug would be useless. One who handed out anything would be dangerous. Safety training is teaching a model to be the good pharmacist: helpful by default, careful in the few places that matter, and not fooled by someone dressing up a harmful request as an innocent one.</p>
+  <p>The two ways to fail are mirror images. <b>Over-refusal</b>: saying no to something harmless ("how do I kill a Python process?"). <b>Unsafe compliance</b>: saying yes to something genuinely harmful. Pushing one down tends to push the other up.</p>
+</div>
+
+<div class="widget" id="w-sa-front">
+  <div class="wtitle">Helpfulness versus harmlessness frontier</div>
+  <div class="wsub">A safety signal scores every request. Above the threshold the model refuses. Benign requests that score high are over-refusals; harmful requests that score low are unsafe completions. Move the threshold along the curve, then improve the model and watch the whole frontier move toward the corner.</div>
+  <div class="controls">
+    <div class="ctl"><label for="sa-t">Refusal threshold: <output id="sa-t-o">0.50</output></label><input type="range" id="sa-t" min="0.02" max="0.98" step="0.01" value="0.5"></div>
+    <div class="ctl"><label for="sa-q">Safety training quality (separation): <output id="sa-q-o">Good</output></label><input type="range" id="sa-q" min="0.1" max="0.6" step="0.01" value="0.34"></div>
+    <div class="ctl"><label for="sa-h">Share of traffic that is harmful: <output id="sa-h-o">2%</output></label><input type="range" id="sa-h" min="0.002" max="0.2" step="0.002" value="0.02"></div>
+    <div class="ctl"><label for="sa-c">Cost of one unsafe completion ÷ cost of one over-refusal: <output id="sa-c-o">20×</output></label><input type="range" id="sa-c" min="1" max="200" step="1" value="20"></div>
+  </div>
+  <div class="split">
+    <div><canvas data-cv="dist"></canvas></div>
+    <div><canvas data-cv="front"></canvas></div>
+  </div>
+  <div class="legend"><span><span class="sw" style="background:var(--tn)"></span>Benign requests</span><span><span class="sw" style="background:var(--fp)"></span>Harmful requests</span><span><span class="sw" style="background:var(--accent)"></span>Current model frontier</span><span><span class="sw" style="background:var(--faint)"></span>Earlier model</span><span><span class="sw" style="background:var(--tp)"></span>Lowest expected cost</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Over-refusal (benign refused)</div><div class="v" data-or></div></div>
+    <div class="mc"><div class="l">Unsafe compliance (harmful answered)</div><div class="v" data-uc></div></div>
+    <div class="mc"><div class="l">Refusals that were right</div><div class="v" data-prec></div></div>
+    <div class="mc"><div class="l">Cost-minimising threshold</div><div class="v" data-best></div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Treat it as a classification problem with asymmetric costs</span></div>
+  <p>Refuse-or-answer is a binary decision, so everything from <a href="#classification">classification metrics</a> applies. Over-refusal is a false positive, unsafe compliance a false negative, and harmful requests are rare, so precision on refusals is low even for a good model. Three consequences:</p>
+  <ul>
+    <li><b>The threshold is a policy decision.</b> Where you sit on the curve depends on the relative cost of the two errors, which differs by harm category. Severe, irreversible harms justify many over-refusals; minor ones do not. Mature policies set different operating points per category.</li>
+    <li><b>Real progress moves the curve, not the point.</b> A release that cuts unsafe compliance by refusing more is a threshold move. A release that cuts both errors is better training. Ask which one you are looking at.</li>
+    <li><b>Over-refusal is a real cost.</b> It erodes trust, pushes users to less careful tools, and is often concentrated on particular topics or groups. Track it with the same seriousness as unsafe compliance.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div><ul><li>Did both error rates improve, or did one improve at the other's expense?</li><li>What are the operating points per harm category, and who signed off on the cost ratios?</li><li>How are the over-refusal prompts chosen? Are they hard, borderline cases, or easy ones that any model passes?</li></ul></div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Expected cost and the operating point</span></div>
+  <p>With harmful share \(\pi\), refusal threshold \(t\), over-refusal rate \(\text{FPR}(t)\) on benign traffic, unsafe-compliance rate \(\text{FNR}(t)\) on harmful traffic, and cost ratio \(C\) (one unsafe completion costs \(C\) over-refusals):</p>
+  <div class="eq">\[ \mathbb{E}[\text{cost}](t) \;\propto\; (1-\pi)\,\text{FPR}(t) + \pi\, C\,\text{FNR}(t) \]<span class="eqcap">The cost-minimising threshold is where the frontier's slope equals \(-(1-\pi)/(\pi C)\). Rarer harms or cheaper failures push the optimum toward refusing less.</span></div>
+  <p>In practice the "score" is not a single number. It is the model's learned propensity to refuse, plus any classifiers in front of or behind the model. The frame still holds: every component trades the two errors, and the system's frontier is what matters.</p>
+</div>
+
+<h3>How models are trained to be safe</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Rules, examples, and practice</span></div>
+  <p>There are three main ways to teach good judgement. Show the model examples of good responses to tricky requests. Have people rate pairs of responses so it learns which is better. Or write down a set of principles and have an AI use them to critique and rate responses, which scales far better than asking people to read thousands of disturbing conversations.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The main methods</span></div>
+  <div class="tw"><table>
+  <thead><tr><th>Method</th><th>What it does</th><th>Strength</th><th>Weakness</th></tr></thead>
+  <tbody>
+  <tr><td>Safety SFT</td><td>Fine-tune on curated demonstrations of good responses to sensitive requests (see <a href="#sft">SFT</a>)</td><td>Direct, predictable</td><td>Teaches surface patterns; can over-generalise to refusing anything that looks similar</td></tr>
+  <tr><td>RLHF with harmlessness preferences (Bai et al., 2022a)</td><td>Humans compare responses for helpfulness and harmlessness; train a reward model and optimise against it (see <a href="#rlhf">RLHF</a>)</td><td>Captures nuanced judgement</td><td>Expensive, labeller exposure to harmful content, inconsistent labels, reward hacking</td></tr>
+  <tr><td>Constitutional AI and RLAIF (Bai et al., 2022b)</td><td>A written set of principles; the model critiques and revises its own outputs, then AI-generated preference labels replace human harmlessness labels</td><td>Scales, transparent principles, less human exposure</td><td>Quality bounded by the labelling model and how well the principles are written</td></tr>
+  <tr><td>Direct preference methods</td><td>DPO-style training on safety preference pairs (see <a href="#dpo">DPO</a>)</td><td>Simple, stable</td><td>Offline data goes stale as the model changes</td></tr>
+  <tr><td>Reasoning over a policy</td><td>The model is trained to recall and reason about a written safety specification before answering, for example OpenAI's deliberative alignment (Guan et al., 2024)</td><td>Better on novel and borderline cases; reasoning can be inspected</td><td>Depends on the specification's quality; adds latency</td></tr>
+  <tr><td>Character and persona training</td><td>Shapes stable traits such as honesty, curiosity, and directness, rather than rule-following alone</td><td>Generalises to situations rules did not foresee</td><td>Harder to measure; traits can drift under RL</td></tr>
+  </tbody></table></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Constitutional AI in two phases</span></div>
+  <ol class="steps">
+    <li><div><b>Supervised phase.</b> Sample responses to red-team prompts from a helpful-only model. Ask the model to critique each response against a randomly drawn principle from the constitution, then revise it. Fine-tune on the revised responses.</div></li>
+    <li><div><b>RL phase (RLAIF).</b> Sample pairs of responses from the fine-tuned model. Ask a feedback model which response better follows a principle, giving preference labels. Train a preference model on those labels (often mixed with human helpfulness labels) and run RL against it.</div></li>
+  </ol>
+  <p>The appeal is that the principles are explicit and editable, and the feedback scales with compute instead of human hours. The risk is that the feedback model's blind spots become the policy's blind spots, and that the policy learns to satisfy the letter of the principles. It also explains why constitutions are written as general judgements ("choose the response that is more honest") rather than narrow rules: general principles transfer better to unseen situations.</p>
+</div>
+
+<h3>Failure modes beyond refusal</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What safety teams worry about besides "will it help build something dangerous"</span></div>
+  <ul>
+    <li><b>Jailbreaks.</b> Inputs that get a model to do what its training says it should not. Broad classes include role-play and fictional framing, gradual escalation over many turns, encoding or translating the request, splitting a harmful task into innocent-looking pieces, flooding the context with fabricated examples of compliance, and instructions hidden in documents or tool outputs (prompt injection). Defences are layered: training on these patterns, classifiers on inputs and outputs, and limits on what tools an agent can use.</li>
+    <li><b>Sycophancy.</b> Telling users what they want to hear: agreeing with stated opinions, caving when pushed back on a correct answer, praising weak work. Preference training rewards it, because people tend to rate agreement highly (Sharma et al., 2023).</li>
+    <li><b>Dishonesty and poor calibration.</b> Stating guesses as facts, inventing citations, or claiming to have done work it did not do. For agents, misreporting what actions were taken.</li>
+    <li><b>Reward hacking that looks like misbehaviour.</b> RL on capability tasks can teach a model to cut corners (see <a href="#grpo">GRPO</a>), and corner-cutting can generalise into broader patterns such as deceiving the grader.</li>
+    <li><b>Over-refusal and moralising.</b> Unrequested lectures, hedging that buries the answer, and refusing legitimate professional questions in medicine, security, or law.</li>
+  </ul>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Capability RL can quietly undo safety training. A long reasoning-RL run optimised only for correctness can raise compliance with harmful requests, increase sycophancy, or teach the model to game evaluations. Re-run the safety suite after every major capability stage, not only at the end, and include safety data or rewards in the RL mixture when possible.</div></div>
+</div>
+
+<h3>How safety is evaluated</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Four families of evaluation</span></div>
+  <div class="four">
+    <div class="tile"><h4>Refusal and harm benchmarks</h4><p>Sets of harmful requests scored for whether the model complies, for example HarmBench (Mazeika et al., 2024) and StrongREJECT (Souly et al., 2024), which also grades how useful a non-refusal actually was.</p></div>
+    <div class="tile"><h4>Over-refusal benchmarks</h4><p>Benign prompts that look risky ("how do I kill a process"), for example XSTest (Röttger et al., 2024) and OR-Bench (Cui et al., 2024). Always report alongside harm benchmarks.</p></div>
+    <div class="tile"><h4>Red teaming</h4><p>Humans and automated attackers search for failures. Automated red teaming uses another model to generate attacks at scale (Perez et al., 2022). Results are a lower bound on vulnerability, never a proof of safety.</p></div>
+    <div class="tile"><h4>Dangerous-capability evals</h4><p>Tests of whether the model could meaningfully help with severe harms, such as advanced cyber operations or weapons development, or could act autonomously in risky ways. These feed frontier safety policies.</p></div>
+  </div>
+  <p><b>Frontier safety policies.</b> Several labs publish frameworks that tie capability thresholds to required safeguards: Anthropic's Responsible Scaling Policy with its AI Safety Levels (first published 2023), OpenAI's Preparedness Framework (2023), and Google DeepMind's Frontier Safety Framework (2024). The common structure: define capability thresholds that would matter, evaluate for them before and during deployment, and commit to stronger security and deployment safeguards, or to pausing, when a threshold is crossed. Dangerous-capability evaluation therefore carries direct launch consequences, and its statistical quality matters accordingly.</p>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>Safety evals have every problem from Part II, often worse. Harmful prompts are rare and diverse, so sets are small and intervals are wide. Grading is usually done by an LLM judge, which must be validated against human labels (see <a href="#judges">LLM judges</a>). Public benchmarks get trained on, so keep private held-out sets (see <a href="#contamination">contamination</a>). And a capability eval that a model fails because of refusals or poor prompting understates what it can do. Dangerous-capability evals should try hard to elicit the capability, which is the opposite of a normal product eval.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Measuring robustness, not a single attack</span></div>
+  <p>A model's jailbreak resistance is better described by a curve than a number: attack success rate as a function of attacker effort (queries, attempts, or compute). Report attack success rate with an interval at several budgets, and for adaptive attacks report the budget needed to reach a given success rate. Because successes are rare at low budgets, use exact or Wilson intervals (see <a href="#evalstats">eval statistics</a>), and treat zero observed successes as "fewer than about \(3/n\) at 95% confidence", the rule of three, not as zero risk.</p>
+  <div class="eq">\[ \text{If } 0 \text{ of } n \text{ attacks succeed:}\quad p_{\text{upper}} \approx \frac{3}{n} \]<span class="eqcap">An approximate 95% upper bound. With 300 failed attacks you can only claim the success rate is probably below 1%.</span></div>
+</div>
+
+<h3>Deployment: training is one layer of several</h3>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Defence in depth</span></div>
+  <p>No lab relies on model training alone. Deployed systems add input and output classifiers (for example Anthropic's constitutional classifiers, described in 2025), usage policies and account-level enforcement, monitoring for abuse patterns across many conversations, rate limits, and for agents, restrictions on tools and permissions. Each layer has its own false-positive and false-negative rates, and stacking classifiers compounds over-refusal as well as protection. Evaluate the full system on realistic traffic, not each layer alone.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>If the model's refusal training failed completely on one category tomorrow, which other layer would catch it, and how would we know within a day?</div></div>
+</div>
+</section>

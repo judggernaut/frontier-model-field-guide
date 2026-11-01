@@ -1,0 +1,23 @@
+[
+  {"term": "Offline to online gap", "def": "The difference between how a model change moves an offline eval score and how it moves the production metric it is meant to predict.", "see": "gap"},
+  {"term": "Kendall's tau", "def": "Rank correlation computed from concordant and discordant pairs, \\(\\tau=(C-D)/(C+D)\\). More stable than Spearman with few releases.", "see": "gap"},
+  {"term": "Shrinkage (offline to online)", "def": "One minus the fitted slope of online delta on offline delta. A shrinkage of 0.4 means online moves are about 60% of offline moves.", "see": "gap"},
+  {"term": "Backtest", "def": "Leave-one-out prediction of each past release from all others, used to estimate how well an offline suite predicts the next release.", "see": "gap"},
+  {"term": "Direction accuracy", "def": "The share of past releases where offline and online deltas agreed in sign. The number that matters for ship decisions.", "see": "gap"},
+  {"term": "A/A test", "def": "An online experiment with the same model in both arms, used to measure the noise floor of the online metric.", "see": "gap"},
+  {"term": "Attenuation bias", "def": "The pull of a regression slope toward zero when the predictor is measured with noise, as offline deltas are.", "see": "gap"},
+  {"term": "Contamination", "def": "Benchmark items, or close paraphrases of them, appearing in a model's training data, which inflates its score on that benchmark.", "see": "contamination"},
+  {"term": "Decontamination", "def": "Removing training documents that overlap with evaluation items, usually by long n-gram matching, before training.", "see": "contamination"},
+  {"term": "Canary string", "def": "A unique random token embedded in an eval set so that it can be filtered from training data and detected if a model has memorised the set.", "see": "contamination"},
+  {"term": "Perturbation test", "def": "Re-running a benchmark with names, numbers, or option order changed. A large drop relative to a clean control suggests memorisation.", "see": "contamination"},
+  {"term": "Min-K% Prob", "def": "A membership-inference signal that averages the lowest-probability tokens of a text; seen text tends to score higher (Shi et al., 2023).", "see": "contamination"},
+  {"term": "Time-split benchmark", "def": "A benchmark that only counts items created after a model's training cutoff, so they cannot have been memorised.", "see": "contamination"},
+  {"term": "Benchmark saturation", "def": "The state where top models approach a benchmark's ceiling, so remaining differences are dominated by label noise and the benchmark stops separating models.", "see": "contamination"},
+  {"term": "Eval harness", "def": "The software that sends tasks to a model, collects and scores outputs, and records results. The measuring instrument for every eval number.", "see": "harness"},
+  {"term": "Full jitter", "def": "A retry backoff drawn uniformly between zero and an exponentially growing cap, so retries from a failure burst do not arrive in lockstep.", "see": "harness"},
+  {"term": "Retry inflation", "def": "Upward bias in a pass rate when retried tasks effectively get more than one draw at the answer, making them scored like pass@k rather than pass@1.", "see": "harness"},
+  {"term": "Cache key", "def": "A hash over everything that can change a model output (task, prompt text, model id, sampling parameters, harness and judge versions), used to reuse results safely.", "see": "harness"},
+  {"term": "Flaky task", "def": "A task whose score varies across runs at fixed settings. Quarantined and reported separately rather than averaged into the headline.", "see": "harness"},
+  {"term": "Regression triage", "def": "A fixed order of checks (is it real, where is it, what else changed, errors, replay, read outputs) for deciding whether an eval drop is noise, measurement, infrastructure, or model.", "see": "triage"},
+  {"term": "Slice contribution", "def": "A slice's share of the total score change, \\(n_s \\bar d_s / N\\). Rank slices by this rather than by percentage change.", "see": "triage"}
+]

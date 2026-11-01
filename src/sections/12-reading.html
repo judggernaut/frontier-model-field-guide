@@ -1,0 +1,97 @@
+<section id="reading" data-title="Reading a shape">
+<h2>Reading a shape: work out what you have before choosing a method</h2>
+<p>This is the practical skill: look at data and work out what you have. The checklist takes about two minutes and catches nearly everything that would otherwise invalidate the analysis that follows.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Look before you measure</span></div>
+  <p>A doctor looks at a patient before prescribing. A summary statistic is a prescription. Before you choose one, look at the data: draw a picture, check whether it leans, check whether there are two groups hiding in it, and check whether something chopped off the top. Most mistakes come from skipping the look.</p>
+</div>
+
+<h3>The two-minute checklist</h3>
+<ol>
+  <li><b>Plot a histogram.</b> Always. Before any number. Summary statistics hide bimodality, censoring and outliers with total reliability.</li>
+  <li><b>Divide mean by median.</b> Above 1.2 is right skewed, below 0.85 is left skewed.</li>
+  <li><b>Divide variance by mean</b> for counts. Near 1 means Poisson is plausible. Well above 1 means overdispersed.</li>
+  <li><b>Check whether values are whole numbers</b>, and whether they are bounded (at 0, at 1, at n).</li>
+  <li><b>Try a log scale.</b> If the shape turns symmetric, you have something lognormal.</li>
+  <li><b>Look for a spike at a round number.</b> That is censoring, not data.</li>
+  <li><b>Look for two humps.</b> That is two populations.</li>
+</ol>
+<div class="eq">\[ \frac{s^2}{\bar{x}} \approx 1 \;\Rightarrow\; \text{Poisson}; \qquad\qquad \frac{s^2}{\bar{x}} \gg 1 \;\Rightarrow\; \text{overdispersed} \]<span class="eqcap">The dispersion check for count data: variance divided by mean.</span></div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The checklist as a function</span></div>
+  <pre class="code" data-lang="python"><code>import numpy as np
+from scipy import stats
+
+def diagnose(x):
+    """Run this before choosing any method. Takes two seconds, catches most errors."""
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    m, med = x.mean(), np.median(x)
+    var = x.var(ddof=1)
+
+    out = {
+        "n": n,
+        "mean": m,
+        "median": med,
+        "skew_ratio": m / med if med else float("inf"),   # &gt;1.2 = right skewed
+        "var_over_mean": var / m if m else float("inf"),  # ~1 = Poisson-like
+        "whole_numbers": bool(np.all(np.abs(x - np.round(x)) &lt; 1e-9)),
+        "min": x.min(), "max": x.max(),
+        "zeros": int((x == 0).sum()),                     # blocks a log transform
+    }
+
+    # Does a log transform fix the skew? Only meaningful for positive data.
+    if x.min() &gt; 0:
+        out["skew_raw"] = float(stats.skew(x))
+        out["skew_logged"] = float(stats.skew(np.log(x)))
+        out["log_helps"] = abs(out["skew_logged"]) &lt; abs(out["skew_raw"]) / 2
+
+    # CENSORING CHECK: is there a pile-up at a single value near the max?
+    top = x[x &gt;= np.quantile(x, 0.98)]
+    if len(top):
+        common = stats.mode(np.round(top, 6), keepdims=False)
+        out["censoring_suspect"] = bool(common.count &gt; 0.01 * n)
+        out["suspect_value"] = float(common.mode)
+
+    return out
+
+
+lat = stats.lognorm.rvs(0.9, scale=3, size=4000, random_state=0)
+for k, v in diagnose(lat).items():
+    print(k, v)
+# skew_ratio 1.51 -&gt; right skewed, do not report the mean
+# log_helps True  -&gt; it is lognormal, analyse on the log scale</code></pre>
+</div>
+
+<h3>The log scale check</h3>
+<figure><img src="figs/stats-023.png" alt="The same latency data on a linear and a log axis"><figcaption>Same data, two scales. If the log version looks symmetric, the raw version is lognormal, and the log scale is where the analysis should happen.</figcaption></figure>
+
+<h3>QQ plots, once you want more than eyeballing</h3>
+<p>A QQ plot compares your data's quantiles against a reference distribution's. A straight line means a good match. The way it bends tells you how it differs.</p>
+<figure><img src="figs/stats-024.png" alt="Three QQ plots: normal, right skewed, light tailed"><figcaption>Left: normal data sits on the line. Middle: right skew curves up at the right end. Right: light tails make an S bend.</figcaption></figure>
+
+<h3>Two humps means two populations</h3>
+<figure><img src="figs/stats-025.png" alt="A bimodal latency distribution of cached and cold-start responses"><figcaption>This is not one distribution with outliers. It is cached responses and cold starts sharing an axis.</figcaption></figure>
+<div class="callout eval"><span class="tag">Eval lens</span><div>When you see this, <b>stop reaching for statistics and go find the segmenting variable</b>. Split by cache hit, retry status, repo size, task category. Two clean distributions beat one messy one every time, and the split is usually the actual finding.</div></div>
+
+<h3>Censoring: the one that hides</h3>
+<figure><img src="figs/stats-026.png" alt="A latency histogram with a spike at the 30 second timeout"><figcaption>A spike sitting exactly at your timeout is not a measurement. Those requests were 30 seconds or more and you will never know which.</figcaption></figure>
+<div class="callout warn"><span class="tag">Watch out</span><div>Timeouts do not create outliers, they create <b>censored data</b>. Every value at the cap is really "at least this much". Your mean, p95 and p99 are all biased downward by an amount you cannot see from the data. Report the censoring rate next to any percentile, or use survival methods. Check for this before reaching for any outlier technique.</div></div>
+
+<div class="widget" id="w-fidentify"><div class="wtitle">Name that distribution</div>
+<div class="wsub">A random sample with its diagnostics. Work through the checklist above, make a guess, and get the reasoning either way. Do ten of these and the skill sticks.</div>
+<div class="controls"><div class="ctl"><button class="restart" data-new>New sample</button></div>
+</div>
+<canvas data-c1></canvas><div class="opts" data-quiz></div>
+<div class="readout" data-out></div>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Make "show me the histogram" a habit</span></div>
+  <p>The cheapest review step in evaluation is asking to see the raw distribution before anyone argues about the summary. It surfaces three failure modes that no amount of downstream rigour can fix.</p>
+  <div class="four">
+    <div class="tile"><h4>Hidden segments</h4><p>Two humps mean two populations. A change that helps one and hurts the other can net to zero on average. The useful question becomes "which segment moved?"</p></div>
+    <div class="tile"><h4>Silent censoring</h4><p>A spike at a timeout or token cap means the worst cases were truncated. A model that times out more often can look faster. Insist the censoring rate is reported beside every percentile.</p></div>
+    <div class="tile"><h4>Wrong scale</h4><p>Latency, cost and token counts are multiplicative. Comparing them on a linear scale overweights the tail. Ratios and log-scale comparisons are usually the honest framing.</p></div>
+  </div>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>"What fraction of runs hit the timeout or the max-token limit, before and after?" If that fraction changed, every latency and length metric in the report is comparing different things, and the headline needs to be redone.</div></div>
+</div>
+</section>
