@@ -82,20 +82,21 @@
     var nav = document.createElement('div'); nav.className = 'nav noprint';
     nav.innerHTML = '<button type="button" class="b" data-a="prev" aria-label="Previous step">← Back</button>' +
       '<div class="dots"></div><span class="cnt"></span>' +
-      '<button type="button" class="b" data-a="play" aria-label="Play">▶ Play</button>' +
-      '<button type="button" class="b primary" data-a="next">Next →</button>';
+      '<button type="button" class="b" data-a="next">Next →</button>';
     st.appendChild(nav);
-    var dots = nav.querySelector('.dots'), cnt = nav.querySelector('.cnt'), play = nav.querySelector('[data-a=play]'), next = nav.querySelector('[data-a=next]');
-    steps.forEach(function (s, i) { var d = document.createElement('button'); d.type = 'button'; d.setAttribute('aria-label', 'Step ' + (i + 1)); d.addEventListener('click', function () { stop(); go(i); }); dots.appendChild(d); });
+    var dots = nav.querySelector('.dots'), cnt = nav.querySelector('.cnt'), play = null, next = nav.querySelector('[data-a=next]');
+    steps.forEach(function (s, i) { var d = document.createElement('button'); d.type = 'button'; d.textContent = i + 1; d.setAttribute('aria-label', 'Step ' + (i + 1)); d.addEventListener('click', function () { stop(); go(i); }); dots.appendChild(d); });
     var cur = 0, timer = null;
     function go(i) {
       cur = (i + steps.length) % steps.length;
       steps.forEach(function (s, j) { s.classList.toggle('on', j === cur); });
       $$('button', dots).forEach(function (d, j) { d.classList.toggle('on', j === cur); });
+      stage.style.setProperty('--prog', ((cur + 1) / steps.length * 100) + '%');
       cnt.textContent = (cur + 1) + ' / ' + steps.length;
-      next.textContent = cur === steps.length - 1 ? 'Start over ↺' : 'Next →';
+      next.textContent = cur === steps.length - 1 ? 'Back to start' : 'Next →';
+      cnt.textContent = '';
     }
-    function stop() { if (timer) { clearInterval(timer); timer = null; play.textContent = '▶ Play'; } }
+    function stop() {}
     nav.addEventListener('click', function (e) {
       var a = e.target.closest('[data-a]'); if (!a) return;
       if (a.dataset.a === 'prev') { stop(); go(cur - 1); }

@@ -29,4 +29,5 @@ with sync_playwright() as p:
         print(f'{sid}: {len(shots)//2} steps -> /tmp/story-{sid}.png')
     b.close()
 print('\n'.join(errs) if errs else 'no JS errors')
-os.remove(path)
+try: os.remove(path)
+except OSError: pass
