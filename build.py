@@ -17,9 +17,11 @@ PARTS = [  # (first prefix, last prefix, part id, label, title, blurb)
      'Distributions, sampling, intervals, and how to read the shape of your data. Everything later leans on this.'),
     (20, 29, 'part-2', 'Part II', 'Evaluating models',
      'Turning model outputs into numbers you can defend: eval statistics, classification metrics, judges, the offline to online gap, and the harness that produces it all.'),
-    (30, 49, 'part-3', 'Part III', 'Training models',
+    (30, 39, 'part-3', 'Part III', 'How neural networks and LLMs work',
+     'What a neural network is, how it learns by gradient descent, how architectures are chosen, and how a transformer that only predicts the next token becomes an assistant, a reasoning model, or a one-pass decision engine.'),
+    (40, 59, 'part-4', 'Part IV', 'Training models',
      'How a frontier model is made: pretraining, optimisation, scaling, supervised fine-tuning, LoRA, reward models, RLHF, DPO, GRPO, distillation, inference, and safety training.'),
-    (50, 59, 'part-4', 'Part IV', 'Leading the work',
+    (60, 69, 'part-5', 'Part V', 'Leading the work',
      'How the pieces connect, the questions a principal asks, and a reference for every term.'),
 ]
 

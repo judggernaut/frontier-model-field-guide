@@ -1,6 +1,6 @@
 <section id="welcome" data-title="How to use this guide">
 <h2>How to use this guide</h2>
-<p>This guide follows one idea from end to end: you cannot improve what you cannot measure, and you cannot trust a measurement you do not understand. Part I gives you the statistics. Part II turns that into model evaluation. Part III explains how models are trained, always connecting back to how you would measure whether the training worked. Part IV is about leading that work.</p>
+<p>This guide follows one idea from end to end: you cannot improve what you cannot measure, and you cannot trust a measurement you do not understand. Part I gives you the statistics. Part II turns that into model evaluation. Part III explains what a neural network and an LLM actually are. Part IV explains how models are trained, always connecting back to how you would measure whether the training worked. Part V is about leading that work.</p>
 
 <div class="story" id="st-welcome">
   <div class="story-head"><div class="story-title">The whole guide in one kitchen</div><p class="story-sub">Five diagrams. Use Next or the step numbers.</p></div>
@@ -10,7 +10,7 @@
       <g class="a" style="--d:1"><circle cx="195" cy="40" r="20" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="195" y="230" text-anchor="middle" font-size="15" font-weight="600" fill="var(--lead)">The cook = training</text></g>
       <g class="a" style="--d:2"><circle cx="450" cy="70" r="22" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><rect x="420" y="98" width="60" height="70" rx="12" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><path d="M480 120 L530 100" stroke="var(--eli5)" stroke-width="4" stroke-linecap="round"/><ellipse cx="536" cy="98" rx="10" ry="6" fill="var(--eli5)"/><text x="450" y="230" text-anchor="middle" font-size="15" font-weight="600" fill="var(--eli5)">The taster = evaluation</text></g>
     </svg>
-    <p>Making a model is cooking: you choose ingredients (data), a recipe (the training method), and how long to cook (compute). Checking the model is tasting. Part III is the cooking. Part II is the tasting.</p>
+    <p>Making a model is cooking: you choose ingredients (data), a recipe (the training method), and how long to cook (compute). Checking the model is tasting. Part III explains the kitchen, Part IV is the cooking, and Part II is the tasting.</p>
   </div>
   <div class="step">
     <svg viewBox="0 0 640 250" role="img" aria-label="One spoonful gives one verdict">
@@ -45,15 +45,16 @@
       <g class="a" style="--d:4"><text x="470" y="160" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fp)">Diners: too sweet</text></g>
       <text class="a" style="--d:5" x="320" y="225" text-anchor="middle" font-size="14" fill="var(--muted)">When a score becomes the target, it stops measuring what you wanted.</text>
     </svg>
-    <p>If the cook learns that one taster loves sugar, every dish gets sweeter and the taster's score climbs while real diners suffer. In model training this is reward hacking, and it is why evaluation and training have to be designed together (Part IV).</p>
+    <p>If the cook learns that one taster loves sugar, every dish gets sweeter and the taster's score climbs while real diners suffer. In model training this is reward hacking, and it is why evaluation and training have to be designed together (Part V).</p>
   </div>
   <div class="step">
-    <svg viewBox="0 0 640 250" role="img" aria-label="Map of the four parts">
-      <g class="a" style="--d:0"><rect x="30" y="60" width="135" height="110" rx="12" fill="var(--eli5-soft)" stroke="var(--eli5)"/><text x="97" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--eli5)">Part I</text><text x="97" y="120" text-anchor="middle" font-size="13" fill="var(--fg)">How spoonfuls</text><text x="97" y="138" text-anchor="middle" font-size="13" fill="var(--fg)">behave</text></g>
-      <g class="a" style="--d:1"><rect x="180" y="60" width="135" height="110" rx="12" fill="var(--good-soft)" stroke="var(--good)"/><text x="247" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--good)">Part II</text><text x="247" y="120" text-anchor="middle" font-size="13" fill="var(--fg)">Tasting</text><text x="247" y="138" text-anchor="middle" font-size="13" fill="var(--fg)">fairly</text></g>
-      <g class="a" style="--d:2"><rect x="330" y="60" width="135" height="110" rx="12" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="397" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--lead)">Part III</text><text x="397" y="120" text-anchor="middle" font-size="13" fill="var(--fg)">Cooking:</text><text x="397" y="138" text-anchor="middle" font-size="13" fill="var(--fg)">training</text></g>
-      <g class="a" style="--d:3"><rect x="480" y="60" width="135" height="110" rx="12" fill="var(--deep-soft)" stroke="var(--deep)"/><text x="547" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--deep)">Part IV</text><text x="547" y="120" text-anchor="middle" font-size="13" fill="var(--fg)">Running the</text><text x="547" y="138" text-anchor="middle" font-size="13" fill="var(--fg)">kitchen</text></g>
-      <text class="a" style="--d:4" x="320" y="215" text-anchor="middle" font-size="14" fill="var(--muted)">Each chapter picks its own everyday example, like this one.</text>
+    <svg viewBox="0 0 640 250" role="img" aria-label="Map of the five parts">
+      <g class="a" style="--d:0"><rect x="20" y="60" width="108" height="110" rx="12" fill="var(--eli5-soft)" stroke="var(--eli5)"/><text x="74" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--eli5)">Part I</text><text x="74" y="120" text-anchor="middle" font-size="12.5" fill="var(--fg)">How spoonfuls</text><text x="74" y="138" text-anchor="middle" font-size="12.5" fill="var(--fg)">behave</text></g>
+      <g class="a" style="--d:1"><rect x="142" y="60" width="108" height="110" rx="12" fill="var(--good-soft)" stroke="var(--good)"/><text x="196" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--good)">Part II</text><text x="196" y="120" text-anchor="middle" font-size="12.5" fill="var(--fg)">Tasting</text><text x="196" y="138" text-anchor="middle" font-size="12.5" fill="var(--fg)">fairly</text></g>
+      <g class="a" style="--d:2"><rect x="264" y="60" width="108" height="110" rx="12" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="318" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">Part III</text><text x="318" y="120" text-anchor="middle" font-size="12.5" fill="var(--fg)">How the</text><text x="318" y="138" text-anchor="middle" font-size="12.5" fill="var(--fg)">kitchen works</text></g>
+      <g class="a" style="--d:3"><rect x="386" y="60" width="108" height="110" rx="12" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="440" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--lead)">Part IV</text><text x="440" y="120" text-anchor="middle" font-size="12.5" fill="var(--fg)">Cooking:</text><text x="440" y="138" text-anchor="middle" font-size="12.5" fill="var(--fg)">training</text></g>
+      <g class="a" style="--d:4"><rect x="508" y="60" width="108" height="110" rx="12" fill="var(--deep-soft)" stroke="var(--deep)"/><text x="562" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--deep)">Part V</text><text x="562" y="120" text-anchor="middle" font-size="12.5" fill="var(--fg)">Running the</text><text x="562" y="138" text-anchor="middle" font-size="12.5" fill="var(--fg)">kitchen</text></g>
+      <text class="a" style="--d:5" x="320" y="215" text-anchor="middle" font-size="14" fill="var(--muted)">Each chapter picks its own everyday example, like this one.</text>
     </svg>
     <p>That is the map. Every chapter opens with a picture like this, using whatever everyday example fits best: mail sorting, exams, sports, shopping, maps.</p>
   </div>
@@ -74,7 +75,7 @@
   <p>At senior levels in a frontier lab, decisions rarely turn on a single technique. They turn on whether a result is real, what it cost, and what it will break. Training choices (data, objective, RL method) determine what can go wrong. Evaluation choices determine whether you notice. Leaders who understand both can push back on a launch, scope a research bet, or kill a project with evidence instead of instinct.</p>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">How the math and code are shown</span></div>
-  <p>Formulas are typeset, for example the cross-entropy loss that almost every chapter in Part III builds on:</p>
+  <p>Formulas are typeset, for example the cross-entropy loss that almost every chapter in Parts III and IV builds on:</p>
   <div class="eq">\[ \mathcal{L}(\theta) = -\frac{1}{T}\sum_{t=1}^{T} \log p_\theta(x_t \mid x_{&lt;t}) \]<span class="eqcap">The average negative log probability the model assigns to each correct next token \(x_t\), given everything before it.</span></div>
   <div class="codetabs">
 <pre class="code" data-lang="python"><code>import math
@@ -104,8 +105,9 @@ fn main() {
 <tr><td>Reading the math</td><td>Every symbol used in the guide: subscripts, bars and hats, Σ and Π, Greek letters, probability notation, with a sum builder to practise</td><td>Formulas look like pictures rather than sentences</td></tr>
 <tr><td>I. Statistical foundations</td><td>Distributions, sampling, standard error, intervals, p values, reading a shape, heavy tails</td><td>It has been years since you did statistics</td></tr>
 <tr><td>II. Evaluating models</td><td>Pass-rate intervals, paired comparisons, power, multiple comparisons, classification metrics through AUC, LLM judges, the offline to online gap, contamination, harness engineering, regression triage</td><td>You need to defend or challenge an eval result</td></tr>
-<tr><td>III. Training models</td><td>The pipeline, pretraining, optimisation, scaling laws, SFT, LoRA, reward models, RLHF and PPO, DPO and its relatives, GRPO and RL with verifiable rewards, distillation, inference-time compute, safety training</td><td>You need to talk credibly about how models are built</td></tr>
-<tr><td>IV. Leading the work</td><td>How training and evaluation connect, review checklists, the questions principals ask, and a glossary</td><td>You are preparing for a senior conversation tomorrow</td></tr>
+<tr><td>III. How neural networks and LLMs work</td><td>Neurons and layers, gradient descent and local minima, why not infinite layers, the family tree from CNNs to transformers and GNNs, next-token prediction, how an assistant is made, reasoning modes vs temperature, one-pass decision models, and how framing a decision changes the answer</td><td>You want to know what is actually inside the model</td></tr>
+<tr><td>IV. Training models</td><td>The pipeline, pretraining, optimisation, scaling laws, SFT, LoRA, reward models, RLHF and PPO, DPO and its relatives, GRPO and RL with verifiable rewards, distillation, inference-time compute, safety training</td><td>You need to talk credibly about how models are built</td></tr>
+<tr><td>V. Leading the work</td><td>How training and evaluation connect, review checklists, the questions principals ask, and a glossary</td><td>You are preparing for a senior conversation tomorrow</td></tr>
 </tbody></table></div>
 <div class="callout note"><span class="tag">Note</span><div>Interactive panels run in the web version. The PDF shows each one at its default setting.</div></div>
 </section>
