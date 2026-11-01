@@ -39,13 +39,16 @@ G.widget('w-dm-thr', function (root) {
     oR.textContent = ratio; oT.textContent = G.fmt(t, 2);
     var SEL = mode === 'cal' ? PC : PO, selCol = mode === 'cal' ? P.eli5 : P.lead, selB = mode === 'cal' ? BC : BO;
     var curves = { cal: [], over: [] }, best = { t: 0.5, c: 1e9 }, ymax = costOf(judge, ratio);
-    for (var x = 0.02; x <= 0.981; x += 0.01) {
+    var grid = [0.005, 0.01, 0.015];
+    for (var g = 2; g <= 98; g++) grid.push(g / 100);
+    grid.push(0.99, 0.995);
+    grid.forEach(function (x) {
       var cc = costOf(at(PC, x), ratio), co = costOf(at(PO, x), ratio);
       curves.cal.push([x, cc]); curves.over.push([x, co]);
       var cs = mode === 'cal' ? cc : co;
       if (cs < best.c) best = { t: x, c: cs };
       ymax = Math.max(ymax, Math.min(cc, co));
-    }
+    });
     ymax = Math.min(Math.max(ymax * 1.35, 0.2), ratio * 0.4);
     var yt = [0, ymax / 2, ymax];
 
@@ -62,10 +65,6 @@ G.widget('w-dm-thr', function (root) {
     G.dot(ctx, ax.X(t), ax.Y(Math.min(cNow, ymax)), 5.5, selCol, P.surface);
     G.dot(ctx, ax.X(best.t), ax.Y(best.c), 4, P.good, P.surface);
     G.text(ctx, 'expected cost per case', pad.l, 10, P.muted, 'left', 12);
-    G.text(ctx, '— calibrated', pad.l + 140, 10, P.eli5, 'left', 12);
-    G.text(ctx, '— overconfident', pad.l + 228, 10, P.lead, 'left', 12);
-    var jl = ax.Y(costOf(judge, ratio)) - 8;
-    G.text(ctx, 'binary judge: one fixed point', c.w - pad.r - 4, jl < pad.t + 18 ? jl + 18 : jl, P.muted, 'right', 11.5);
     G.text(ctx, '1/(1+ratio)', Math.min(ax.X(tStar) + 4, c.w - 80), pad.t + 10, P.faint, 'left', 11.5);
 
     // right: reliability diagram for the selected model, plus the judge's two points
@@ -81,8 +80,8 @@ G.widget('w-dm-thr', function (root) {
     G.line(x2, pts, selCol, 2);
     selB.B.forEach(function (o) { if (o.n) G.dot(x2, ay.X(o.p), ay.Y(o.y), 2.5 + Math.sqrt(o.n) / 2.2, selCol, P.surface); });
     x2.fillStyle = P.muted; x2.fillRect(ay.X(1) - 5, ay.Y(jy1) - 5, 10, 10); x2.fillRect(ay.X(0) - 5, ay.Y(jy0) - 5, 10, 10);
-    G.text(x2, 'judge "yes": ' + G.pct(jy1) + ' were positive', ay.X(1) - 10, ay.Y(jy1) + 16, P.muted, 'right', 11.5);
-    G.text(x2, 'judge "no"', ay.X(0) + 10, ay.Y(jy0) - 12, P.muted, 'left', 11.5);
+    G.text(x2, 'judge yes', ay.X(1) - 10, ay.Y(jy1), P.muted, 'right', 11.5);
+    G.text(x2, 'judge no', ay.X(0) + 8, ay.Y(jy0) - 14, P.muted, 'left', 11.5);
     G.text(x2, '↑ observed positive rate · ECE ' + G.fmt(selB.ece, 3), pd.l + 4, 10, P.muted, 'left', 12);
 
     var cf = at(SEL, t), prec = cf.tp / Math.max(1, cf.tp + cf.fp), rec = cf.tp / Math.max(1, cf.tp + cf.fn);

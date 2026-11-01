@@ -1,0 +1,474 @@
+<section id="learning" data-title="How networks learn: gradient descent">
+<h2>How networks learn: gradient descent and backpropagation</h2>
+<p>The <a href="#neural-nets">previous chapter</a> built a network and set its weights by hand. Real networks start with random weights and learn them. Learning means: measure how wrong the network is, work out which way to nudge every weight to make it less wrong, nudge, repeat. This chapter covers the landscape the network walks on, the gradient that points the way, the step rule, the hills and pits and mountain passes along the route, why randomness helps, and backpropagation, the bookkeeping trick that makes it all affordable. Optimizers like Adam and learning-rate schedules build on this and live in <a href="#optimization">optimisation</a>.</p>
+
+<div class="story" id="st-gd-rain">
+  <div class="story-head"><div class="story-title">Where does the raindrop end up?</div><p class="story-sub">Loss landscapes, minima, maxima and saddle points, told as rain falling on hills.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A hilly landscape where height stands for loss">
+      <polyline class="a" style="--d:0" points="50.0,37.8 56.8,46.3 63.5,54.8 70.2,63.3 77.0,71.9 83.8,80.7 90.5,89.6 97.3,98.8 104.0,108.0 110.8,117.2 117.5,126.1 124.2,134.5 131.0,142.1 137.8,148.8 144.5,154.2 151.2,158.2 158.0,160.9 164.8,162.2 171.5,162.4 178.3,161.6 185.0,160.1 191.8,158.2 198.5,156.1 205.3,154.2 212.0,152.4 218.8,151.0 225.5,150.0 232.2,149.4 239.0,149.1 245.8,149.2 252.5,149.6 259.2,150.4 266.0,151.7 272.8,154.0 279.5,157.2 286.2,161.2 293.0,165.4 299.8,168.7 306.5,169.8 313.2,168.4 320.0,164.7 326.8,159.5 333.5,153.9 340.2,148.4 347.0,143.3 353.8,138.8 360.5,135.2 367.2,132.9 374.0,132.3 380.8,133.6 387.5,136.9 394.3,141.7 401.0,147.7 407.8,154.2 414.5,161.1 421.2,168.0 428.0,174.7 434.8,181.1 441.5,186.6 448.2,191.1 455.0,193.9 461.8,194.6 468.5,193.1 475.3,189.1 482.0,182.9 488.8,174.6 495.5,164.7 502.2,153.9 509.0,142.5 515.8,131.2 522.5,120.2 529.2,109.8 536.0,100.1 542.8,91.1 549.5,82.7 556.2,74.7 563.0,67.1 569.8,59.6 576.5,52.0 583.2,44.4 590.0,36.5" fill="none" stroke="var(--fg)" stroke-width="2.5"/>
+      <text class="a" style="--d:1" x="64" y="22" font-size="13" fill="var(--muted)">↑ height = loss: how wrong the model is</text>
+      <text class="a" style="--d:2" x="320" y="238" text-anchor="middle" font-size="13" fill="var(--muted)">position = one setting of the weights →</text>
+    </svg>
+    <p>Imagine every possible setting of a model's weights laid out as a landscape. Each spot is one setting; its height is the <b>loss</b>, a number for how wrong the model is with those weights. Training is a search for low ground. This picture has one weight, so the landscape is a line; a real model has billions.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A raindrop lands on a slope and feels which way is downhill">
+      <polyline points="50.0,37.8 56.8,46.3 63.5,54.8 70.2,63.3 77.0,71.9 83.8,80.7 90.5,89.6 97.3,98.8 104.0,108.0 110.8,117.2 117.5,126.1 124.2,134.5 131.0,142.1 137.8,148.8 144.5,154.2 151.2,158.2 158.0,160.9 164.8,162.2 171.5,162.4 178.3,161.6 185.0,160.1 191.8,158.2 198.5,156.1 205.3,154.2 212.0,152.4 218.8,151.0 225.5,150.0 232.2,149.4 239.0,149.1 245.8,149.2 252.5,149.6 259.2,150.4 266.0,151.7 272.8,154.0 279.5,157.2 286.2,161.2 293.0,165.4 299.8,168.7 306.5,169.8 313.2,168.4 320.0,164.7 326.8,159.5 333.5,153.9 340.2,148.4 347.0,143.3 353.8,138.8 360.5,135.2 367.2,132.9 374.0,132.3 380.8,133.6 387.5,136.9 394.3,141.7 401.0,147.7 407.8,154.2 414.5,161.1 421.2,168.0 428.0,174.7 434.8,181.1 441.5,186.6 448.2,191.1 455.0,193.9 461.8,194.6 468.5,193.1 475.3,189.1 482.0,182.9 488.8,174.6 495.5,164.7 502.2,153.9 509.0,142.5 515.8,131.2 522.5,120.2 529.2,109.8 536.0,100.1 542.8,91.1 549.5,82.7 556.2,74.7 563.0,67.1 569.8,59.6 576.5,52.0 583.2,44.4 590.0,36.5" fill="none" stroke="var(--fg)" stroke-width="2.5"/>
+      <circle class="a" style="--d:0" cx="90.5" cy="80" r="8" fill="var(--eli5)"/>
+      <g class="a" style="--d:1"><path d="M110 78 L138 116" stroke="var(--accent)" stroke-width="2.5" fill="none"/><path d="M138 116 L128 112 M138 116 L137 105" stroke="var(--accent)" stroke-width="2.5" fill="none"/></g>
+      <text class="a" style="--d:2" x="156" y="64" font-size="13" fill="var(--fg)">The drop cannot see the valleys.</text>
+      <text class="a" style="--d:2" x="156" y="84" font-size="13" fill="var(--fg)">It only feels the tilt under it: the <tspan font-weight="600" fill="var(--accent)">gradient</tspan>.</text>
+    </svg>
+    <p>A raindrop lands on a hillside. It cannot see the landscape; it only feels which way the ground tilts right where it is. That local tilt is the <b>gradient</b>. Water flows the opposite way to uphill, and so does gradient descent.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The drop settles in a nearby pond, a local minimum, while the deepest lake is elsewhere">
+      <polyline points="50.0,37.8 56.8,46.3 63.5,54.8 70.2,63.3 77.0,71.9 83.8,80.7 90.5,89.6 97.3,98.8 104.0,108.0 110.8,117.2 117.5,126.1 124.2,134.5 131.0,142.1 137.8,148.8 144.5,154.2 151.2,158.2 158.0,160.9 164.8,162.2 171.5,162.4 178.3,161.6 185.0,160.1 191.8,158.2 198.5,156.1 205.3,154.2 212.0,152.4 218.8,151.0 225.5,150.0 232.2,149.4 239.0,149.1 245.8,149.2 252.5,149.6 259.2,150.4 266.0,151.7 272.8,154.0 279.5,157.2 286.2,161.2 293.0,165.4 299.8,168.7 306.5,169.8 313.2,168.4 320.0,164.7 326.8,159.5 333.5,153.9 340.2,148.4 347.0,143.3 353.8,138.8 360.5,135.2 367.2,132.9 374.0,132.3 380.8,133.6 387.5,136.9 394.3,141.7 401.0,147.7 407.8,154.2 414.5,161.1 421.2,168.0 428.0,174.7 434.8,181.1 441.5,186.6 448.2,191.1 455.0,193.9 461.8,194.6 468.5,193.1 475.3,189.1 482.0,182.9 488.8,174.6 495.5,164.7 502.2,153.9 509.0,142.5 515.8,131.2 522.5,120.2 529.2,109.8 536.0,100.1 542.8,91.1 549.5,82.7 556.2,74.7 563.0,67.1 569.8,59.6 576.5,52.0 583.2,44.4 590.0,36.5" fill="none" stroke="var(--fg)" stroke-width="2.5"/>
+      <g fill="var(--eli5)" opacity=".45"><circle cx="106.0" cy="102.7" r="3"/><circle cx="121.7" cy="123.4" r="3"/><circle cx="135.9" cy="139.1" r="3"/><circle cx="146.8" cy="147.7" r="3"/><circle cx="156.0" cy="152.0" r="3"/></g>
+      <circle class="a" style="--d:0" cx="169" cy="154" r="8" fill="var(--eli5)"/>
+      <g class="a" style="--d:1"><path d="M169 168 L169 214" stroke="var(--fn)" stroke-width="1.2" stroke-dasharray="3 3"/><text x="169" y="230" text-anchor="middle" font-size="13" fill="var(--fn)" font-weight="600">local minimum</text></g>
+      <g class="a" style="--d:2"><path d="M306 175 L306 214" stroke="var(--fn)" stroke-width="1.2" stroke-dasharray="3 3"/><text x="306" y="230" text-anchor="middle" font-size="13" fill="var(--fn)" font-weight="600">local minimum</text></g>
+      <g class="a" style="--d:3"><circle cx="460.7" cy="194.7" r="5" fill="var(--good)"/><text x="461" y="230" text-anchor="middle" font-size="13" fill="var(--good)" font-weight="600">global minimum</text></g>
+      <g class="a" style="--d:4"><circle cx="372.8" cy="132.2" r="4" fill="var(--muted)"/><text x="373" y="116" text-anchor="middle" font-size="13" fill="var(--muted)">local maximum</text><circle cx="241.2" cy="149.1" r="4" fill="var(--muted)"/><text x="241" y="134" text-anchor="middle" font-size="12" fill="var(--muted)">local max</text></g>
+      <g class="a" style="--d:5"><circle cx="590" cy="36.5" r="4" fill="var(--muted)"/><text x="580" y="22" text-anchor="end" font-size="12" fill="var(--muted)">global maximum (highest point on this map)</text></g>
+    </svg>
+    <p>The drop rolls into the first pond it meets and stops: every step from there goes uphill. That is a <b>local minimum</b>. The deepest lake, the <b>global minimum</b>, is elsewhere and the drop will never know. Hilltops are <b>local maxima</b>; the highest point of all is the <b>global maximum</b>. At all of them the ground is flat, so the gradient is zero.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Drops landing in different places end up in different ponds">
+      <polyline points="50.0,37.8 56.8,46.3 63.5,54.8 70.2,63.3 77.0,71.9 83.8,80.7 90.5,89.6 97.3,98.8 104.0,108.0 110.8,117.2 117.5,126.1 124.2,134.5 131.0,142.1 137.8,148.8 144.5,154.2 151.2,158.2 158.0,160.9 164.8,162.2 171.5,162.4 178.3,161.6 185.0,160.1 191.8,158.2 198.5,156.1 205.3,154.2 212.0,152.4 218.8,151.0 225.5,150.0 232.2,149.4 239.0,149.1 245.8,149.2 252.5,149.6 259.2,150.4 266.0,151.7 272.8,154.0 279.5,157.2 286.2,161.2 293.0,165.4 299.8,168.7 306.5,169.8 313.2,168.4 320.0,164.7 326.8,159.5 333.5,153.9 340.2,148.4 347.0,143.3 353.8,138.8 360.5,135.2 367.2,132.9 374.0,132.3 380.8,133.6 387.5,136.9 394.3,141.7 401.0,147.7 407.8,154.2 414.5,161.1 421.2,168.0 428.0,174.7 434.8,181.1 441.5,186.6 448.2,191.1 455.0,193.9 461.8,194.6 468.5,193.1 475.3,189.1 482.0,182.9 488.8,174.6 495.5,164.7 502.2,153.9 509.0,142.5 515.8,131.2 522.5,120.2 529.2,109.8 536.0,100.1 542.8,91.1 549.5,82.7 556.2,74.7 563.0,67.1 569.8,59.6 576.5,52.0 583.2,44.4 590.0,36.5" fill="none" stroke="var(--fg)" stroke-width="2.5"/>
+      <g stroke="var(--faint)" stroke-width="1.2" stroke-dasharray="3 3"><path d="M241.2 155 L241.2 214"/><path d="M372.8 138 L372.8 214"/></g>
+      <g class="a" style="--d:0"><circle cx="117.5" cy="118" r="6" fill="none" stroke="var(--eli5)" stroke-width="2"/><g fill="var(--eli5)" opacity=".45"><circle cx="132.4" cy="135.6" r="3"/><circle cx="144.3" cy="146" r="3"/><circle cx="152.4" cy="150.8" r="3"/></g><circle cx="169" cy="154" r="7" fill="var(--eli5)"/></g>
+      <g class="a" style="--d:1"><circle cx="266" cy="143.7" r="6" fill="none" stroke="var(--lead)" stroke-width="2"/><g fill="var(--lead)" opacity=".45"><circle cx="272.7" cy="145.9" r="3"/><circle cx="283.1" cy="151.3" r="3"/><circle cx="295.3" cy="158.7" r="3"/></g><circle cx="306.2" cy="161.8" r="7" fill="var(--lead)"/></g>
+      <g class="a" style="--d:2"><circle cx="421.2" cy="160" r="6" fill="none" stroke="var(--good)" stroke-width="2"/><g fill="var(--good)" opacity=".45"><circle cx="432.9" cy="171.4" r="3"/><circle cx="443.5" cy="180.1" r="3"/><circle cx="451.6" cy="184.7" r="3"/></g><circle cx="460.7" cy="186.7" r="7" fill="var(--good)"/></g>
+      <g class="a" style="--d:3"><rect x="50" y="216" width="190" height="24" rx="5" fill="var(--eli5-soft)"/><text x="145" y="232" text-anchor="middle" font-size="12" fill="var(--eli5)">lands here: left pond</text>
+        <rect x="243" y="216" width="128" height="24" rx="5" fill="var(--lead-soft)"/><text x="307" y="232" text-anchor="middle" font-size="12" fill="var(--lead)">middle pond</text>
+        <rect x="374" y="216" width="216" height="24" rx="5" fill="var(--good-soft)"/><text x="482" y="232" text-anchor="middle" font-size="12" fill="var(--good)">deepest lake</text></g>
+    </svg>
+    <p>Where a drop lands decides where it ends. Each pond drains its own patch of ground, called its <b>basin</b>, and the hilltops are the borders. For a network, "where it lands" is the random starting weights. In this one-dimensional picture, bad luck at the start means a worse final answer.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A mountain pass: lowest along one direction, highest along the other">
+      <g class="a" style="--d:0">
+      <polyline points="388.6,180.4 383.9,175.2 379.3,170.0 374.8,164.8 370.4,159.6 366.2,154.4 362.2,149.2 358.6,144.0 355.3,138.8 352.5,133.6 350.3,128.4 349.0,123.2 348.5,118.0 349.0,112.8 350.3,107.6 352.5,102.4 355.3,97.2 358.6,92.0 362.2,86.8 366.2,81.6 370.4,76.4 374.8,71.2 379.3,66.0 383.9,60.8 388.6,55.6" fill="none" stroke="var(--warn)" stroke-width="1.5"/>
+      <polyline points="251.4,180.4 256.1,175.2 260.7,170.0 265.2,164.8 269.6,159.6 273.8,154.4 277.8,149.2 281.4,144.0 284.7,138.8 287.5,133.6 289.7,128.4 291.0,123.2 291.5,118.0 291.0,112.8 289.7,107.6 287.5,102.4 284.7,97.2 281.4,92.0 277.8,86.8 273.8,81.6 269.6,76.4 265.2,71.2 260.7,66.0 256.1,60.8 251.4,55.6" fill="none" stroke="var(--warn)" stroke-width="1.5"/>
+      <polyline points="257.6,49.4 262.8,54.1 268.0,58.7 273.2,63.2 278.4,67.6 283.6,71.8 288.8,75.8 294.0,79.4 299.2,82.7 304.4,85.5 309.6,87.7 314.8,89.0 320.0,89.5 325.2,89.0 330.4,87.7 335.6,85.5 340.8,82.7 346.0,79.4 351.2,75.8 356.4,71.8 361.6,67.6 366.8,63.2 372.0,58.7 377.2,54.1 382.4,49.4" fill="none" stroke="var(--eli5)" stroke-width="1.5"/>
+      <polyline points="257.6,186.6 262.8,181.9 268.0,177.3 273.2,172.8 278.4,168.4 283.6,164.2 288.8,160.2 294.0,156.6 299.2,153.3 304.4,150.5 309.6,148.3 314.8,147.0 320.0,146.5 325.2,147.0 330.4,148.3 335.6,150.5 340.8,153.3 346.0,156.6 351.2,160.2 356.4,164.2 361.6,168.4 366.8,172.8 372.0,177.3 377.2,181.9 382.4,186.6" fill="none" stroke="var(--eli5)" stroke-width="1.5"/>
+      <polyline points="391.7,170.0 388.0,164.8 384.5,159.6 381.3,154.4 378.4,149.2 375.8,144.0 373.5,138.8 371.7,133.6 370.4,128.4 369.6,123.2 369.3,118.0 369.6,112.8 370.4,107.6 371.7,102.4 373.5,97.2 375.8,92.0 378.4,86.8 381.3,81.6 384.5,76.4 388.0,71.2 391.7,66.0" fill="none" stroke="var(--warn)" stroke-width="1.5"/>
+      <polyline points="248.3,170.0 252.0,164.8 255.5,159.6 258.7,154.4 261.6,149.2 264.2,144.0 266.5,138.8 268.3,133.6 269.6,128.4 270.4,123.2 270.7,118.0 270.4,112.8 269.6,107.6 268.3,102.4 266.5,97.2 264.2,92.0 261.6,86.8 258.7,81.6 255.5,76.4 252.0,71.2 248.3,66.0" fill="none" stroke="var(--warn)" stroke-width="1.5"/>
+      <polyline points="268.0,46.3 273.2,50.0 278.4,53.5 283.6,56.7 288.8,59.6 294.0,62.2 299.2,64.5 304.4,66.3 309.6,67.6 314.8,68.4 320.0,68.7 325.2,68.4 330.4,67.6 335.6,66.3 340.8,64.5 346.0,62.2 351.2,59.6 356.4,56.7 361.6,53.5 366.8,50.0 372.0,46.3" fill="none" stroke="var(--eli5)" stroke-width="1.5"/>
+      <polyline points="268.0,189.7 273.2,186.0 278.4,182.5 283.6,179.3 288.8,176.4 294.0,173.8 299.2,171.5 304.4,169.7 309.6,168.4 314.8,167.6 320.0,167.3 325.2,167.6 330.4,168.4 335.6,169.7 340.8,171.5 346.0,173.8 351.2,176.4 356.4,179.3 361.6,182.5 366.8,186.0 372.0,189.7" fill="none" stroke="var(--eli5)" stroke-width="1.5"/>
+      <line x1="248" y1="118" x2="392" y2="118" stroke="var(--line-strong)" stroke-width="1"/><line x1="320" y1="46" x2="320" y2="190" stroke="var(--line-strong)" stroke-width="1"/>
+      <circle cx="320" cy="118" r="6" fill="var(--fg)"/>
+      <text x="420" y="122" font-size="12" fill="var(--warn)">higher</text><text x="220" y="122" text-anchor="end" font-size="12" fill="var(--warn)">higher</text>
+      <text x="320" y="32" text-anchor="middle" font-size="12" fill="var(--eli5)">lower</text><text x="320" y="214" text-anchor="middle" font-size="12" fill="var(--eli5)">lower</text>
+      </g>
+      <g class="a" style="--d:1"><polyline points="30.0,90.0 35.0,97.7 40.0,104.9 45.0,111.6 50.0,117.7 55.0,123.3 60.0,128.4 65.0,132.9 70.0,136.9 75.0,140.4 80.0,143.3 85.0,145.7 90.0,147.6 95.0,148.9 100.0,149.7 105.0,150.0 110.0,149.7 115.0,148.9 120.0,147.6 125.0,145.7 130.0,143.3 135.0,140.4 140.0,136.9 145.0,132.9 150.0,128.4 155.0,123.3 160.0,117.7 165.0,111.6 170.0,104.9 175.0,97.7 180.0,90.0" fill="none" stroke="var(--fg)" stroke-width="2"/><circle cx="105" cy="150" r="5" fill="var(--fg)"/><text x="105" y="178" text-anchor="middle" font-size="12" fill="var(--muted)">walk east–west:</text><text x="105" y="196" text-anchor="middle" font-size="12" fill="var(--muted)">lowest at the pass</text></g>
+      <g class="a" style="--d:2"><polyline points="460.0,150.0 465.0,142.3 470.0,135.1 475.0,128.4 480.0,122.3 485.0,116.7 490.0,111.6 495.0,107.1 500.0,103.1 505.0,99.6 510.0,96.7 515.0,94.3 520.0,92.4 525.0,91.1 530.0,90.3 535.0,90.0 540.0,90.3 545.0,91.1 550.0,92.4 555.0,94.3 560.0,96.7 565.0,99.6 570.0,103.1 575.0,107.1 580.0,111.6 585.0,116.7 590.0,122.3 595.0,128.4 600.0,135.1 605.0,142.3 610.0,150.0" fill="none" stroke="var(--fg)" stroke-width="2"/><circle cx="535" cy="90" r="5" fill="var(--fg)"/><text x="535" y="178" text-anchor="middle" font-size="12" fill="var(--muted)">walk north–south:</text><text x="535" y="196" text-anchor="middle" font-size="12" fill="var(--muted)">highest at the pass</text></g>
+      <text class="a" style="--d:3" x="320" y="244" text-anchor="middle" font-size="13" fill="var(--fg)">With millions of directions, flat spots are almost all passes, not pits.</text>
+    </svg>
+    <p>Add a second dimension and a new kind of flat spot appears: the mountain pass, or <b>saddle point</b>. It is the lowest point on the ridge going one way and the highest point on the trail going the other. A drop sitting exactly on it stays put, but the slightest nudge sends it on downhill. With millions of weights, a flat spot that curves up in every single direction is rare. Most flat spots are passes, which slow training down without trapping it.</p>
+  </div>
+</div>
+
+<h3>The loss landscape</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A score for wrongness, as ground to walk on</span></div>
+  <p>To learn, a network needs a single number that says how badly it is doing. That number is the <b>loss</b>. For a model predicting delivery times it might be the average squared error in minutes. For a language model it is how surprised the model is by the actual next word, averaged over a huge pile of text.</p>
+  <p>Every possible setting of the weights gives a different loss. Picture all those settings spread out as ground, with the loss as the height at each spot, and you have the <b>loss landscape</b>. Training is walking downhill on it. You never see the landscape as a whole; it has as many directions as the model has weights.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The loss is what training optimizes, nothing more</span></div>
+  <p>The loss is a proxy chosen because it is smooth and cheap to compute on every example. Next-token cross-entropy for pretraining, a preference loss for reward models, a clipped objective for RL. The model gets better at whatever the loss rewards, which is why the choice of loss and data is a product decision: everything the loss does not measure, the model has no reason to learn.</p>
+  <div class="callout eval"><span class="tag">Eval lens</span><div><b>What a training loss curve does and does not tell you.</b> A smoothly falling training loss says the optimizer is working. It does not say the model is getting better at anything you care about. Four gaps to keep in mind:
+  <ul>
+    <li><b>Train versus held-out.</b> Only loss on held-out data measures generalization; a falling training loss with a flat or rising validation loss is memorization.</li>
+    <li><b>Averages hide tasks.</b> Loss is an average over billions of tokens, dominated by easy ones. A capability that lives in rare tokens (a correct final answer to a maths problem) can change a lot while the average barely moves. Wei et al. (2022) reported abilities that appear abruptly with scale; Schaeffer et al. (2023) showed much of that abruptness comes from all-or-nothing metrics, while smooth per-token measures improve gradually.</li>
+    <li><b>Not comparable across tokenizers.</b> Loss per token depends on how text is split into tokens. Compare models with different tokenizers in bits per byte or on downstream evals, not raw loss.</li>
+    <li><b>Spikes and plateaus are diagnostics.</b> A spike can be a bad batch or an unstable learning rate; a long plateau can be a saddle region. Both are reasons to look, not verdicts.</li>
+  </ul></div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The objective</span></div>
+  <p>With parameters \(\theta \in \mathbb{R}^P\), training examples \((x_i, y_i)\), and a per-example loss \(\ell\), the training objective is the empirical risk</p>
+  <div class="eq">\[ \mathcal{L}(\theta) = \frac{1}{N}\sum_{i=1}^{N} \ell\big(f_\theta(x_i),\, y_i\big) \]<span class="eqcap">\(f_\theta\) is the network. For regression \(\ell\) is often squared error; for language models it is cross-entropy, \(-\log p_\theta(\text{next token})\), averaged over every token position (see <a href="#pretraining">pretraining</a>). The landscape is the graph of \(\mathcal{L}\) over \(\mathbb{R}^P\), with \(P\) in the billions.</span></div>
+  <p>What we actually want is low expected loss on new data, \(\mathbb{E}_{(x,y)\sim\mathcal{D}}[\ell(f_\theta(x), y)]\). The empirical risk is an estimate of it; the gap between the two is the generalization gap, and held-out evaluation is how you measure it.</p>
+</div>
+
+<h3>The gradient: which way is downhill</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">One slope per knob</span></div>
+  <p>With one weight, the slope is a single number: turn the knob up a hair and see whether the loss goes up or down, and how fast. With a billion weights you need a billion slopes, one per knob, answering "if I turn just this knob up slightly, how much does the loss change?" That list of slopes is the <b>gradient</b>. Together the slopes point in the direction where the loss climbs fastest, so you step the opposite way.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Gradients are cheap, which is the whole miracle</span></div>
+  <p>Measuring a billion slopes one knob at a time would take a billion extra forward passes per step. Backpropagation, at the end of this chapter, gets all of them for roughly the cost of two forward passes. That single fact is why training networks with billions of parameters is possible at all. It is also why training compute is about 6 floating-point operations per parameter per token: 2 for the forward pass and about 4 for the backward pass (Kaplan et al., 2020).</p>
+  <p>The size of the gradient (its norm) is one of the most watched training signals. Sudden growth often precedes a loss spike; that is why runs use gradient clipping, which caps the norm. See <a href="#optimization">optimisation</a>.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Definition and the step rule</span></div>
+  <p>The gradient collects the partial derivatives:</p>
+  <div class="eq">\[ \nabla_\theta \mathcal{L} = \Big(\frac{\partial \mathcal{L}}{\partial \theta_1}, \ldots, \frac{\partial \mathcal{L}}{\partial \theta_P}\Big), \qquad \frac{\partial \mathcal{L}}{\partial \theta_j} \approx \frac{\mathcal{L}(\theta + \epsilon \mathbf{e}_j) - \mathcal{L}(\theta - \epsilon \mathbf{e}_j)}{2\epsilon} \]<span class="eqcap">\(\mathbf{e}_j\) is the unit vector for parameter \(j\). The finite-difference form is how you check a gradient implementation, never how you compute gradients in training.</span></div>
+  <p>A first-order Taylor expansion shows why stepping against the gradient works:</p>
+  <div class="eq">\[ \mathcal{L}(\theta - \eta\,\nabla\mathcal{L}) \approx \mathcal{L}(\theta) - \eta\,\|\nabla\mathcal{L}\|^2 \]<span class="eqcap">For a small enough step size \(\eta &gt; 0\) the loss goes down by about \(\eta\) times the squared gradient norm. Among all directions of a given length, \(-\nabla\mathcal{L}\) gives the largest first-order decrease.</span></div>
+  <p>Hence <b>gradient descent</b>:</p>
+  <div class="eq">\[ \theta_{t+1} = \theta_t - \eta\, \nabla_\theta \mathcal{L}(\theta_t) \]<span class="eqcap">\(\eta\) is the learning rate. Every optimizer used for LLMs is a variation that changes the direction (momentum) or the per-parameter step size (Adam).</span></div>
+</div>
+
+<h3>Step size: the learning rate</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Stride length</span></div>
+  <p>The gradient says which way is downhill. The <b>learning rate</b> says how big a stride to take. Tiny strides are safe but slow; you may run out of time before reaching the bottom. Huge strides overshoot: you leap across the valley and land higher up the other side, and the next leap is even bigger. Somewhere in between you make fast, steady progress.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The most expensive number to get wrong</span></div>
+  <p>A learning rate that is too high can waste a run outright; one that is too low wastes compute quietly by finishing at a worse loss. Large runs do not use one fixed value: they warm up, hold, and decay it, and they pick its scale from small-model sweeps. That material, plus Adam, momentum, and batch size, is in <a href="#optimization">optimisation</a>. The widget below shows a different face of the learning rate: on a bumpy landscape, a big step can jump out of a valley entirely.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why there is a speed limit</span></div>
+  <p>Near a minimum, the loss looks like a bowl \(\tfrac{\lambda}{2}(\theta - \theta^*)^2\) with curvature \(\lambda\). One gradient step gives</p>
+  <div class="eq">\[ \theta_{t+1} - \theta^* = (1 - \eta\lambda)\,(\theta_t - \theta^*) \]<span class="eqcap">The error shrinks only if \(|1 - \eta\lambda| &lt; 1\), that is \(0 &lt; \eta &lt; 2/\lambda\). For \(\eta &lt; 1/\lambda\) it creeps in from one side; between \(1/\lambda\) and \(2/\lambda\) it zig-zags but converges; above \(2/\lambda\) every step overshoots further. In many dimensions the steepest direction sets the limit.</span></div>
+  <p>A 1D example with two valleys, \(\mathcal{L}(\theta) = \theta^4 - 3\theta^2 + \theta\): a deep valley near \(\theta = -1.30\) and a shallow one near \(1.13\). Same code, three settings:</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def loss(theta):
+    return theta**4 - 3 * theta**2 + theta     # two valleys: one deep, one shallow
+
+def grad(theta):
+    return 4 * theta**3 - 6 * theta + 1         # the slope, worked out by hand
+
+def descend(theta, lr, steps):
+    for step in range(steps):
+        theta = theta - lr * grad(theta)        # step against the slope
+        if abs(theta) &gt; 1e6:                    # stepped clean off the map
+            return None, step + 1
+    return theta, steps
+
+for start, lr in [(2.0, 0.01), (-0.5, 0.01), (2.0, 0.2)]:
+    end, n = descend(start, lr, 200)
+    if end is None:
+        print(f"start {start:+.1f}  lr {lr:.2f}  diverged after {n} steps")
+    else:
+        print(f"start {start:+.1f}  lr {lr:.2f}  theta {end:+.3f}  loss {loss(end):+.3f}")
+# start +2.0  lr 0.01  theta +1.131  loss -1.070   (shallow valley: a local minimum)
+# start -0.5  lr 0.01  theta -1.301  loss -3.514   (deep valley: the global minimum)
+# start +2.0  lr 0.20  diverged after 5 steps</code></pre>
+<pre class="code" data-lang="rust"><code>fn loss(theta: f64) -&gt; f64 {
+    theta.powi(4) - 3.0 * theta.powi(2) + theta // two valleys: one deep, one shallow
+}
+
+fn grad(theta: f64) -&gt; f64 {
+    4.0 * theta.powi(3) - 6.0 * theta + 1.0 // the slope, worked out by hand
+}
+
+/// Returns (Some(final theta), steps) or (None, step it diverged at).
+fn descend(mut theta: f64, lr: f64, steps: usize) -&gt; (Option&lt;f64&gt;, usize) {
+    for step in 0..steps {
+        theta -= lr * grad(theta); // step against the slope
+        if theta.abs() &gt; 1e6 {
+            return (None, step + 1); // stepped clean off the map
+        }
+    }
+    (Some(theta), steps)
+}
+
+fn main() {
+    for (start, lr) in [(2.0, 0.01), (-0.5, 0.01), (2.0, 0.2)] {
+        match descend(start, lr, 200) {
+            (None, n) =&gt; println!("start {:+.1}  lr {:.2}  diverged after {} steps", start, lr, n),
+            (Some(end), _) =&gt; println!("start {:+.1}  lr {:.2}  theta {:+.3}  loss {:+.3}", start, lr, end, loss(end)),
+        }
+    }
+    // start +2.0  lr 0.01  theta +1.131  loss -1.070   (shallow valley: a local minimum)
+    // start -0.5  lr 0.01  theta -1.301  loss -3.514   (deep valley: the global minimum)
+    // start +2.0  lr 0.20  diverged after 5 steps
+}</code></pre>
+</div>
+</div>
+
+<div class="widget" id="w-gd-ball">
+  <div class="wtitle">Roll a ball down a bumpy loss</div>
+  <div class="wsub">One weight θ, a loss curve with three valleys and two hills. Each step moves the ball by learning rate × slope. Try the presets, then set your own start, step size, momentum, and noise. Press Run to watch, or Step for one update at a time.</div>
+  <div class="btnrow">
+    <button class="b" type="button" data-preset="stuck" aria-pressed="true">Stuck in a local minimum</button>
+    <button class="b" type="button" data-preset="other" aria-pressed="false">Start on the other side</button>
+    <button class="b" type="button" data-preset="mom" aria-pressed="false">Heavy momentum</button>
+    <button class="b" type="button" data-preset="noise" aria-pressed="false">Noisy steps</button>
+    <button class="b" type="button" data-preset="big" aria-pressed="false">Step too big</button>
+  </div>
+  <div class="controls">
+    <div class="ctl"><label for="gd-x0">Start θ: <output id="gd-x0-o">-3.4</output></label><input type="range" id="gd-x0" min="-3.8" max="3.8" step="0.1" value="-3.4"></div>
+    <div class="ctl"><label for="gd-lr">Learning rate: <output id="gd-lr-o">0.10</output></label><input type="range" id="gd-lr" min="-2.3" max="0" step="0.05" value="-1"></div>
+    <div class="ctl"><label for="gd-mom">Momentum: <output id="gd-mom-o">0.00</output></label><input type="range" id="gd-mom" min="0" max="0.95" step="0.05" value="0"></div>
+    <div class="ctl"><label>Gradient noise</label><label style="font-size:13px;font-weight:400"><input type="checkbox" id="gd-noise"> add noise to each slope (fades over the run)</label></div>
+  </div>
+  <div class="btnrow"><button class="b" type="button" data-step>Step</button><button class="b" type="button" data-run aria-pressed="false">Run</button><button class="b" type="button" data-reset>Reset</button></div>
+  <canvas data-cv="land"></canvas>
+  <canvas data-cv="curve"></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Iteration</div><div class="v" data-it>—</div></div>
+    <div class="mc"><div class="l">θ</div><div class="v" data-th>—</div></div>
+    <div class="mc"><div class="l">Loss</div><div class="v" data-lo>—</div></div>
+    <div class="mc"><div class="l">Ends in</div><div class="v" data-end>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>Minima, maxima, and saddle points</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Five kinds of flat ground</span></div>
+  <p>Anywhere the ground is flat, the gradient is zero and gradient descent stops pushing. There are five kinds of flat spot worth naming:</p>
+  <ul>
+    <li><b>Local minimum:</b> the bottom of a dip. Every small step from here goes uphill, but there may be deeper dips elsewhere.</li>
+    <li><b>Global minimum:</b> the lowest point anywhere. The best possible weights for the training data.</li>
+    <li><b>Local maximum:</b> the top of a hill. Every small step goes downhill.</li>
+    <li><b>Global maximum:</b> the highest point anywhere. The worst weights; training never wants to be here.</li>
+    <li><b>Saddle point:</b> a mountain pass. Downhill in some directions, uphill in others.</li>
+  </ul>
+  <p>The worry in the raindrop story is getting stuck in a poor local minimum. For huge networks that worry turns out to be smaller than the one-dimensional picture suggests, for reasons the next two tabs explain.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why "stuck in a local minimum" is rarely the real problem</span></div>
+  <p>Intuition from one or two dimensions says training should constantly get trapped in bad valleys. In very large networks, that is mostly not what happens, for two reasons with good evidence behind them:</p>
+  <ul>
+    <li><b>Most flat spots are saddles.</b> To be a minimum, the ground must curve upward in every one of billions of directions at once. Dauphin et al. (2014) argued, from theory on random high-dimensional functions and experiments on neural networks, that critical points with high loss are overwhelmingly saddle points, and that saddles, with the flat plateaus around them, are the main thing that slows training.</li>
+    <li><b>The minima you reach are similarly good.</b> Choromanska et al. (2015) gave a model in which local minima of large networks concentrate in a narrow band of loss close to the global minimum, and experiments agreed. Practitioners see the same: rerun with a different seed and the final loss is nearly identical.</li>
+  </ul>
+  <p>Honest nuance: bad local minima do exist. Safran and Shamir (2018) showed they are common in small two-layer ReLU networks, and the theory behind the optimistic picture relies on simplifying assumptions. Being over-parameterized is what makes the landscape benign, which is one more argument for scale. The practical failure modes at frontier scale are plateaus, loss spikes, and divergence, not local minima.</p>
+  <p>The subtler question is which minimum, among many with equal training loss, generalizes best. Keskar et al. (2017) linked large-batch training to "sharp" minima that generalize worse; Dinh et al. (2017) showed sharpness can be changed by reparameterizing without changing the function, so it is not a clean measure. This is open research.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>The loss sat flat for two thousand steps and then dropped: what changed, and could we have shortened the plateau? How much does final loss vary across seeds at small scale, and is our improvement bigger than that? Is the gradient norm stable, and how often does clipping trigger? When you say the model is "stuck", is that training loss, validation loss, or a downstream eval?</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Classifying critical points with the Hessian</span></div>
+  <p>At a critical point \(\nabla\mathcal{L}(\theta^*) = 0\), the second-order expansion is governed by the Hessian \(H = \nabla^2\mathcal{L}(\theta^*)\):</p>
+  <div class="eq">\[ \mathcal{L}(\theta^* + \boldsymbol{\delta}) \approx \mathcal{L}(\theta^*) + \tfrac12\, \boldsymbol{\delta}^\top H\, \boldsymbol{\delta} = \mathcal{L}(\theta^*) + \tfrac12 \sum_{k} \lambda_k\, (\mathbf{u}_k^\top\boldsymbol{\delta})^2 \]<span class="eqcap">\(\lambda_k, \mathbf{u}_k\) are the eigenvalues and eigenvectors of \(H\): the curvature along each principal direction.</span></div>
+  <div class="tw"><table>
+  <thead><tr><th>Eigenvalues of \(H\)</th><th>Critical point</th><th>What gradient descent does</th></tr></thead>
+  <tbody>
+  <tr><td>All \(&gt; 0\)</td><td>Local minimum</td><td>Settles there</td></tr>
+  <tr><td>All \(&lt; 0\)</td><td>Local maximum</td><td>Moves away in every direction</td></tr>
+  <tr><td>Mixed signs</td><td>Saddle point (index = number of negative \(\lambda_k\))</td><td>Escapes along negative-curvature directions, slowly if they are shallow</td></tr>
+  <tr><td>Some \(= 0\)</td><td>Degenerate: needs higher-order terms</td><td>Flat valleys, common in over-parameterized nets</td></tr>
+  </tbody></table></div>
+  <p>A heuristic, not a theorem: if each of \(P\) curvature signs were an independent coin flip, the chance that all are positive would be \(2^{-P}\). The signs are not independent, but the picture captures the scaling. The rigorous version comes from random-field theory (Bray and Dean, 2007): for Gaussian random functions in high dimension, the fraction of negative eigenvalues at a critical point grows with its loss, so low-index critical points sit at low loss. Dauphin et al. (2014) connected this to neural networks.</p>
+  <p>Gradient descent with a random start almost surely does not converge to a strict saddle (Lee et al., 2016), but it can spend a long time near one (Du et al., 2017, constructed cases needing exponential time). Near a saddle, the escape direction grows like \((1 + \eta|\lambda_-|)^t\) from its initial offset, so a start very close to the ridge produces a long plateau. The second widget below shows exactly that.</p>
+</div>
+
+<div class="widget" id="w-gd-saddle">
+  <div class="wtitle">A saddle point slows descent</div>
+  <div class="wsub">Contours of \(\mathcal{L}(x, y) = x^2 + \tfrac12(y^2 - 1)^2\): two minima at \(y = \pm 1\) and a saddle at the origin, with loss 0.5. The ball starts at \(x = 1.6\), a tiny distance from the ridge \(y = 0\). Learning rate 0.05, 300 steps. Move the start closer to the ridge and watch the plateau in the loss curve grow; add noise and it vanishes.</div>
+  <div class="controls">
+    <div class="ctl"><label for="gd-y0">Start distance from ridge: <output id="gd-y0-o">1e-6</output></label><input type="range" id="gd-y0" min="-9" max="-1" step="0.5" value="-6"></div>
+    <div class="ctl"><label>Gradient noise</label><label style="font-size:13px;font-weight:400"><input type="checkbox" id="gd-snoise"> add noise (SGD-like)</label></div>
+  </div>
+  <canvas data-cv="sad"></canvas>
+  <canvas data-cv="sadloss"></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Steps spent at the saddle</div><div class="v" data-near>—</div></div>
+    <div class="mc"><div class="l">Where it ends</div><div class="v" data-fin>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>Stochastic gradient descent: noise that helps</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Poll a few, not everyone</span></div>
+  <p>Computing the exact gradient means running the network on every training example before taking a single step: like surveying an entire country before every decision. <b>Stochastic gradient descent (SGD)</b> instead looks at a small random handful of examples, a <b>mini-batch</b>, estimates the slope from them, and steps. The estimate is a bit off each time, but it is thousands of times cheaper, so you take thousands of times more steps.</p>
+  <p>The noise turns out to be useful. A ball that jiggles a little does not sit forever on a mountain pass, and can sometimes hop out of a shallow dip. Try the "Noisy steps" preset in the widget above.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Batch size is a speed and cost dial</span></div>
+  <p>Bigger batches give a cleaner gradient estimate and keep more GPUs busy in parallel, but past a point they stop reducing the number of steps needed, so extra hardware buys nothing. McCandlish et al. (2018) tied that point, the critical batch size, to a measurable gradient noise scale, which grows as training progresses. That is why large runs often increase the batch size over time. The practical settings live in <a href="#optimization">optimisation</a>.</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>"Noise helps escape bad minima" is true in toy pictures and is easy to oversell. In a frontier run, gradient noise mostly matters for stability and for which of many equally good minima you land in. Treat claims that a batch-size or noise change "improved generalization" like any other: ask for seeds, held-out evals, and matched compute.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">An unbiased, noisy estimate</span></div>
+  <p>Sample a mini-batch \(\mathcal{B}\) of size \(B\) uniformly from the data:</p>
+  <div class="eq">\[ \mathbf{g}_{\mathcal{B}} = \frac{1}{B}\sum_{i\in\mathcal{B}} \nabla_\theta\, \ell\big(f_\theta(x_i), y_i\big), \qquad \mathbb{E}[\mathbf{g}_{\mathcal{B}}] = \nabla\mathcal{L}(\theta), \qquad \operatorname{Cov}[\mathbf{g}_{\mathcal{B}}] \approx \frac{\Sigma(\theta)}{B} \]<span class="eqcap">\(\Sigma\) is the per-example gradient covariance. The noise shrinks like \(1/B\) in variance, the same \(1/\sqrt n\) story as the standard error in <a href="#basics">Part I</a>.</span></div>
+  <p>The SGD update \(\theta \leftarrow \theta - \eta\,\mathbf{g}_{\mathcal{B}}\) is gradient descent plus zero-mean noise with covariance \(\eta^2\Sigma/B\). Smith and Le (2018) argued that the effective noise scale is set by the ratio \(\eta/B\), which is why learning rate and batch size are usually tuned together. Decaying the learning rate at the end of training shrinks the noise and lets the parameters settle; the widget's noise fades over the run for the same reason.</p>
+</div>
+
+<div class="story" id="st-gd-gears">
+  <div class="story-head"><div class="story-title">Blame flows backward</div><p class="story-sub">Backpropagation as a gear train, then with the numbers from a tiny network.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Three gears: turning the first one notch turns the last six notches">
+      <g class="a" style="--d:0"><circle cx="110" cy="120" r="60" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="8" stroke-dasharray="7 6"/><circle cx="110" cy="120" r="6" fill="var(--fg)"/><path d="M110 120 L110 68" stroke="var(--accent)" stroke-width="3"/><text x="110" y="206" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">A</text></g>
+      <g class="a" style="--d:1"><circle cx="206" cy="120" r="30" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="8" stroke-dasharray="7 6"/><circle cx="206" cy="120" r="5" fill="var(--fg)"/><path d="M206 120 L230 106" stroke="var(--accent)" stroke-width="3"/><text x="206" y="206" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">B</text></g>
+      <g class="a" style="--d:2"><circle cx="252" cy="120" r="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="6" stroke-dasharray="5 4"/><circle cx="252" cy="120" r="3" fill="var(--fg)"/><text x="252" y="206" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">C</text></g>
+      <g class="a" style="--d:3" font-size="13" fill="var(--fg)"><text x="320" y="60" font-size="14" font-weight="600">Turn gear A by 1 notch:</text><text x="320" y="92">B turns 2 notches (ratio 2)</text><text x="320" y="120">C turns 3 notches per B notch (ratio 3)</text></g>
+      <text class="a" style="--d:4" x="320" y="154" font-size="14" font-weight="600" fill="var(--accent)">So C turns 2 × 3 = 6 notches.</text>
+      <text class="a" style="--d:5" x="320" y="200" font-size="13" fill="var(--muted)">Ratios along a chain multiply. That is the chain rule.</text>
+    </svg>
+    <p>Turn gear A by one notch and B turns two; each notch of B turns C three. So C turns 2 × 3 = 6 notches per notch of A. You never need to watch A and C together: multiply the ratio of each link. Calculus calls this the <b>chain rule</b>, and the ratios are derivatives.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="A network as a chain from a weight to the loss, each link with its local slope">
+      <text x="320" y="24" text-anchor="middle" font-size="13" fill="var(--muted)">Each link has a local slope: how much the next value moves per nudge of this one</text>
+      <g font-size="13" text-anchor="middle">
+        <rect x="24" y="100" width="64" height="48" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="56" y="120" font-weight="600" fill="var(--good)">w₁</text><text x="56" y="138" font-size="12" fill="var(--fg)">0.5</text>
+        <rect x="154" y="100" width="64" height="48" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="186" y="120" font-weight="600" fill="var(--fg)">z</text><text x="186" y="138" font-size="12" fill="var(--fg)">1.0</text>
+        <rect x="284" y="100" width="64" height="48" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="316" y="120" font-weight="600" fill="var(--fg)">h</text><text x="316" y="138" font-size="12" fill="var(--fg)">1.0</text>
+        <rect x="414" y="100" width="64" height="48" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="446" y="120" font-weight="600" fill="var(--fg)">y</text><text x="446" y="138" font-size="12" fill="var(--fg)">2.0</text>
+        <rect x="544" y="100" width="64" height="48" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="576" y="120" font-weight="600" fill="var(--warn)">loss</text><text x="576" y="138" font-size="12" fill="var(--fg)">0.5</text>
+      </g>
+      <g stroke="var(--faint)" stroke-width="2" fill="none"><path d="M92 124 L148 124 M141 119 L148 124 L141 129"/><path d="M222 124 L278 124 M271 119 L278 124 L271 129"/><path d="M352 124 L408 124 M401 119 L408 124 L401 129"/><path d="M482 124 L538 124 M531 119 L538 124 L531 129"/></g>
+      <g class="a" style="--d:0" font-size="13" font-weight="600" text-anchor="middle" fill="var(--accent)">
+        <rect x="89" y="52" width="64" height="26" rx="6" fill="var(--accent-soft)"/><text x="121" y="70">× 2</text>
+        <rect x="219" y="52" width="64" height="26" rx="6" fill="var(--accent-soft)"/><text x="251" y="70">× 1</text>
+        <rect x="349" y="52" width="64" height="26" rx="6" fill="var(--accent-soft)"/><text x="381" y="70">× 1.5</text>
+        <rect x="479" y="52" width="64" height="26" rx="6" fill="var(--accent-soft)"/><text x="511" y="70">× (−1)</text>
+      </g>
+      <g class="a" style="--d:1" font-size="12" text-anchor="middle" fill="var(--muted)"><text x="121" y="180">z = w₁x + b₁,</text><text x="121" y="196">slope x = 2</text><text x="251" y="180">ReLU is on,</text><text x="251" y="196">slope 1</text><text x="381" y="180">y = w₂h + b₂,</text><text x="381" y="196">slope w₂ = 1.5</text><text x="511" y="180">loss = ½(y − t)²,</text><text x="511" y="196">slope y − t = −1</text></g>
+      <text class="a" style="--d:2" x="320" y="232" text-anchor="middle" font-size="12" fill="var(--muted)">Input x = 2, target t = 3. Weights: w₁ = 0.5, b₁ = 0, w₂ = 1.5, b₂ = 0.5.</text>
+    </svg>
+    <p>A network is a gear train too. A weight affects a weighted sum, which affects an activation, which affects the output, which affects the loss. Each link has a local slope that is easy to compute on its own. Here: one input x = 2, one hidden ReLU unit, one output, target 3. The forward pass gives a prediction of 2.0 and a loss of 0.5.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Backward pass: multiply slopes from the loss back to the weight">
+      <text x="320" y="24" text-anchor="middle" font-size="13" fill="var(--muted)">Backward: start at the loss with 1, multiply the slopes from right to left</text>
+      <g font-size="13" text-anchor="middle">
+        <rect x="24" y="80" width="64" height="48" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="56" y="100" font-weight="600" fill="var(--good)">w₁</text><text x="56" y="118" font-size="12" fill="var(--fg)">0.5</text>
+        <rect x="154" y="80" width="64" height="48" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="186" y="100" font-weight="600" fill="var(--fg)">z</text><text x="186" y="118" font-size="12" fill="var(--fg)">1.0</text>
+        <rect x="284" y="80" width="64" height="48" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="316" y="100" font-weight="600" fill="var(--fg)">h</text><text x="316" y="118" font-size="12" fill="var(--fg)">1.0</text>
+        <rect x="414" y="80" width="64" height="48" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="446" y="100" font-weight="600" fill="var(--fg)">y</text><text x="446" y="118" font-size="12" fill="var(--fg)">2.0</text>
+        <rect x="544" y="80" width="64" height="48" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="576" y="100" font-weight="600" fill="var(--warn)">loss</text><text x="576" y="118" font-size="12" fill="var(--fg)">0.5</text>
+      </g>
+      <g font-size="12" font-weight="600" text-anchor="middle" fill="var(--accent)"><text x="121" y="70">× 2</text><text x="251" y="70">× 1</text><text x="381" y="70">× 1.5</text><text x="511" y="70">× (−1)</text></g>
+      <g class="a" style="--d:0" stroke="var(--accent)" stroke-width="2" fill="none"><path d="M538 160 L482 160 M489 155 L482 160 L489 165"/><path d="M408 160 L352 160 M359 155 L352 160 L359 165"/><path d="M278 160 L222 160 M229 155 L222 160 L229 165"/><path d="M148 160 L92 160 M99 155 L92 160 L99 165"/></g>
+      <g font-size="15" font-weight="700" text-anchor="middle" fill="var(--accent)"><text class="a" style="--d:1" x="576" y="196">1</text><text class="a" style="--d:2" x="446" y="196">−1</text><text class="a" style="--d:3" x="316" y="196">−1.5</text><text class="a" style="--d:4" x="186" y="196">−1.5</text><text class="a" style="--d:5" x="56" y="196">−3.0</text></g>
+      <g font-size="12" text-anchor="middle" fill="var(--muted)"><text x="576" y="216">∂L/∂L</text><text x="446" y="216">∂L/∂y</text><text x="316" y="216">∂L/∂h</text><text x="186" y="216">∂L/∂z</text><text x="56" y="216">∂L/∂w₁</text></g>
+      <text class="a" style="--d:6" x="320" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">−1 × 1.5 = −1.5,  × 1 = −1.5,  × 2 = −3.0</text>
+    </svg>
+    <p>Now go backward. The loss's slope with respect to itself is 1. Multiply by each link's local slope as you move left: −1 at the output, −1.5 at the hidden unit, still −1.5 through the ReLU, and −3.0 at w₁. Negative means "increase w₁ and the loss goes down". That right-to-left sweep is <b>backpropagation</b>.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Shared parts of the backward pass are computed once and reused for every weight">
+      <g stroke="var(--faint)" stroke-width="2" fill="none"><path d="M544 120 L500 120"/><path d="M424 120 L376 50"/><path d="M424 120 L376 120"/><path d="M424 120 L376 190"/><path d="M300 120 L252 120"/><path d="M176 120 L116 80"/><path d="M176 120 L116 160"/></g>
+      <g font-size="13" text-anchor="middle">
+        <g class="a" style="--d:0"><rect x="544" y="100" width="76" height="40" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="582" y="117" font-weight="600" fill="var(--warn)">loss</text><text x="582" y="133" font-size="12" fill="var(--accent)">1</text></g>
+        <g class="a" style="--d:1"><rect x="424" y="100" width="76" height="40" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="462" y="117" font-weight="600" fill="var(--fg)">y</text><text x="462" y="133" font-size="12" fill="var(--accent)">−1</text></g>
+        <g class="a" style="--d:2"><rect x="300" y="30" width="76" height="40" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="338" y="47" font-weight="600" fill="var(--good)">w₂</text><text x="338" y="63" font-size="12" fill="var(--accent)">−1.0</text>
+          <rect x="300" y="100" width="76" height="40" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="338" y="117" font-weight="600" fill="var(--fg)">h</text><text x="338" y="133" font-size="12" fill="var(--accent)">−1.5</text>
+          <rect x="300" y="170" width="76" height="40" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="338" y="187" font-weight="600" fill="var(--good)">b₂</text><text x="338" y="203" font-size="12" fill="var(--accent)">−1.0</text></g>
+        <g class="a" style="--d:3"><rect x="176" y="100" width="76" height="40" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="214" y="117" font-weight="600" fill="var(--fg)">z</text><text x="214" y="133" font-size="12" fill="var(--accent)">−1.5</text></g>
+        <g class="a" style="--d:4"><rect x="40" y="60" width="76" height="40" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="78" y="77" font-weight="600" fill="var(--good)">w₁</text><text x="78" y="93" font-size="12" fill="var(--accent)">−3.0</text>
+          <rect x="40" y="140" width="76" height="40" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="78" y="157" font-weight="600" fill="var(--good)">b₁</text><text x="78" y="173" font-size="12" fill="var(--accent)">−1.5</text></g>
+      </g>
+      <text class="a" style="--d:5" x="320" y="238" text-anchor="middle" font-size="13" fill="var(--fg)">Each shared piece is computed once and reused by everything to its left.</text>
+    </svg>
+    <p>Every parameter gets its gradient from the same sweep. The −1 at the output is computed once and reused for w₂, b₂ and the hidden unit; the −1.5 at z is reused for w₁ and b₁. In a real network the reuse is massive, which is why one backward pass costs only about twice a forward pass, however many billions of parameters there are.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="One gradient step updates each weight and the loss drops from 0.5 to 0.08">
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="70" y="36">parameter</text><text x="180" y="36">before</text><text x="290" y="36">gradient</text><text x="420" y="36">after (lr 0.1)</text></g>
+      <line x1="30" y1="46" x2="500" y2="46" stroke="var(--line)" stroke-width="1"/>
+      <g font-size="13" text-anchor="middle" fill="var(--fg)">
+        <g class="a" style="--d:0"><text x="70" y="70" font-weight="600">w₁</text><text x="180" y="70">0.5</text><text x="290" y="70" fill="var(--accent)">−3.0</text><text x="420" y="70" font-weight="600">0.8</text></g>
+        <g class="a" style="--d:1"><text x="70" y="96" font-weight="600">b₁</text><text x="180" y="96">0.0</text><text x="290" y="96" fill="var(--accent)">−1.5</text><text x="420" y="96" font-weight="600">0.15</text></g>
+        <g class="a" style="--d:2"><text x="70" y="122" font-weight="600">w₂</text><text x="180" y="122">1.5</text><text x="290" y="122" fill="var(--accent)">−1.0</text><text x="420" y="122" font-weight="600">1.6</text></g>
+        <g class="a" style="--d:3"><text x="70" y="148" font-weight="600">b₂</text><text x="180" y="148">0.5</text><text x="290" y="148" fill="var(--accent)">−1.0</text><text x="420" y="148" font-weight="600">0.6</text></g>
+      </g>
+      <text x="560" y="96" text-anchor="middle" font-size="12" fill="var(--muted)">new = old</text><text x="560" y="114" text-anchor="middle" font-size="12" fill="var(--muted)">− 0.1 × gradient</text>
+      <g font-size="13" fill="var(--fg)"><text x="40" y="196">loss before</text><text x="40" y="226">after one step</text></g>
+      <rect class="grow-x" style="--d:4" x="160" y="183" width="300" height="18" rx="4" fill="var(--warn)"/>
+      <rect class="grow-x" style="--d:5" x="160" y="213" width="48" height="18" rx="4" fill="var(--good)"/>
+      <g font-size="13" font-weight="600" fill="var(--fg)"><text x="470" y="197">0.500</text><text x="218" y="227">0.080</text></g>
+    </svg>
+    <p>Step every parameter against its gradient with learning rate 0.1. The prediction moves from 2.0 to 3.4, and the loss drops from 0.50 to 0.08. It slightly overshoots the target of 3; the next step corrects it. Forward pass, backward pass, step, repeat: that loop, run trillions of times, is how every network in this guide was trained.</p>
+  </div>
+</div>
+
+<h3>Backpropagation: the chain rule, layer by layer</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Passing blame back down the line</span></div>
+  <p>A restaurant dish comes out too salty. The head chef asks the sauce cook, who asks the person who made the stock. Each person only needs to know how much their part contributed to the part after them; multiply those shares along the line and you know how much each person contributed to the final saltiness. Nobody has to taste every combination.</p>
+  <p><b>Backpropagation</b> does that for a network. After a forward pass, it starts at the loss and walks backward through the layers, passing along "how much did you contribute to the error?" Each layer multiplies by its own local share and passes the result back. At the end every weight knows which way to move.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What it costs, and where it breaks</span></div>
+  <p>Nobody writes backprop by hand anymore: frameworks like PyTorch and JAX record the forward pass and generate the backward pass automatically (automatic differentiation). What leaders need is its cost profile:</p>
+  <ul>
+    <li><b>Compute:</b> about two forward passes' worth, so a training step costs about three forward passes.</li>
+    <li><b>Memory:</b> the backward pass needs the intermediate values from the forward pass, so training must store them. For long contexts that storage, not the weights, often dominates memory. Activation checkpointing trades extra compute (recomputing them) for memory; see <a href="#optimization">optimisation</a>.</li>
+    <li><b>Failure modes:</b> multiplying many slopes in a row can shrink gradients to nothing (vanishing) or blow them up (exploding). Residual connections, normalization layers and careful initialization exist largely to keep that product well behaved across a hundred layers; see <a href="#architecture">architecture</a>.</li>
+  </ul>
+  <div class="callout note"><span class="tag">Note</span><div>When a training run produces NaNs, the cause is almost always in this chain: an exploding gradient, a division by a tiny number in a normalization layer, or a low-precision overflow. Good runs log gradient norms per layer so the first bad layer can be found.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The worked example, then the general rule</span></div>
+  <p>The story's network: \(z = w_1 x + b_1\), \(h = \mathrm{ReLU}(z)\), \(y = w_2 h + b_2\), \(\mathcal{L} = \tfrac12 (y - t)^2\), with \(x = 2\), \(t = 3\), \(w_1 = 0.5\), \(b_1 = 0\), \(w_2 = 1.5\), \(b_2 = 0.5\).</p>
+  <div class="tw"><table>
+  <thead><tr><th>Forward</th><th>Value</th><th>Backward (chain rule)</th><th>Value</th></tr></thead>
+  <tbody>
+  <tr><td>\(z = w_1 x + b_1\)</td><td class="n">1.0</td><td>\(\partial\mathcal{L}/\partial y = y - t\)</td><td class="n">−1.0</td></tr>
+  <tr><td>\(h = \max(0, z)\)</td><td class="n">1.0</td><td>\(\partial\mathcal{L}/\partial w_2 = (\partial\mathcal{L}/\partial y)\, h\)</td><td class="n">−1.0</td></tr>
+  <tr><td>\(y = w_2 h + b_2\)</td><td class="n">2.0</td><td>\(\partial\mathcal{L}/\partial h = (\partial\mathcal{L}/\partial y)\, w_2\)</td><td class="n">−1.5</td></tr>
+  <tr><td>\(\mathcal{L} = \tfrac12(y-t)^2\)</td><td class="n">0.5</td><td>\(\partial\mathcal{L}/\partial z = (\partial\mathcal{L}/\partial h)\, \mathbb{1}[z &gt; 0]\)</td><td class="n">−1.5</td></tr>
+  <tr><td></td><td></td><td>\(\partial\mathcal{L}/\partial w_1 = (\partial\mathcal{L}/\partial z)\, x\)</td><td class="n">−3.0</td></tr>
+  </tbody></table></div>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>x, t = 2.0, 3.0                 # one input, one target
+w1, b1, w2, b2 = 0.5, 0.0, 1.5, 0.5
+lr = 0.1
+
+def forward(w1, b1, w2, b2):
+    z = w1 * x + b1             # hidden pre-activation
+    h = max(z, 0.0)             # ReLU
+    y = w2 * h + b2             # output
+    loss = 0.5 * (y - t) ** 2   # squared error
+    return z, h, y, loss
+
+z, h, y, loss = forward(w1, b1, w2, b2)
+print(f"forward: z={z:.2f} h={h:.2f} y={y:.2f} loss={loss:.3f}")
+
+# Backward: start at the loss and multiply local slopes going left.
+dy = y - t                      # dL/dy
+dw2, db2 = dy * h, dy           # y = w2*h + b2
+dh = dy * w2                    # pass blame back through w2
+dz = dh * (1.0 if z &gt; 0 else 0.0)   # ReLU passes gradient only if it was on
+dw1, db1 = dz * x, dz           # z = w1*x + b1
+print(f"grads: dw1={dw1:.2f} db1={db1:.2f} dw2={dw2:.2f} db2={db2:.2f}")
+
+# Check one gradient by nudging the weight and re-measuring the loss.
+eps = 1e-6
+num = (forward(w1 + eps, b1, w2, b2)[3] - forward(w1 - eps, b1, w2, b2)[3]) / (2 * eps)
+print(f"numeric dw1={num:.2f}")
+
+w1, b1, w2, b2 = w1 - lr * dw1, b1 - lr * db1, w2 - lr * dw2, b2 - lr * db2
+print(f"after one step: loss={forward(w1, b1, w2, b2)[3]:.3f}")
+# forward: z=1.00 h=1.00 y=2.00 loss=0.500
+# grads: dw1=-3.00 db1=-1.50 dw2=-1.00 db2=-1.00
+# numeric dw1=-3.00
+# after one step: loss=0.080</code></pre>
+<pre class="code" data-lang="rust"><code>const X: f64 = 2.0; // one input
+const T: f64 = 3.0; // one target
+
+/// Returns (z, h, y, loss).
+fn forward(w1: f64, b1: f64, w2: f64, b2: f64) -&gt; (f64, f64, f64, f64) {
+    let z = w1 * X + b1; // hidden pre-activation
+    let h = z.max(0.0); // ReLU
+    let y = w2 * h + b2; // output
+    let loss = 0.5 * (y - T).powi(2); // squared error
+    (z, h, y, loss)
+}
+
+fn main() {
+    let (mut w1, mut b1, mut w2, mut b2) = (0.5, 0.0, 1.5, 0.5);
+    let lr = 0.1;
+
+    let (z, h, y, loss) = forward(w1, b1, w2, b2);
+    println!("forward: z={:.2} h={:.2} y={:.2} loss={:.3}", z, h, y, loss);
+
+    // Backward: start at the loss and multiply local slopes going left.
+    let dy = y - T; // dL/dy
+    let (dw2, db2) = (dy * h, dy); // y = w2*h + b2
+    let dh = dy * w2; // pass blame back through w2
+    let dz = dh * if z &gt; 0.0 { 1.0 } else { 0.0 }; // ReLU passes gradient only if it was on
+    let (dw1, db1) = (dz * X, dz); // z = w1*x + b1
+    println!("grads: dw1={:.2} db1={:.2} dw2={:.2} db2={:.2}", dw1, db1, dw2, db2);
+
+    // Check one gradient by nudging the weight and re-measuring the loss.
+    let eps = 1e-6;
+    let num = (forward(w1 + eps, b1, w2, b2).3 - forward(w1 - eps, b1, w2, b2).3) / (2.0 * eps);
+    println!("numeric dw1={:.2}", num);
+
+    w1 -= lr * dw1;
+    b1 -= lr * db1;
+    w2 -= lr * dw2;
+    b2 -= lr * db2;
+    println!("after one step: loss={:.3}", forward(w1, b1, w2, b2).3);
+    // forward: z=1.00 h=1.00 y=2.00 loss=0.500
+    // grads: dw1=-3.00 db1=-1.50 dw2=-1.00 db2=-1.00
+    // numeric dw1=-3.00
+    // after one step: loss=0.080
+}</code></pre>
+</div>
+  <p><b>The general rule.</b> For a layer \(\mathbf{h}^{(\ell)} = \phi(\mathbf{z}^{(\ell)})\) with \(\mathbf{z}^{(\ell)} = W^{(\ell)}\mathbf{h}^{(\ell-1)} + \mathbf{b}^{(\ell)}\), write \(\boldsymbol{\delta}^{(\ell)} = \partial\mathcal{L}/\partial\mathbf{z}^{(\ell)}\). Backprop is three lines, applied from the last layer down:</p>
+  <div class="eq">\[ \frac{\partial\mathcal{L}}{\partial W^{(\ell)}} = \boldsymbol{\delta}^{(\ell)}\,\mathbf{h}^{(\ell-1)\top}, \qquad \frac{\partial\mathcal{L}}{\partial \mathbf{b}^{(\ell)}} = \boldsymbol{\delta}^{(\ell)}, \qquad \boldsymbol{\delta}^{(\ell-1)} = \big(W^{(\ell)\top}\boldsymbol{\delta}^{(\ell)}\big) \odot \phi'\big(\mathbf{z}^{(\ell-1)}\big) \]<span class="eqcap">The first two give the gradients for this layer; the third passes blame one layer down. Each needs only values stored during the forward pass. Rumelhart, Hinton and Williams (1986) popularized the method for neural networks; it is reverse-mode automatic differentiation.</span></div>
+  <p>The third line also shows where gradients vanish or explode: \(\boldsymbol{\delta}\) is multiplied by \(W^\top\) and by \(\phi'\) at every layer. With sigmoid, \(\phi' \le 0.25\), so twenty layers can shrink it by \(0.25^{20} \approx 10^{-12}\). Residual connections add an identity path, \(\mathbf{h}^{(\ell)} = \mathbf{h}^{(\ell-1)} + F(\mathbf{h}^{(\ell-1)})\), whose derivative includes a plain "+1", so blame can travel the whole depth undiminished.</p>
+</div>
+
+<div class="callout key"><span class="tag">Key idea</span><div>Learning is a loop: forward pass to get the loss, backward pass to get every gradient at once, a small step against the gradient, repeat. Local minima matter less than one-dimensional pictures suggest because, in billions of dimensions, most flat spots are saddles and most minima are about equally good. What actually goes wrong in practice is step size, plateaus, and instability, which is why <a href="#optimization">optimisation</a> is its own chapter.</div></div>
+</section>
