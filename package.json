@@ -9,6 +9,8 @@
   "dependencies": {
     "@fontsource/atkinson-hyperlegible": "^5.1.0",
     "@fontsource/bricolage-grotesque": "^5.1.0",
+    "@fontsource/geist-mono": "^5.1.0",
+    "@fontsource/geist-sans": "^5.1.0",
     "@fontsource/jetbrains-mono": "^5.1.0",
     "highlight.js": "^11.10.0",
     "mathjax-full": "^3.2.2"

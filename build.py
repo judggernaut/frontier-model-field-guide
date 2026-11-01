@@ -36,13 +36,12 @@ def b64(path, mime):
 def fonts_css():
     fs = os.path.join(ROOT, 'node_modules', '@fontsource')
     faces = [
-        ('Bricolage Grotesque', 'bricolage-grotesque/files/bricolage-grotesque-latin-500-normal.woff2', 500, 'normal'),
-        ('Bricolage Grotesque', 'bricolage-grotesque/files/bricolage-grotesque-latin-700-normal.woff2', 700, 'normal'),
-        ('Atkinson Hyperlegible', 'atkinson-hyperlegible/files/atkinson-hyperlegible-latin-400-normal.woff2', 400, 'normal'),
-        ('Atkinson Hyperlegible', 'atkinson-hyperlegible/files/atkinson-hyperlegible-latin-400-italic.woff2', 400, 'italic'),
-        ('Atkinson Hyperlegible', 'atkinson-hyperlegible/files/atkinson-hyperlegible-latin-700-normal.woff2', 700, 'normal'),
-        ('JetBrains Mono', 'jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2', 400, 'normal'),
-        ('JetBrains Mono', 'jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2', 500, 'normal'),
+        ('Geist', 'geist-sans/files/geist-sans-latin-400-normal.woff2', 400, 'normal'),
+        ('Geist', 'geist-sans/files/geist-sans-latin-500-normal.woff2', 500, 'normal'),
+        ('Geist', 'geist-sans/files/geist-sans-latin-600-normal.woff2', 600, 'normal'),
+        ('Geist', 'geist-sans/files/geist-sans-latin-700-normal.woff2', 700, 'normal'),
+        ('Geist Mono', 'geist-mono/files/geist-mono-latin-400-normal.woff2', 400, 'normal'),
+        ('Geist Mono', 'geist-mono/files/geist-mono-latin-500-normal.woff2', 500, 'normal'),
     ]
     out = []
     for fam, f, w, st in faces:
@@ -114,12 +113,13 @@ def main(pdf=False):
 
     hero = read(os.path.join(SRC, 'hero.html')) if os.path.exists(os.path.join(SRC, 'hero.html')) else ''
     page = f'''<div class="topbar">
-  <a class="brand" href="#top">{TITLE}</a>
-  <select id="jp" aria-label="Jump to chapter"><option value="top">Top</option>{''.join(opts)}</select>
-  <div class="layers" role="group" aria-label="Show layers">
-    <button data-layer="all" aria-pressed="true">All</button><button data-layer="eli5" aria-pressed="false">Plain</button><button data-layer="lead" aria-pressed="false">Leader</button><button data-layer="deep" aria-pressed="false">Deep</button>
+  <a class="brand" href="#top"><span class="logo">FM</span><span class="bt">{TITLE}</span></a>
+  <div class="grow"><button class="searchbtn" id="searchbtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span class="t">Search the guide…</span><kbd>⌘K</kbd></button></div>
+  <select id="jp" aria-hidden="true" tabindex="-1"><option value="top">Top</option>{''.join(opts)}</select>
+  <div class="layers" role="group" aria-label="Reading depth">
+    <button data-layer="eli5" aria-pressed="true"><i style="background:var(--eli5)"></i>Plain</button><button data-layer="lead" aria-pressed="false"><i style="background:var(--lead)"></i>Leader</button><button data-layer="deep" aria-pressed="false"><i style="background:var(--deep)"></i>Deep</button><button data-layer="all" aria-pressed="false">All</button>
   </div>
-  <button class="tbtn" id="tt" aria-label="Toggle dark mode">Theme</button>
+  <button class="iconbtn" id="tt" type="button" aria-label="Toggle dark mode"></button>
   <div class="progress"><div id="pf"></div></div>
 </div>
 <div class="wrap">

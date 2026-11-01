@@ -94,3 +94,26 @@ Palette tokens: `fg muted faint line bg surface sunk accent tp fp fn tn roc pr e
 - Tie training topics back to evaluation with at least one `callout eval` per chapter.
 - Accuracy matters more than breadth. When citing a number from the literature, name the source (paper and year). When a number is illustrative, say so.
 - Remove anything specific to one person's job history or interview. This guide is general.
+
+## Visual stories (step-through diagrams)
+
+The guide's main visual device. A story is a short sequence of SVG pictures, each with a one or two sentence caption, that walks a reader through an idea using an everyday example (mail sorting, a bakery, a sports scout, a GPS, exam grading). ui.js turns it into a card with Back / Next / Play and progress dots. The PDF prints every step.
+
+```html
+<div class="story" id="st-sft-apprentice">
+  <div class="story-head"><div class="story-title">From well-read to well-mannered</div><p class="story-sub">How fine-tuning changes behaviour, told as a new hire's first month.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Short description of the picture">
+      <g class="a" style="--d:0"> …shapes… </g>          <!-- class="a" fades/rises in; --d sets order (180ms steps) -->
+      <rect class="grow-x" style="--d:2" …/>               <!-- grows from the left, for bars -->
+      <path class="dash" …/>                                <!-- marching-ants line, for flows -->
+      <circle class="pulse" …/>                             <!-- gentle pulse, for "look here" -->
+      <text x="320" y="240" text-anchor="middle" font-size="14" fill="var(--fg)">Label</text>
+    </svg>
+    <p>Caption: what this picture shows and why it matters, in plain words.</p>
+  </div>
+  …3 to 7 steps…
+</div>
+```
+
+Rules: viewBox 640 wide (height 220–300). Colours only through CSS variables in attributes (`fill="var(--accent)"`, `stroke="var(--line-strong)"`), using the palette tokens (`fg muted faint line line-strong surface sunk accent accent-soft tp fp fn tn eli5 eli5-soft lead lead-soft deep deep-soft good good-soft warn warn-soft`). Text at least 12px, never touching shapes, inside the viewBox. Each step adds one idea; the last step lands the takeaway. Use real-feeling numbers. No external images.
