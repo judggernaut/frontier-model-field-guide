@@ -2,13 +2,70 @@
 <h2>How to use this guide</h2>
 <p>This guide follows one idea from end to end: you cannot improve what you cannot measure, and you cannot trust a measurement you do not understand. Part I gives you the statistics. Part II turns that into model evaluation. Part III explains how models are trained, always connecting back to how you would measure whether the training worked. Part IV is about leading that work.</p>
 
+<div class="story" id="st-welcome">
+  <div class="story-head"><div class="story-title">The whole guide in one kitchen</div><p class="story-sub">Five pictures. Press Next, or Play to watch.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="A cook stirs a pot while a taster waits with a spoon">
+      <g class="a" style="--d:0"><rect x="120" y="120" width="150" height="80" rx="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><ellipse cx="195" cy="120" rx="75" ry="14" fill="var(--accent-soft)" stroke="var(--line-strong)" stroke-width="2"/><path d="M185 60 Q200 85 190 118" stroke="var(--muted)" stroke-width="5" fill="none" stroke-linecap="round"/></g>
+      <g class="a" style="--d:1"><circle cx="195" cy="40" r="20" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="195" y="230" text-anchor="middle" font-size="15" font-weight="600" fill="var(--lead)">The cook = training</text></g>
+      <g class="a" style="--d:2"><circle cx="450" cy="70" r="22" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><rect x="420" y="98" width="60" height="70" rx="12" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><path d="M480 120 L530 100" stroke="var(--eli5)" stroke-width="4" stroke-linecap="round"/><ellipse cx="536" cy="98" rx="10" ry="6" fill="var(--eli5)"/><text x="450" y="230" text-anchor="middle" font-size="15" font-weight="600" fill="var(--eli5)">The taster = evaluation</text></g>
+    </svg>
+    <p>Making a model is cooking: you choose ingredients (data), a recipe (the training method), and how long to cook (compute). Checking the model is tasting. Part III is the cooking. Part II is the tasting.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="One spoonful gives one verdict">
+      <rect x="120" y="120" width="150" height="80" rx="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><ellipse cx="195" cy="120" rx="75" ry="14" fill="var(--accent-soft)" stroke="var(--line-strong)" stroke-width="2"/>
+      <g class="a" style="--d:0"><path d="M270 110 C340 60 380 60 420 90" stroke="var(--faint)" stroke-width="2" fill="none" class="dash"/><ellipse cx="430" cy="95" rx="14" ry="8" fill="var(--eli5)"/></g>
+      <g class="a" style="--d:2"><rect x="455" y="60" width="150" height="64" rx="12" fill="var(--surface)" stroke="var(--line-strong)"/><text x="530" y="88" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">"Too salty!"</text><text x="530" y="108" text-anchor="middle" font-size="12" fill="var(--muted)">from one spoonful</text></g>
+      <text x="320" y="230" text-anchor="middle" font-size="15" fill="var(--fg)" class="a" style="--d:3">One spoonful might have landed on a salt clump.</text>
+    </svg>
+    <p>One taste is one sample. It might be unlucky. Part I is about how much a handful of samples can and cannot tell you.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Many spoonfuls form a spread of verdicts">
+      <line x1="80" y1="190" x2="560" y2="190" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="80" y="215" font-size="12" fill="var(--muted)">bland</text><text x="560" y="215" font-size="12" text-anchor="end" fill="var(--muted)">salty</text>
+      <g fill="var(--eli5)">
+        <circle class="a" style="--d:0" cx="300" cy="180" r="9"/><circle class="a" style="--d:1" cx="320" cy="180" r="9"/><circle class="a" style="--d:1" cx="320" cy="160" r="9"/>
+        <circle class="a" style="--d:2" cx="280" cy="180" r="9"/><circle class="a" style="--d:2" cx="340" cy="180" r="9"/><circle class="a" style="--d:3" cx="300" cy="160" r="9"/>
+        <circle class="a" style="--d:3" cx="320" cy="140" r="9"/><circle class="a" style="--d:4" cx="260" cy="180" r="9"/><circle class="a" style="--d:4" cx="360" cy="180" r="9"/>
+        <circle class="a" style="--d:5" cx="340" cy="160" r="9"/><circle class="a" style="--d:5" cx="460" cy="180" r="9" fill="var(--fp)"/>
+      </g>
+      <text class="a" style="--d:6" x="460" y="150" text-anchor="middle" font-size="13" fill="var(--fp)">the salt clump</text>
+      <text class="a" style="--d:6" x="320" y="105" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Most spoonfuls say "just right"</text>
+    </svg>
+    <p>Taste twenty spoonfuls and a shape appears. The shape is a distribution. With it you can say "just right, give or take a little", which is what a confidence interval says about a model's score.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="A cook who only pleases one taster adds sugar to everything">
+      <circle cx="160" cy="70" r="22" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/>
+      <g class="a" style="--d:0"><rect x="110" y="110" width="100" height="60" rx="8" fill="var(--sunk)" stroke="var(--line-strong)"/><text x="160" y="146" text-anchor="middle" font-size="13" fill="var(--fg)">+ sugar</text></g>
+      <g class="a" style="--d:1"><rect x="230" y="110" width="100" height="60" rx="8" fill="var(--sunk)" stroke="var(--line-strong)"/><text x="280" y="146" text-anchor="middle" font-size="13" fill="var(--fg)">+ more sugar</text></g>
+      <g class="a" style="--d:2"><circle cx="470" cy="70" r="22" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><text x="470" y="125" text-anchor="middle" font-size="15" font-weight="600" fill="var(--good)">Taster: 10 / 10</text></g>
+      <g class="a" style="--d:4"><text x="470" y="160" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fp)">Diners: too sweet</text></g>
+      <text class="a" style="--d:5" x="320" y="225" text-anchor="middle" font-size="14" fill="var(--muted)">When a score becomes the target, it stops measuring what you wanted.</text>
+    </svg>
+    <p>If the cook learns that one taster loves sugar, every dish gets sweeter and the taster's score climbs while real diners suffer. In model training this is reward hacking, and it is why evaluation and training have to be designed together (Part IV).</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Map of the four parts">
+      <g class="a" style="--d:0"><rect x="30" y="60" width="135" height="110" rx="12" fill="var(--eli5-soft)" stroke="var(--eli5)"/><text x="97" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--eli5)">Part I</text><text x="97" y="120" text-anchor="middle" font-size="13" fill="var(--fg)">How spoonfuls</text><text x="97" y="138" text-anchor="middle" font-size="13" fill="var(--fg)">behave</text></g>
+      <g class="a" style="--d:1"><rect x="180" y="60" width="135" height="110" rx="12" fill="var(--good-soft)" stroke="var(--good)"/><text x="247" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--good)">Part II</text><text x="247" y="120" text-anchor="middle" font-size="13" fill="var(--fg)">Tasting</text><text x="247" y="138" text-anchor="middle" font-size="13" fill="var(--fg)">fairly</text></g>
+      <g class="a" style="--d:2"><rect x="330" y="60" width="135" height="110" rx="12" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="397" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--lead)">Part III</text><text x="397" y="120" text-anchor="middle" font-size="13" fill="var(--fg)">Cooking:</text><text x="397" y="138" text-anchor="middle" font-size="13" fill="var(--fg)">training</text></g>
+      <g class="a" style="--d:3"><rect x="480" y="60" width="135" height="110" rx="12" fill="var(--deep-soft)" stroke="var(--deep)"/><text x="547" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="var(--deep)">Part IV</text><text x="547" y="120" text-anchor="middle" font-size="13" fill="var(--fg)">Running the</text><text x="547" y="138" text-anchor="middle" font-size="13" fill="var(--fg)">kitchen</text></g>
+      <text class="a" style="--d:4" x="320" y="215" text-anchor="middle" font-size="14" fill="var(--muted)">Each chapter picks its own everyday example, like this one.</text>
+    </svg>
+    <p>That is the map. Every chapter opens with a picture like this, using whatever everyday example fits best: mail sorting, exams, sports, shopping, maps.</p>
+  </div>
+</div>
+
 <h3>Three layers in every chapter</h3>
 <div class="four">
   <div class="tile"><h4 style="color:var(--eli5)">Plain words</h4><p>An analogy and the core idea, with no jargon and no formulas. Read this first, even if you think you know the topic.</p></div>
   <div class="tile"><h4 style="color:var(--lead)">For leaders</h4><p>What decision the idea informs, what it costs, how it fails, and the questions a senior reviewer asks. This is the layer for staff, principal, and partner conversations.</p></div>
   <div class="tile"><h4 style="color:var(--deep)">Under the hood</h4><p>The math, the derivations, and short runnable code. Enough to check someone's work, not just follow it.</p></div>
 </div>
-<p>Use the <b>All / Plain / Leader / Deep</b> switch in the top bar to read a single layer across the whole guide. A good first pass is Plain for everything, then Leader, then Deep for the chapters that matter to your work.</p>
+<p>Each topic shows its three depths as tabs. The <b>Plain / Leader / Deep</b> switch in the top bar flips every topic in the guide at once; <b>All</b> stacks them. A good first pass is Plain for everything, then Leader, then Deep for the chapters that matter to your work. Press <span class="kbd">⌘K</span> (or <span class="kbd">/</span>) to search chapters, topics, widgets, and glossary terms.</p>
 
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">What a layer looks like</span></div>
   <p>Imagine tasting soup to decide if it needs salt. One spoonful tells you something, but not everything. Evaluation is tasting the model. Training is cooking. This guide teaches both, and how to tell when one spoonful is lying to you.</p>
