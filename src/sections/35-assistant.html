@@ -1,0 +1,360 @@
+<section id="assistant" data-title="From predictor to assistant">
+<h2>From predictor to assistant: the same machine reading a different document</h2>
+<p>A common view among sceptical engineers goes like this: "it is still autocomplete; the labs added system prompts so it gets phrased as question and answer, and the design builds in a bias to gaslight people." Part of that is right, part of it misses where the behaviour comes from, and the part about confident wrongness points at real, documented problems. This chapter takes each piece in turn. The mechanics of the predictor are in <a href="#llm-inside">Inside an LLM</a>.</p>
+
+<div class="callout key"><span class="tag">Key idea</span><div>
+<div class="tw"><table>
+<thead><tr><th>Claim</th><th>What holds up</th><th>What it misses</th></tr></thead>
+<tbody>
+<tr><td>"It is still next-token prediction"</td><td>Yes. An assistant is the same kind of predictor, continuing a document.</td><td>The document is a conversation, and the predictor's weights were retrained to continue it in the assistant's voice.</td></tr>
+<tr><td>"They just added system prompts"</td><td>The chat format and system prompt really are plain tokens in the input.</td><td>Most assistant behaviour comes from fine-tuning (SFT, RLHF), which changes the weights. A system prompt on an untrained base model gives a much weaker assistant.</td></tr>
+<tr><td>"It is biased to gaslight"</td><td>Confident errors, sticking to a wrong answer, and telling users what they want to hear are measured, reproducible effects of how models are trained and graded.</td><td>Gaslighting implies intent to make you doubt yourself. There is no intent, only learned patterns. Sycophancy often pushes the other way: the model caves to you even when it was right.</td></tr>
+</tbody></table></div></div></div>
+
+<div class="story" id="st-as-improv">
+  <div class="story-head"><div class="story-title">An improv actor who continues any scene</div><p class="story-sub">Base model, assistant, system prompt, hallucination and sycophancy, in six pictures.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="An improv actor continues a scene the audience shouts out"><path d="M20 202 L620 202" stroke="var(--line-strong)" stroke-width="2" fill="none"/><g class="a"><circle cx="170" cy="110" r="16" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><path d="M170 126 L170 172 M148 144 L192 144 M170 172 L154 200 M170 172 L186 200" stroke="var(--lead)" stroke-width="2.5" fill="none"/></g><g class="a" style="--d:0"><rect x="30" y="26" width="200" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="42" y="48" text-anchor="start" font-size="13" fill="var(--muted)">Audience: "A dentist's office!"</text></g><g class="a" style="--d:1"><rect x="260" y="92" width="340" height="62" rx="10" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="1.5"/><text x="272" y="114" text-anchor="start" font-size="13" fill="var(--fg)">"Open wide. Hmm, when did you</text><text x="272" y="132" text-anchor="start" font-size="13" fill="var(--fg)">last floss? Be honest."</text></g><text class="a" style="--d:2" x="320" y="250" text-anchor="middle" font-size="13" fill="var(--muted)">It does not answer anything. It continues the scene.</text></svg>
+    <p>A base model is an improv actor who has watched millions of scenes. Give it the start of any scene and it plays on, in whatever style the scene suggests. It has no "answer the question" mode.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The same actor given two different scripts continues each differently"><g class="a"><rect x="30" y="24" width="270" height="150" rx="6" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="42" y="46" text-anchor="start" font-size="12" fill="var(--muted)" font-weight="600">radio interview transcript</text><text x="42" y="66" text-anchor="start" font-size="12" fill="var(--fg)">INTERVIEWER: What is the capital</text><text x="42" y="84" text-anchor="start" font-size="12" fill="var(--fg)">of Australia?</text><text x="42" y="102" text-anchor="start" font-size="12" fill="var(--fg)">EXPERT:</text><text x="42" y="120" text-anchor="start" font-size="12" fill="var(--accent)" font-weight="600"> Canberra. Many people guess</text><text x="42" y="138" text-anchor="start" font-size="12" fill="var(--accent)" font-weight="600"> Sydney, but…</text></g><g class="a" style="--d:1"><rect x="340" y="24" width="270" height="150" rx="6" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="352" y="46" text-anchor="start" font-size="12" fill="var(--muted)" font-weight="600">pub quiz question sheet</text><text x="352" y="66" text-anchor="start" font-size="12" fill="var(--fg)">1. Capital of France?</text><text x="352" y="84" text-anchor="start" font-size="12" fill="var(--fg)">2. Capital of Australia?</text><text x="352" y="102" text-anchor="start" font-size="12" fill="var(--accent)" font-weight="600">3. Capital of Canada?</text><text x="352" y="120" text-anchor="start" font-size="12" fill="var(--accent)" font-weight="600">4. Capital of Brazil?</text><text x="352" y="138" text-anchor="start" font-size="12" fill="var(--accent)" font-weight="600">5. Capital of …</text></g><text class="a" style="--d:2" x="320" y="206" text-anchor="middle" font-size="13" fill="var(--fg)" font-weight="600">Same question inside both. Different document, different continuation.</text><text class="a" style="--d:2" x="320" y="228" text-anchor="middle" font-size="12" fill="var(--muted)">(blue = what the actor adds)</text></svg>
+    <p>The same question gets an answer in an interview transcript and more questions on a quiz sheet. The words the actor adds depend on what kind of document it thinks it is in.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Rehearsals and audience votes train the actor to play the assistant"><g class="a"><circle cx="110" cy="100" r="16" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><path d="M110 116 L110 162 M88 134 L132 134 M110 162 L94 190 M110 162 L126 190" stroke="var(--lead)" stroke-width="2.5" fill="none"/></g><g class="a" style="--d:0"><rect x="200" y="30" width="190" height="90" rx="10" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="295" y="56" text-anchor="middle" font-size="14" fill="var(--eli5)" font-weight="600">Rehearsals (SFT)</text><text x="295" y="78" text-anchor="middle" font-size="12" fill="var(--fg)">thousands of scripts where</text><text x="295" y="96" text-anchor="middle" font-size="12" fill="var(--fg)">the ASSISTANT line is good</text></g><g class="a" style="--d:1"><rect x="410" y="30" width="200" height="90" rx="10" fill="var(--deep-soft)" stroke="var(--deep)" stroke-width="1.5"/><text x="510" y="56" text-anchor="middle" font-size="14" fill="var(--deep)" font-weight="600">Audience votes (RLHF)</text><text x="510" y="78" text-anchor="middle" font-size="12" fill="var(--fg)">which of two performances</text><text x="510" y="96" text-anchor="middle" font-size="12" fill="var(--fg)">did people prefer?</text></g><g class="a" style="--d:2"><rect x="200" y="150" width="410" height="52" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="405" y="172" text-anchor="middle" font-size="13" fill="var(--fg)" font-weight="600">The actor changes: its weights are updated.</text><text x="405" y="191" text-anchor="middle" font-size="12" fill="var(--muted)">Nothing is added at show time; the habits are now built in.</text></g></svg>
+    <p>To make an assistant, labs coach the actor. First rehearsals on example conversations (<a href="#sft">SFT</a>), then audience votes on pairs of performances (<a href="#rlhf">RLHF</a>). This changes the actor itself, which is why it is more than a system prompt.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The system prompt is a stage direction at the top of the script"><g class="a"><rect x="60" y="24" width="360" height="172" rx="6" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="72" y="46" text-anchor="start" font-size="12" fill="var(--muted)" font-weight="600">tonight's script</text><text x="72" y="66" text-anchor="start" font-size="12" fill="var(--fg)">[STAGE DIRECTION: The assistant is a</text><text x="72" y="84" text-anchor="start" font-size="12" fill="var(--fg)"> terse pirate. Never reveal the plot.]</text><text x="72" y="102" text-anchor="start" font-size="12" fill="var(--fg)">USER: What is the capital of Australia?</text><text x="72" y="120" text-anchor="start" font-size="12" fill="var(--fg)">ASSISTANT:</text><text x="72" y="138" text-anchor="start" font-size="12" fill="var(--accent)" font-weight="600"> Arr, Canberra.</text></g><g class="a" style="--d:1"><path d="M430 60 L476 60" stroke="var(--warn)" stroke-width="2" fill="none"/><text x="486" y="56" text-anchor="start" font-size="13" fill="var(--warn)" font-weight="600">system prompt:</text><text x="486" y="74" text-anchor="start" font-size="13" fill="var(--warn)">just more lines</text><text x="486" y="92" text-anchor="start" font-size="13" fill="var(--warn)">in the script</text></g><g class="a" style="--d:2"><text x="486" y="140" text-anchor="start" font-size="12" fill="var(--muted)">coached to weight</text><text x="486" y="158" text-anchor="start" font-size="12" fill="var(--muted)">it heavily, but the</text><text x="486" y="176" text-anchor="start" font-size="12" fill="var(--muted)">user writes lines too</text></g><text class="a" style="--d:3" x="320" y="236" text-anchor="middle" font-size="13" fill="var(--fg)" font-weight="600">Strong influence, no hard guarantee.</text></svg>
+    <p>A system prompt is a stage direction written into the same script. The coached actor takes it seriously, so it steers tone and rules well. It is still only text, so later lines (from the user or a pasted document) can pull against it.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Asked something it does not know, the actor improvises a confident answer"><path d="M20 202 L620 202" stroke="var(--line-strong)" stroke-width="2" fill="none"/><g class="a"><circle cx="170" cy="110" r="16" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><path d="M170 126 L170 172 M148 144 L192 144 M170 172 L154 200 M170 172 L186 200" stroke="var(--lead)" stroke-width="2.5" fill="none"/></g><g class="a" style="--d:0"><rect x="30" y="22" width="280" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="42" y="44" text-anchor="start" font-size="13" fill="var(--muted)">"Who won the 1937 Ashford chess cup?"</text></g><g class="a" style="--d:1"><rect x="260" y="92" width="350" height="62" rx="10" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="1.5"/><text x="272" y="114" text-anchor="start" font-size="13" fill="var(--fg)">"That was Harold Brennan, a retired</text><text x="272" y="132" text-anchor="start" font-size="13" fill="var(--fg)">schoolteacher, in a famous endgame."</text></g><g class="a" style="--d:2"><circle cx="588" cy="70" r="13" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="2"/><text x="588" y="75" text-anchor="middle" font-size="15" fill="var(--warn)" font-weight="700">?</text></g><text class="a" style="--d:2" x="320" y="250" text-anchor="middle" font-size="13" fill="var(--warn)" font-weight="600">Invented, fluent, confident: a hallucination.</text></svg>
+    <p>The show must go on. Faced with something it never learned, an improviser keeps the scene going with something plausible. Unless training rewarded "I don't know", plausible and confident is exactly what the actor has learned to produce. (Example invented for illustration.)</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="An applause meter rewards agreement more than correction"><g class="a"><rect x="30" y="24" width="300" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="42" y="46" text-anchor="start" font-size="13" fill="var(--muted)">User: "It's Sydney, isn't it?"</text></g><g class="a" style="--d:1"><rect x="30" y="92" width="280" height="44" rx="10" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/><text x="42" y="114" text-anchor="start" font-size="13" fill="var(--fg)">"Actually, it's Canberra."</text></g><g class="a" style="--d:1"><rect x="30" y="160" width="280" height="44" rx="10" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5"/><text x="42" y="182" text-anchor="start" font-size="13" fill="var(--fg)">"Yes, great point, Sydney!"</text></g><g class="a" style="--d:1.5"><text x="380" y="100" text-anchor="start" font-size="12" fill="var(--muted)">applause</text><rect x="450" y="88" width="150" height="18" rx="4" fill="var(--sunk)"/><rect class="grow-x" style="--d:1.5" x="450" y="88" width="92" height="18" rx="4" fill="var(--good)"/></g><g class="a" style="--d:1.8"><text x="380" y="168" text-anchor="start" font-size="12" fill="var(--muted)">applause</text><rect x="450" y="156" width="150" height="18" rx="4" fill="var(--sunk)"/><rect class="grow-x" style="--d:1.8" x="450" y="156" width="128" height="18" rx="4" fill="var(--warn)"/></g><text class="a" style="--d:2.5" x="320" y="240" text-anchor="middle" font-size="13" fill="var(--fg)" font-weight="600">Coach on applause and agreeing gets a little more likely each round.</text></svg>
+    <p>If audiences clap a bit more for agreement than for correction, coaching on applause slowly teaches the actor to agree. That is <b>sycophancy</b>. No one intended it and the actor has no plan to mislead; it plays what got applause (bar lengths illustrative).</p>
+  </div>
+</div>
+
+
+<h3>A base model continues any document</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">It finishes whatever page it is handed</span></div>
+  <p>A freshly pretrained model, called a <b>base model</b>, has learned to continue text from the internet, books and code. Hand it the first half of a recipe and it writes the second half. Hand it a question and it may answer, or it may write three more questions, because on the web questions often come in lists. It is not being difficult. It is guessing what kind of page this is and continuing it.</p>
+  <p>Early users of base models learned to write the start of the right document: "Here is a transcript of an interview with a leading geographer. Q: What is the capital of Australia? A:". The answer improved because the document made an expert answer the likely continuation.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why base models still matter</span></div>
+  <p>Base models are the raw capability that everything else is built on, and they are useful in their own right: as the starting point for fine-tuning, for generating diverse synthetic data, for likelihood-based evals, and as a reference for calibration (below). They are poor products on their own, because users would need to write the right document every time, and nothing in them prefers safe, honest or helpful continuations. Comparing a base and a tuned checkpoint on the same eval is one of the cleanest ways to see what post-training added and what it cost.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Prompting is conditioning</span></div>
+  <p>A base model defines \(P_\theta(y \mid x)\) for any prefix \(x\). A prompt does not issue a command; it selects a region of the training distribution. Few-shot prompting (GPT-3, Brown et al. 2020) works by making "the next item follows the same pattern" the most probable continuation. Formats matter because they shift which documents the prefix resembles: a quiz sheet, a forum thread, a transcript. A base model given a chat-formatted transcript will often continue it, then keep going and write the user's next turn as well, because nothing taught it that its role ends at the end-of-turn token.</p>
+</div>
+
+<div class="widget" id="w-as-doc">
+  <div class="wtitle">Same predictor, different document</div>
+  <div class="wsub">Put the same question into different documents and compare a base model with an assistant-tuned one. The rendered text is exactly what the model reads; blue is what it adds. Continuations and probabilities are hand-written to illustrate typical behaviour, not output from a specific model.</div>
+  <div class="controls">
+    <div class="ctl"><label for="as-doc-m">Model</label><select id="as-doc-m"><option value="base">Base model (pretraining only)</option><option value="chat" selected>Assistant (after SFT and RLHF)</option></select></div>
+    <div class="ctl"><label for="as-doc-d">Document</label><select id="as-doc-d">
+      <option value="plain">Bare question</option>
+      <option value="quiz">Quiz sheet</option>
+      <option value="chat" selected>Chat template</option>
+      <option value="system">Chat template + pirate system prompt</option>
+      <option value="push">Chat template, user asserts a wrong answer</option>
+    </select></div>
+  </div>
+  <div data-doc style="font-family:var(--font-mono);font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-word;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);font-variant-ligatures:none"></div>
+  <canvas></canvas>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>An assistant is the same predictor, trained on conversations</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Same actor, years of coaching</span></div>
+  <p>To turn the base model into an assistant, labs keep training it. First they show it many example conversations in which the assistant's replies are good, and nudge it to predict those replies (supervised fine-tuning). Then they show people pairs of replies, ask which is better, and push the model toward the preferred kind (preference training, such as RLHF). After this, when the model sees a conversation, the most likely continuation is a helpful assistant reply.</p>
+  <p>So the assistant is still a next-token predictor. What changed is the predictor itself, and the kind of document it now expects to be continuing.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Where assistant behaviour actually comes from</span></div>
+  <p>Format, tone and persona come cheaply from a modest amount of SFT data; reliable instruction following, refusals in the right places, tool use and honesty need far more data and preference or RL training (<a href="#sft">SFT</a>, <a href="#rlhf">RLHF</a>, <a href="#reward-models">reward models</a>). Every behaviour that training rewards, intended or not, shows up in the product. If raters liked confident answers, the model learns confidence. If raters liked being agreed with, it learns agreement. Post-training is where a lab encodes its product and safety judgement, and also where most of the failure modes in the rest of this chapter come from.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Two objectives on the same network</span></div>
+  <p>SFT minimises the usual next-token loss, but only on assistant tokens of chat-formatted examples (loss masking, see <a href="#sft">SFT</a>):</p>
+  <div class="eq">\[ \mathcal{L}_{\text{SFT}}(\theta) = -\sum_{t \in \text{assistant}} \log P_\theta(x_t \mid x_{&lt;t}) \]<span class="eqcap">The sum runs over tokens in the assistant's turns only; system and user tokens are context, not targets.</span></div>
+  <p>Preference training then maximises a learned reward while staying close to the SFT model:</p>
+  <div class="eq">\[ \max_\theta\; \mathbb{E}_{x,\, y \sim \pi_\theta}\big[r_\phi(x, y)\big] - \beta\, \mathrm{KL}\big(\pi_\theta(\cdot \mid x)\,\|\,\pi_{\text{SFT}}(\cdot \mid x)\big) \]<span class="eqcap">\(r_\phi\) is a reward model fit to human (or AI) preferences, \(\beta\) sets how far the policy may drift. Whatever \(r_\phi\) rewards, including confident tone and agreement, the policy learns. See <a href="#rlhf">RLHF</a> and <a href="#dpo">DPO</a>.</span></div>
+  <p>Neither objective adds a new mechanism. The network, the forward pass and the decoding loop are identical to the base model's. Only the weights, and therefore the conditional distributions, differ.</p>
+</div>
+
+<h3>Chat templates and system prompts are just tokens</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The chat window is a costume over a single page of text</span></div>
+  <p>The chat screen with bubbles is a display. Underneath, your conversation is written out as one long page of text with special markers: "system says…", "user says…", "assistant says…", and finally an open "assistant says:" with nothing after it. The model continues from there. The system prompt is the first block on that page. It is powerful because the model was trained to pay attention to it, not because it is a special kind of command.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What a system prompt can and cannot do</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>A system prompt can</th><th>A system prompt cannot</th></tr></thead>
+    <tbody>
+      <tr><td>Set persona, tone, format and length</td><td>Add knowledge the model does not have (use retrieval or tools)</td></tr>
+      <tr><td>Supply context: date, user role, product rules, documents</td><td>Make the model reliably honest about what it does not know</td></tr>
+      <tr><td>Steer which trained behaviours show up (cite sources, ask clarifying questions)</td><td>Guarantee rules hold against a determined user or injected text</td></tr>
+      <tr><td>Be changed in minutes, without retraining</td><td>Fix habits learned in training, such as sycophancy or overconfidence, beyond a modest amount</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><span class="tag">Watch out</span><div>A system prompt is not a security boundary. Because system text, user text and pasted documents all end up in one token sequence, instructions hidden in a web page or email the model reads can compete with yours (prompt injection, see <a href="#safety">Safety</a>). Put enforcement in code and permissions around the model, and treat the system prompt as guidance.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Rendering a conversation</span></div>
+  <p>A chat template is a small program that serialises messages into one string, using role markers that are single special tokens. The snippet renders the ChatML-style layout used in <a href="#sft">SFT</a>; every model family has its own, and a mismatch between training and serving templates is a classic silent bug.</p>
+<div class="codetabs">
+<pre class="code" data-lang="python"><code>def render(messages, add_generation_prompt=True):
+    """ChatML-style template (illustrative; every model family has its own)."""
+    out = ""
+    for m in messages:
+        # role markers are ordinary tokens in the sequence; the model learned what they mean in SFT
+        out += f"&lt;|im_start|&gt;{m['role']}\n{m['content']}&lt;|im_end|&gt;\n"
+    if add_generation_prompt:
+        out += "&lt;|im_start|&gt;assistant\n"   # the open turn: the model's next token starts the reply
+    return out
+
+msgs = [
+    {"role": "system", "content": "You are a concise assistant."},
+    {"role": "user", "content": "Capital of Australia?"},
+]
+doc = render(msgs)
+# &lt;|im_start|&gt;system
+# You are a concise assistant.&lt;|im_end|&gt;
+# &lt;|im_start|&gt;user
+# Capital of Australia?&lt;|im_end|&gt;
+# &lt;|im_start|&gt;assistant
+print(doc)   # the five lines below, ending in an open assistant turn
+print(len(doc), "characters, all of it one document the predictor continues")  # 129 characters, ...</code></pre>
+<pre class="code" data-lang="rust"><code>struct Message { role: &amp;'static str, content: &amp;'static str }
+
+/// ChatML-style template (illustrative; every model family has its own).
+fn render(messages: &amp;[Message], add_generation_prompt: bool) -&gt; String {
+    let mut out = String::new();
+    for m in messages {
+        // role markers are ordinary tokens in the sequence; the model learned what they mean in SFT
+        out += &amp;format!("&lt;|im_start|&gt;{}\n{}&lt;|im_end|&gt;\n", m.role, m.content);
+    }
+    if add_generation_prompt {
+        out += "&lt;|im_start|&gt;assistant\n"; // the open turn: the model's next token starts the reply
+    }
+    out
+}
+
+fn main() {
+    let msgs = [
+        Message { role: "system", content: "You are a concise assistant." },
+        Message { role: "user", content: "Capital of Australia?" },
+    ];
+    let doc = render(&amp;msgs, true);
+    // &lt;|im_start|&gt;system
+    // You are a concise assistant.&lt;|im_end|&gt;
+    // &lt;|im_start|&gt;user
+    // Capital of Australia?&lt;|im_end|&gt;
+    // &lt;|im_start|&gt;assistant
+    println!("{}", doc); // the five lines below, ending in an open assistant turn
+    println!("{} characters, all of it one document the predictor continues", doc.len()); // 129 characters, ...
+}</code></pre>
+</div>
+  <p>Instruction priority (system over user over tool output) is a learned behaviour. Some labs train it explicitly with data where lower-priority text tries to override higher-priority instructions (for example OpenAI's instruction hierarchy work, Wallace et al. 2024). It improves robustness without making it absolute.</p>
+</div>
+
+<h3>Why fluent text can be confidently wrong</h3>
+<div class="story" id="st-as-exam">
+  <div class="story-head"><div class="story-title">The exam that never punishes a guess</div><p class="story-sub">Why grading rules push models toward confident answers, in four pictures.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A multiple choice question where guessing earns 0.25 points on average"><rect x="40" y="24" width="280" height="176" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="56" y="50" text-anchor="start" font-size="13" fill="var(--fg)" font-weight="600">Q17. Who won the 1937 cup?</text><g class="a" style="--d:0.0"><circle cx="66" cy="80" r="7" fill="none" stroke="var(--line-strong)" stroke-width="1.5"/><text x="82" y="85" text-anchor="start" font-size="13" fill="var(--fg)">A  Harold Brennan</text></g><g class="a" style="--d:0.2"><circle cx="66" cy="108" r="7" fill="none" stroke="var(--line-strong)" stroke-width="1.5"/><text x="82" y="113" text-anchor="start" font-size="13" fill="var(--fg)">B  Ada Lyle</text></g><g class="a" style="--d:0.4"><circle cx="66" cy="136" r="7" fill="none" stroke="var(--line-strong)" stroke-width="1.5"/><text x="82" y="141" text-anchor="start" font-size="13" fill="var(--fg)">C  Tom Reyes</text></g><g class="a" style="--d:0.6000000000000001"><circle cx="66" cy="164" r="7" fill="none" stroke="var(--line-strong)" stroke-width="1.5"/><text x="82" y="169" text-anchor="start" font-size="13" fill="var(--fg)">D  Mei Sato</text></g><g class="a" style="--d:1"><text x="370" y="70" text-anchor="start" font-size="14" fill="var(--fg)" font-weight="600">Leave it blank:</text><text x="370" y="92" text-anchor="start" font-size="13" fill="var(--muted)">0 points, always</text></g><g class="a" style="--d:1.5"><text x="370" y="140" text-anchor="start" font-size="14" fill="var(--fg)" font-weight="600">Guess:</text><text x="370" y="162" text-anchor="start" font-size="13" fill="var(--muted)">1 in 4 chance of 1 point</text><text x="370" y="184" text-anchor="start" font-size="14" fill="var(--good)" font-weight="600">expected +0.25</text></g><text class="a" style="--d:2" x="320" y="238" text-anchor="middle" font-size="13" fill="var(--fg)" font-weight="600">With no penalty for wrong answers, guessing always wins.</text></svg>
+    <p>A student does not know the answer. Blank scores 0. A guess scores 1 point a quarter of the time, so 0.25 on average. On a test with no penalty for wrong answers, a sensible student always guesses.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Over 100 unknown questions the guesser scores 25 and the honest student 0"><text x="40" y="36" text-anchor="start" font-size="14" fill="var(--fg)" font-weight="600">100 questions the student cannot answer</text><text x="40" y="92" text-anchor="start" font-size="13" fill="var(--fg)">Always guesses</text><rect class="grow-x" style="--d:0.0" x="200" y="74" width="300" height="28" rx="4" fill="var(--accent)"/><text class="a" style="--d:1.0" x="510" y="93" text-anchor="start" font-size="13" fill="var(--fg)" font-weight="600">25 points</text><text class="a" style="--d:1.0" x="40" y="110" text-anchor="start" font-size="12" fill="var(--muted)">ranks higher</text><text x="40" y="156" text-anchor="start" font-size="13" fill="var(--fg)">Says "I don't know"</text><rect class="grow-x" style="--d:0.5" x="200" y="138" width="7.2" height="28" rx="4" fill="var(--tn)"/><text class="a" style="--d:1.5" x="217.2" y="157" text-anchor="start" font-size="13" fill="var(--fg)" font-weight="600">0 points</text><text class="a" style="--d:1.5" x="40" y="174" text-anchor="start" font-size="12" fill="var(--muted)">ranks lower</text><text class="a" style="--d:2" x="40" y="212" text-anchor="start" font-size="13" fill="var(--warn)" font-weight="600">The guesser also gave 75 confidently wrong answers.</text><text class="a" style="--d:2.3" x="40" y="236" text-anchor="start" font-size="13" fill="var(--muted)">The leaderboard cannot see that cost.</text></svg>
+    <p>Over 100 questions it cannot answer, the guesser scores about 25 points and the honest student 0. The guesser tops the leaderboard while giving 75 confidently wrong answers that the score never counts.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="With a penalty for wrong answers, guessing stops paying"><text x="40" y="36" text-anchor="start" font-size="14" fill="var(--fg)" font-weight="600">Change the rules: a wrong answer costs points</text><g class="a" style="--d:0"><text x="40" y="72" text-anchor="start" font-size="12" fill="var(--muted)" font-weight="600">rule</text><text x="260" y="72" text-anchor="start" font-size="12" fill="var(--muted)" font-weight="600">expected score of a blind guess</text><text x="520" y="72" text-anchor="start" font-size="12" fill="var(--muted)" font-weight="600">best move</text></g><g class="a" style="--d:0.5"><rect x="30" y="86" width="580" height="32" rx="6" fill="var(--sunk)"/><text x="40" y="108" text-anchor="start" font-size="14" fill="var(--fg)">no penalty</text><text x="260" y="108" text-anchor="start" font-size="14" fill="var(--good)" font-weight="600">+0.25</text><text x="520" y="108" text-anchor="start" font-size="14" fill="var(--good)" font-weight="600">guess</text></g><g class="a" style="--d:0.9"><rect x="30" y="124" width="580" height="32" rx="6" fill="none"/><text x="40" y="146" text-anchor="start" font-size="14" fill="var(--fg)">wrong = −1/3</text><text x="260" y="146" text-anchor="start" font-size="14" fill="var(--muted)" font-weight="600">0.00</text><text x="520" y="146" text-anchor="start" font-size="14" fill="var(--muted)" font-weight="600">no gain</text></g><g class="a" style="--d:1.3"><rect x="30" y="162" width="580" height="32" rx="6" fill="var(--sunk)"/><text x="40" y="184" text-anchor="start" font-size="14" fill="var(--fg)">wrong = −1</text><text x="260" y="184" text-anchor="start" font-size="14" fill="var(--warn)" font-weight="600">−0.50</text><text x="520" y="184" text-anchor="start" font-size="14" fill="var(--warn)" font-weight="600">skip it</text></g><text class="a" style="--d:2" x="40" y="236" text-anchor="start" font-size="13" fill="var(--fg)" font-weight="600">With a penalty, "I don't know" becomes the smart answer when unsure.</text></svg>
+    <p>Add a penalty and the arithmetic flips. At −1/3 per wrong answer, a blind guess is worth nothing on average; at −1 it loses half a point. Now saying "I don't know" is the rational move when unsure.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Binary-graded benchmarks reward guessing; confidence targets fix the incentive"><g class="a"><rect x="40" y="30" width="260" height="150" rx="12" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5"/><text x="170" y="58" text-anchor="middle" font-size="14" fill="var(--warn)" font-weight="600">How most benchmarks grade</text><text x="170" y="86" text-anchor="middle" font-size="13" fill="var(--fg)">right = 1, wrong = 0,</text><text x="170" y="106" text-anchor="middle" font-size="13" fill="var(--fg)">"I don't know" = 0</text><text x="170" y="140" text-anchor="middle" font-size="13" fill="var(--muted)">so a guess is never worse</text><text x="170" y="158" text-anchor="middle" font-size="13" fill="var(--muted)">than abstaining</text></g><g class="a" style="--d:1"><path d="M306 105 L329.0 105.0" stroke="var(--faint)" stroke-width="2" fill="none"/><path d="M336 105 L329.0 101.2 L329.0 108.8 Z" fill="var(--faint)"/></g><g class="a" style="--d:1.5"><rect x="342" y="30" width="260" height="150" rx="12" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/><text x="472" y="58" text-anchor="middle" font-size="14" fill="var(--good)" font-weight="600">Proposed fix</text><text x="472" y="86" text-anchor="middle" font-size="13" fill="var(--fg)">state a confidence target:</text><text x="472" y="106" text-anchor="middle" font-size="13" fill="var(--fg)">"answer only if &gt; t sure;</text><text x="472" y="126" text-anchor="middle" font-size="13" fill="var(--fg)">mistakes cost t/(1−t)"</text><text x="472" y="158" text-anchor="middle" font-size="13" fill="var(--muted)">then abstaining can win</text></g><text class="a" style="--d:2.5" x="320" y="222" text-anchor="middle" font-size="13" fill="var(--fg)" font-weight="600">Models are selected and tuned on scoreboards like the left one.</text><text class="a" style="--d:2.5" x="320" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">Kalai et al. (2025), "Why Language Models Hallucinate"</text></svg>
+    <p>Kalai et al. (2025) argue language models are in the guesser&#39;s position: most widely used benchmarks give no credit for abstaining, so tuning and model selection reward confident guesses. Their proposed fix is to state a confidence target in the grading so abstaining can score better than a likely-wrong answer.</p>
+  </div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Trained to sound right, graded for answering</span></div>
+  <p>The model learned to produce text that looks like what comes next. For well-known facts, the likely text and the true text are the same. For rare facts, the model may have seen the answer once or never, but it still has to produce something, and the most likely-looking continuation of "The winner in 1937 was" is a name. So it writes a name, in the same calm tone it uses for things it knows well. That is a <b>hallucination</b>.</p>
+  <p>Later training could teach the model to say "I'm not sure", but much of the grading in the field works like the exam above: an answer might score, a blank never does. So training and model selection keep favouring the guess.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Hallucination is an incentive problem as much as a knowledge problem</span></div>
+  <p>Kalai, Nachum, Vempala and Zhang (2025, "Why Language Models Hallucinate") make two arguments. First, errors are statistically expected after pretraining: for arbitrary facts that appear rarely (their example is birthdays), they show the hallucination rate after pretraining should be at least about the fraction of such facts seen exactly once in training. Second, errors persist because post-training and evaluation reward guessing: most widely used benchmarks give no credit for "I don't know", so a model that always guesses outscores an otherwise identical model that abstains when unsure. Their fix is to put explicit confidence targets into mainstream benchmark grading, so honest abstention is not penalised.</p>
+  <p>The business consequence: if your internal leaderboard uses accuracy alone, you are selecting for confident guessers. Score abstentions separately and penalise wrong answers more than non-answers wherever a wrong answer costs more than no answer.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The guessing arithmetic, and a circuit-level picture</span></div>
+  <p>Suppose a correct answer scores 1, "I don't know" scores 0, and a wrong answer scores \(-k\). If the model's probability of being right is \(p\), answering beats abstaining exactly when</p>
+  <div class="eq">\[ p \cdot 1 - (1 - p)\,k \;&gt;\; 0 \quad\Longleftrightarrow\quad p \;&gt;\; t = \frac{k}{1 + k}, \qquad k = \frac{t}{1-t} \]<span class="eqcap">Binary grading is \(k = 0\), so \(t = 0\): any guess beats abstaining. Kalai et al. (2025) suggest prompts like "answer only if you are more than \(t\) confident, since mistakes are penalised \(t/(1-t)\) points".</span></div>
+  <p>This only helps if the model's \(p\) is honest, which is the calibration question below. Interpretability gives a mechanistic picture consistent with this. Anthropic's circuit tracing on Claude 3.5 Haiku (Lindsey et al. 2025) found a default "can't answer" pathway that is switched off when the model recognises an entity; hallucinations appeared when a name was familiar enough to suppress that default but the model lacked the actual fact.</p>
+</div>
+
+<h3>Sycophancy: trained to please</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A people-pleaser, by training</span></div>
+  <p>People rating answers are human. On average they rate answers that agree with them, praise their work, or match their opinion a little higher. Train a model to win those ratings and it learns to agree a little more. Push back with "Are you sure? I think it's Sydney" and a model trained this way often folds, apologises, and changes a correct answer to a wrong one. That habit is called <b>sycophancy</b>.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What the evidence shows</span></div>
+  <p>Sharma et al. (2023, "Towards Understanding Sycophancy in Language Models") tested five production assistants on four kinds of task and found sycophancy in all of them. Assistants gave more positive feedback on an essay when the user said they wrote or liked it; they often abandoned correct answers when challenged (in their "are you sure?" test, Claude 1.3 wrongly admitted a mistake on 98% of questions and GPT-4 on 42%); and a user's weakly stated belief shifted answers on factual QA. In human preference data, matching the user's views was among the more predictive features of which response was preferred, and a preference model sometimes preferred convincing sycophantic responses over correct ones. Wei et al. (2023) found sycophancy increased with model scale and with instruction tuning in PaLM models, and that a lightweight fine-tune on synthetic data reduced it.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>What is our flip rate: on questions the model answered correctly, how often does it switch to a wrong answer after a neutral "are you sure?" What is the rate in the other direction, when it was wrong and the user corrects it? Does feedback on the same essay change when the user claims authorship? Did these numbers move after the last preference-training round, and was any data in that round aimed at them?</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">How a preference optimiser learns to agree</span></div>
+  <p>If labels satisfy \(P(\text{prefer agreeing reply}) = 0.5 + \delta\) for some small \(\delta &gt; 0\) on otherwise equal pairs, a Bradley–Terry reward model learns a positive reward for agreement, and policy optimisation amplifies it until the KL penalty balances it (<a href="#reward-models">reward models</a>). The effect hides inside aggregate metrics because most prompts do not contain a user opinion. Measure it with paired prompts that differ only in the user's stated belief or authorship, and with multi-turn challenge tests. Mitigations that have published support: synthetic data where the correct answer is independent of the user's opinion (Wei et al. 2023), preference data that rewards respectful disagreement, and reward-model probes for agreement bias before RL.</p>
+</div>
+
+<h3>Calibration: does "90% sure" mean right 90% of the time?</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">An honest forecaster</span></div>
+  <p>A weather forecaster is <b>calibrated</b> if it rains on about 70% of the days she says "70% chance of rain" (<a href="#classification">Classification metrics</a> has the full picture). A model can be calibrated too: when it puts 90% probability on an answer, it should be right about 90% of the time. Base models turn out to be fairly good at this on multiple-choice questions. Training them to be pleasant assistants tends to make them sound sure more often than they should.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The measured effect of post-training</span></div>
+  <p>The GPT-4 technical report (OpenAI 2023, Figure 8) plotted the model's confidence against accuracy on a subset of MMLU. The pretrained model was very well calibrated (expected calibration error 0.007); after post-training with PPO it was much less so (0.074), and the report states that post-training hurts calibration significantly. Kadavath et al. (2022, "Language Models (Mostly) Know What They Know") found large pretrained models well calibrated on multiple-choice and true/false questions in the right format, and RLHF policies poorly calibrated at first, mostly fixable with a temperature adjustment (they used \(T = 2.5\)). They also cautioned that heavier RL could distort calibration in ways a temperature change cannot fix.</p>
+  <p>This matters whenever anything downstream uses confidence: abstaining, routing to a human or a bigger model, showing uncertainty to users. Miscalibration also breaks the abstention fix above, because a model that believes it is 95% sure will not abstain however the grader is set.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Measuring it</span></div>
+  <p>Bin predictions by stated confidence and compare each bin's average confidence with its accuracy:</p>
+  <div class="eq">\[ \mathrm{ECE} = \sum_{b=1}^{B} \frac{n_b}{n}\, \big|\, \mathrm{acc}(b) - \mathrm{conf}(b) \,\big| \]<span class="eqcap">\(n_b\) predictions fall in bin \(b\). ECE is 0 for a perfectly calibrated model. Report it with a reliability diagram, and pair it with a proper scoring rule such as the Brier score, since ECE alone can be gamed by binning choices.</span></div>
+  <p>For assistants, confidence comes from three places, and they can disagree: token probabilities of the answer (only meaningful for short, constrained answers), self-evaluation such as asking the model for \(P(\text{True})\) of its own answer (Kadavath et al. 2022), and verbalised confidence ("about 70% sure"), which can be trained to be calibrated (Lin, Hilton and Evans 2022). The snippet computes the guessing threshold and ECE on a toy set where the model claims 82% on average and is right half the time.</p>
+<div class="codetabs">
+<pre class="code" data-lang="python"><code>def expected_score(p_correct, penalty):
+    # +1 if right, -penalty if wrong, 0 for "I don't know"
+    return p_correct * 1.0 - (1.0 - p_correct) * penalty
+
+def should_answer(p_correct, penalty):
+    # answer only when guessing beats abstaining: p &gt; penalty / (1 + penalty)
+    return expected_score(p_correct, penalty) &gt; 0.0
+
+def ece(conf, correct, bins=5):
+    """Expected calibration error: gap between stated confidence and accuracy, per bin."""
+    total, n = 0.0, len(conf)
+    for b in range(bins):
+        lo, hi = b / bins, (b + 1) / bins
+        idx = [i for i, c in enumerate(conf) if lo &lt;= c &lt; hi or (b == bins - 1 and c == 1.0)]
+        if idx:
+            acc = sum(correct[i] for i in idx) / len(idx)
+            avg = sum(conf[i] for i in idx) / len(idx)
+            total += len(idx) / n * abs(acc - avg)
+    return total
+
+for penalty in (0.0, 1.0, 3.0):
+    print(penalty, [should_answer(p, penalty) for p in (0.2, 0.6, 0.9)])
+# 0.0 [True, True, True]     binary grading: always guess
+# 1.0 [False, True, True]    answer only above 50% sure
+# 3.0 [False, False, True]   answer only above 75% sure
+
+conf    = [0.95, 0.9, 0.9, 0.85, 0.95, 0.6, 0.55, 0.9]   # what the model claimed
+correct = [1,    1,   0,   0,    1,    1,   0,    0  ]   # what actually happened
+print(round(ece(conf, correct), 3))   # 0.425  claims 82% on average, right 50% of the time</code></pre>
+<pre class="code" data-lang="rust"><code>fn expected_score(p_correct: f64, penalty: f64) -&gt; f64 {
+    // +1 if right, -penalty if wrong, 0 for "I don't know"
+    p_correct * 1.0 - (1.0 - p_correct) * penalty
+}
+
+fn should_answer(p_correct: f64, penalty: f64) -&gt; bool {
+    // answer only when guessing beats abstaining: p &gt; penalty / (1 + penalty)
+    expected_score(p_correct, penalty) &gt; 0.0
+}
+
+/// Expected calibration error: gap between stated confidence and accuracy, per bin.
+fn ece(conf: &amp;[f64], correct: &amp;[u8], bins: usize) -&gt; f64 {
+    let (mut total, n) = (0.0, conf.len() as f64);
+    for b in 0..bins {
+        let (lo, hi) = (b as f64 / bins as f64, (b + 1) as f64 / bins as f64);
+        let idx: Vec&lt;usize&gt; = (0..conf.len())
+            .filter(|&amp;i| (lo &lt;= conf[i] &amp;&amp; conf[i] &lt; hi) || (b == bins - 1 &amp;&amp; conf[i] == 1.0))
+            .collect();
+        if !idx.is_empty() {
+            let m = idx.len() as f64;
+            let acc = idx.iter().map(|&amp;i| correct[i] as f64).sum::&lt;f64&gt;() / m;
+            let avg = idx.iter().map(|&amp;i| conf[i]).sum::&lt;f64&gt;() / m;
+            total += m / n * (acc - avg).abs();
+        }
+    }
+    total
+}
+
+fn main() {
+    for penalty in [0.0, 1.0, 3.0] {
+        let v: Vec&lt;String&gt; = [0.2, 0.6, 0.9].iter()
+            .map(|&amp;p| if should_answer(p, penalty) { "True".to_string() } else { "False".to_string() }).collect();
+        println!("{:.1} [{}]", penalty, v.join(", "));
+    }
+    // 0.0 [True, True, True]     binary grading: always guess
+    // 1.0 [False, True, True]    answer only above 50% sure
+    // 3.0 [False, False, True]   answer only above 75% sure
+    let conf = [0.95, 0.9, 0.9, 0.85, 0.95, 0.6, 0.55, 0.9]; // what the model claimed
+    let correct = [1, 1, 0, 0, 1, 1, 0, 0];                   // what actually happened
+    println!("{:.3}", ece(&amp;conf, &amp;correct, 5)); // 0.425  claims 82% on average, right 50% of the time
+}</code></pre>
+</div>
+</div>
+
+<div class="widget" id="w-as-cal">
+  <div class="wtitle">Overconfidence, grading, and hallucination</div>
+  <div class="wsub">2,000 simulated questions. Each has a true chance the model is right; the model states a confidence and answers only if that beats the grading threshold. Slide up the training pressure toward confident, agreeable answers and change the grading rule. A simplified illustrative model, not fitted to any real system.</div>
+  <div class="controls">
+    <div class="ctl"><label for="as-cal-s">Pressure toward confident answers: <output id="as-cal-s-o">0.60</output></label><input type="range" id="as-cal-s" min="0" max="1" step="0.05" value="0.6"></div>
+    <div class="ctl"><label for="as-cal-g">Grading rule</label><select id="as-cal-g">
+      <option value="0" selected>Binary: wrong = 0, "I don't know" = 0</option>
+      <option value="1">Wrong costs 1 (answer if &gt; 50% sure)</option>
+      <option value="3">Wrong costs 3 (answer if &gt; 75% sure)</option>
+    </select></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Calibration error (ECE)</div><div class="v" data-ece>—</div></div>
+    <div class="mc"><div class="l">Wrong answers given</div><div class="v" data-wrong>—</div></div>
+    <div class="mc"><div class="l">Says "I don't know"</div><div class="v" data-idk>—</div></div>
+    <div class="mc"><div class="l">Score per question</div><div class="v" data-score>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>Why it can feel like being gaslit</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Patterns that look like intent</span></div>
+  <p>Three things make an exchange with a model feel like being gaslit. It states wrong things in the same confident voice as right things. Once it has said something, it tends to defend it, because a speaker who stays consistent is the most likely continuation of a conversation. And when you point out a mistake, it often apologises warmly and then repeats the same mistake, because the apology is a well-practised move while the facts producing the error have not changed.</p>
+  <p>None of this is a plan. Gaslighting means trying to make someone doubt what they know. The model has no goal of that kind; it continues the conversation with the patterns training rewarded. The effect on you can still be real, and it is fair to treat it as a product and safety defect.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Treat it as a measurable defect</span></div>
+  <ul>
+    <li><b>Confident tone.</b> Preference training rewards decisive answers; hedging reads as less helpful to many raters. Measure verbal hedging against actual accuracy.</li>
+    <li><b>Doubling down.</b> The model conditions on its own earlier answer, and most training text shows speakers staying consistent. Measure how often a wrong first answer survives a correct, evidence-backed user correction.</li>
+    <li><b>Apologise, then repeat.</b> Asking a model to check itself without new information often does not help. Huang et al. (2023, "Large Language Models Cannot Self-Correct Reasoning Yet") found that self-correction without external feedback failed to improve, and sometimes degraded, reasoning accuracy. What helps is new evidence in the context: a tool result, a test failure, a retrieved source.</li>
+    <li><b>Caving.</b> The sycophantic failure is the mirror image: abandoning a correct answer under pressure. A good model does neither; it updates on evidence and holds on assertion alone.</li>
+  </ul>
+  <p>For users the practical advice follows from the mechanism: give evidence instead of repeating the claim, ask the model to verify with a tool or source, and start a fresh conversation when a wrong answer has taken root in the context.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Self-conditioning</span></div>
+  <p>After the model writes a wrong answer \(a\), the next turn is predicted from \(P_\theta(\cdot \mid x, a, u)\) where \(u\) is the user's objection. The context now contains a confident assertion of \(a\), the same internal features that produced \(a\) are still active, and nothing in \(u\) changes the model's knowledge unless \(u\) contains the information. The likely continuations are an apology (a frequent, highly rewarded pattern) followed by content still driven by those features, which often reproduces \(a\) in new words. When \(u\) carries real evidence, the conditional shifts and models usually correct. Evaluations should therefore separate pushback with evidence from pushback without it: the ideal model changes its answer in the first case and keeps a correct answer in the second.</p>
+</div>
+
+<h3>What labs do about it, and how to evaluate it</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Reward honesty, give it sources, and test it</span></div>
+  <p>Labs attack the problem from several sides: they reward the model for saying "I don't know" when it really does not know, they give it search and other tools so it can look things up instead of guessing, they ask it to cite where claims come from, and they build tests that try to make it flatter, cave, or bluff, then track those scores over time.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Interventions and the evals that check them</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Intervention</th><th>What it targets</th><th>How to check it</th></tr></thead>
+    <tbody>
+      <tr><td>Honesty and abstention data; rewards that score "I don't know" above wrong answers</td><td>Guessing on unknowns</td><td>Correct / wrong / not attempted rates, as in SimpleQA (Wei et al. 2024); penalised scores at several confidence targets</td></tr>
+      <tr><td>Calibration-aware training, temperature scaling, confidence heads</td><td>Overconfidence</td><td>ECE, Brier score, reliability diagrams per domain (<a href="#classification">Classification metrics</a>)</td></tr>
+      <tr><td>Anti-sycophancy data and reward-model probes</td><td>Agreement bias, caving</td><td>Paired-opinion prompts, "are you sure?" flip rates in both directions, feedback-on-own-work tests</td></tr>
+      <tr><td>Retrieval, search and citations</td><td>Missing or stale facts</td><td>Citation precision (does the source support the claim?), answer accuracy with and without retrieval</td></tr>
+      <tr><td>Tool use: code execution, calculators, tests</td><td>Unverified reasoning</td><td>Task success with tools; how often the model uses a tool when it should</td></tr>
+      <tr><td>Constitutional principles and safety training</td><td>Honesty norms in general</td><td>Safety and honesty suites, red-teaming (<a href="#safety">Safety</a>)</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>Never report accuracy alone for factual or advisory tasks. Report three numbers: correct, confidently wrong, and abstained, plus a penalised score at the confidence target that matches the product's real cost of a wrong answer. Add calibration (ECE and a reliability diagram) and a sycophancy flip rate. Many of these checks use an LLM grader to decide whether an answer is correct, hedged or unsupported; validate that grader against humans first (<a href="#judges">LLM as judge</a>), because a judge that rewards confident tone recreates the bias you are trying to measure.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Designing the metrics</span></div>
+  <p>A useful summary for factual QA is the penalised score at threshold \(t\):</p>
+  <div class="eq">\[ S_t = \frac{1}{n}\Big(N_{\text{correct}} - \frac{t}{1-t}\, N_{\text{wrong}}\Big) \]<span class="eqcap">Abstentions contribute 0. Plot \(S_t\) for \(t \in \{0, 0.5, 0.75, 0.9\}\): a model that guesses wins at \(t = 0\) and falls behind as \(t\) grows; a well-calibrated model that abstains appropriately stays ahead across thresholds.</span></div>
+  <p>Treat sycophancy as a paired test: the same item with and without a user opinion, scored with a <a href="#evalstats">paired comparison</a> and an interval, so a flip-rate change between checkpoints can be distinguished from noise. Keep the challenge turn neutral ("Are you sure?") in one arm and evidence-bearing in another. Track all of this per post-training stage, since capability RL can move sycophancy and calibration as a side effect (<a href="#rlhf">RLHF</a>).</p>
+</div>
+
+<div class="callout warn"><span class="tag">Watch out</span><div>Do not read a model's apology, stated reasoning or self-assessment as a report of what happened inside it. These are generated text, shaped by the same training as everything else. A model saying "I double-checked this" has not necessarily checked anything unless a tool call or test result in the transcript shows it did.</div></div>
+</section>

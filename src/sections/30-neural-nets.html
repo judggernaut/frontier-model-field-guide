@@ -1,0 +1,507 @@
+<section id="neural-nets" data-title="Neural networks from the ground up">
+<h2>Neural networks from the ground up: weighted sums that bend</h2>
+<p>Every model in this guide, from a spam filter to a frontier LLM, is built from one tiny part repeated billions of times: multiply some numbers by weights, add them up, and bend the result. This chapter builds that part, stacks it into layers, runs numbers through it by hand, counts what "a 70B model" actually counts, and ends with what the famous universal approximation theorem does and does not promise. The next chapter, <a href="#learning">how networks learn</a>, covers how the weights get their values.</p>
+
+<div class="story" id="st-nn-neuron">
+  <div class="story-head"><div class="story-title">Should I go for a run?</div><p class="story-sub">One artificial neuron, told as a decision you make most mornings.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Three facts about the morning feed into a neuron that has not decided yet">
+      <text x="20" y="16" font-size="12" fill="var(--muted)">What you know this morning</text>
+      <g class="a" style="--d:0"><rect x="20" y="27" width="172" height="34" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="32" y="49" font-size="13" fill="var(--fg)">Sunshine (0 to 1)</text><text x="180" y="49" text-anchor="end" font-size="14" font-weight="600" fill="var(--accent)">0.9</text></g>
+      <g class="a" style="--d:1"><rect x="20" y="81" width="172" height="34" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="32" y="103" font-size="13" fill="var(--fg)">Free hours</text><text x="180" y="103" text-anchor="end" font-size="14" font-weight="600" fill="var(--accent)">1.0</text></g>
+      <g class="a" style="--d:2"><rect x="20" y="135" width="172" height="34" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="32" y="157" font-size="13" fill="var(--fg)">Chance of rain</text><text x="180" y="157" text-anchor="end" font-size="14" font-weight="600" fill="var(--accent)">0.7</text></g>
+      <g class="a" style="--d:3"><circle cx="520" cy="110" r="40" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="520" y="119" text-anchor="middle" font-size="26" font-weight="600" fill="var(--faint)">?</text><text x="520" y="56" text-anchor="middle" font-size="13" fill="var(--muted)">one neuron</text></g>
+      <text class="a" style="--d:4" x="320" y="236" text-anchor="middle" font-size="14" fill="var(--fg)">Inputs are just numbers. The neuron has to turn them into one answer.</text>
+    </svg>
+    <p>You wake up and know three things, each written as a number: how sunny it is, how much free time you have, and the chance of rain. A neuron's job is to turn a handful of numbers like these into one number: go, or not.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Each input is multiplied by a weight that says how much it matters">
+      <text x="20" y="16" font-size="12" fill="var(--muted)">input</text><text x="250" y="16" text-anchor="middle" font-size="12" fill="var(--muted)">weight</text><text x="342" y="16" text-anchor="middle" font-size="12" fill="var(--muted)">product</text>
+      <g><rect x="20" y="27" width="172" height="34" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="32" y="49" font-size="13" fill="var(--fg)">Sunshine (0 to 1)</text><text x="180" y="49" text-anchor="end" font-size="14" font-weight="600" fill="var(--accent)">0.9</text></g>
+      <g><rect x="20" y="81" width="172" height="34" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="32" y="103" font-size="13" fill="var(--fg)">Free hours</text><text x="180" y="103" text-anchor="end" font-size="14" font-weight="600" fill="var(--accent)">1.0</text></g>
+      <g><rect x="20" y="135" width="172" height="34" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="32" y="157" font-size="13" fill="var(--fg)">Chance of rain</text><text x="180" y="157" text-anchor="end" font-size="14" font-weight="600" fill="var(--accent)">0.7</text></g>
+      <g class="a" style="--d:0" font-size="15" fill="var(--muted)" text-anchor="middle"><text x="205" y="49">×</text><text x="205" y="103">×</text><text x="205" y="157">×</text></g>
+      <g class="a" style="--d:1"><rect x="218" y="29" width="64" height="30" rx="6" fill="var(--good-soft)" stroke="var(--good)"/><text x="250" y="49" text-anchor="middle" font-size="14" font-weight="600" fill="var(--good)">2.0</text></g>
+      <g class="a" style="--d:2"><rect x="218" y="83" width="64" height="30" rx="6" fill="var(--good-soft)" stroke="var(--good)"/><text x="250" y="103" text-anchor="middle" font-size="14" font-weight="600" fill="var(--good)">1.5</text></g>
+      <g class="a" style="--d:3"><rect x="218" y="137" width="64" height="30" rx="6" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="250" y="157" text-anchor="middle" font-size="14" font-weight="600" fill="var(--warn)">−3.0</text></g>
+      <g class="a" style="--d:4"><g font-size="15" fill="var(--muted)" text-anchor="middle"><text x="297" y="49">=</text><text x="297" y="103">=</text><text x="297" y="157">=</text></g>
+        <rect x="312" y="29" width="60" height="30" rx="6" fill="var(--sunk)"/><text x="342" y="49" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">1.8</text>
+        <rect x="312" y="83" width="60" height="30" rx="6" fill="var(--sunk)"/><text x="342" y="103" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">1.5</text>
+        <rect x="312" y="137" width="60" height="30" rx="6" fill="var(--sunk)"/><text x="342" y="157" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">−2.1</text></g>
+      <g class="a" style="--d:5"><rect x="20" y="189" width="262" height="34" rx="8" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="32" y="211" font-size="13" fill="var(--fg)">Bias: you are a bit lazy today</text><text x="297" y="211" text-anchor="middle" font-size="15" fill="var(--muted)">=</text><rect x="312" y="191" width="60" height="30" rx="6" fill="var(--sunk)"/><text x="342" y="211" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">−0.5</text></g>
+      <text class="a" style="--d:6" x="520" y="104" text-anchor="middle" font-size="13" fill="var(--muted)">Positive weight: pushes</text><text class="a" style="--d:6" x="520" y="124" text-anchor="middle" font-size="13" fill="var(--muted)">toward going.</text>
+      <text class="a" style="--d:6" x="520" y="154" text-anchor="middle" font-size="13" fill="var(--muted)">Negative weight: pushes</text><text class="a" style="--d:6" x="520" y="174" text-anchor="middle" font-size="13" fill="var(--muted)">against it.</text>
+    </svg>
+    <p>Each input gets a <b>weight</b> that says how much it matters and in which direction. Rain counts against you, strongly. The <b>bias</b> is a constant nudge that does not depend on the inputs at all: your general mood before you even look outside.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="The products and the bias are added inside the neuron to give 0.7">
+      <g fill="var(--sunk)"><rect x="312" y="29" width="60" height="30" rx="6"/><rect x="312" y="83" width="60" height="30" rx="6"/><rect x="312" y="137" width="60" height="30" rx="6"/><rect x="312" y="191" width="60" height="30" rx="6"/></g>
+      <g font-size="14" font-weight="600" fill="var(--fg)" text-anchor="middle"><text x="342" y="49">1.8</text><text x="342" y="103">1.5</text><text x="342" y="157">−2.1</text><text x="342" y="211">−0.5</text></g>
+      <g font-size="13" fill="var(--muted)" text-anchor="end"><text x="296" y="49">sunshine × 2.0</text><text x="296" y="103">free hours × 1.5</text><text x="296" y="157">rain × −3.0</text><text x="296" y="211">bias</text></g>
+      <g class="a" style="--d:0" stroke="var(--faint)" stroke-width="2" fill="none"><path d="M374 44 L520 110"/><path d="M374 98 L520 110"/><path d="M374 152 L520 110"/><path d="M374 206 L520 110"/></g>
+      <g class="a" style="--d:1"><circle cx="520" cy="110" r="40" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="520" y="100" text-anchor="middle" font-size="12" fill="var(--muted)">sum</text><text x="520" y="124" text-anchor="middle" font-size="20" font-weight="700" fill="var(--accent)">0.7</text></g>
+      <text class="a" style="--d:2" x="535" y="180" text-anchor="middle" font-size="13" fill="var(--fg)">1.8 + 1.5 − 2.1 − 0.5 = 0.7</text>
+      <text class="a" style="--d:3" x="535" y="204" text-anchor="middle" font-size="13" fill="var(--muted)">called z, the pre-activation</text>
+    </svg>
+    <p>Add up the weighted inputs and the bias: 1.8 + 1.5 − 2.1 − 0.5 = 0.7. That single number, the <b>weighted sum</b>, is the neuron's raw opinion. So far it is nothing more than a spreadsheet formula.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="ReLU passes positive sums through and turns negative sums into zero">
+      <line x1="140" y1="190" x2="510" y2="190" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <line x1="320" y1="40" x2="320" y2="190" stroke="var(--line)" stroke-width="1"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="176" y="208">−2</text><text x="248" y="208">−1</text><text x="320" y="208">0</text><text x="392" y="208">1</text><text x="464" y="208">2</text></g>
+      <text x="325" y="232" text-anchor="middle" font-size="12" fill="var(--muted)">sum going in (z)</text>
+      <text x="330" y="46" font-size="12" fill="var(--muted)">↑ output</text>
+      <path class="a" style="--d:0" d="M140 190 L320 190 L500 46" stroke="var(--deep)" stroke-width="3" fill="none"/>
+      <g class="a" style="--d:1"><circle cx="370.4" cy="149.7" r="7" fill="var(--good)"/><text x="384" y="170" font-size="13" fill="var(--good)" font-weight="600">sunny: 0.7 in, 0.7 out</text></g>
+      <g class="a" style="--d:2"><circle cx="219.2" cy="190" r="7" fill="var(--warn)"/><text x="219" y="174" text-anchor="middle" font-size="13" fill="var(--warn)" font-weight="600">grey day: −1.4 in, 0 out</text></g>
+      <text class="a" style="--d:3" x="560" y="110" text-anchor="middle" font-size="13" fill="var(--fg)">ReLU:</text><text class="a" style="--d:3" x="560" y="130" text-anchor="middle" font-size="13" fill="var(--fg)">max(0, z)</text>
+    </svg>
+    <p>Last, the <b>activation function</b> bends the sum. The most common one, ReLU, keeps positive numbers and turns negatives into zero. On a grey morning (sunshine 0.3, rain 1.0) the sum is −1.4 and the neuron outputs 0: stay in. That bend looks trivial. The next section shows it is the whole trick.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Summary: inputs times weights plus bias, then an activation">
+      <g class="a" style="--d:0"><rect x="20" y="50" width="130" height="90" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="85" y="80" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Inputs x</text><text x="85" y="104" text-anchor="middle" font-size="12" fill="var(--fg)">0.9, 1.0, 0.7</text><text x="85" y="124" text-anchor="middle" font-size="12" fill="var(--muted)">from the data</text></g>
+      <text x="168" y="100" text-anchor="middle" font-size="18" fill="var(--muted)">×</text>
+      <g class="a" style="--d:1"><rect x="186" y="50" width="130" height="90" rx="10" fill="var(--good-soft)" stroke="var(--good)"/><text x="251" y="80" text-anchor="middle" font-size="14" font-weight="600" fill="var(--good)">Weights w</text><text x="251" y="104" text-anchor="middle" font-size="12" fill="var(--fg)">2.0, 1.5, −3.0</text><text x="251" y="124" text-anchor="middle" font-size="12" fill="var(--muted)">learned</text></g>
+      <text x="334" y="100" text-anchor="middle" font-size="18" fill="var(--muted)">+</text>
+      <g class="a" style="--d:2"><rect x="352" y="50" width="110" height="90" rx="10" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="407" y="80" text-anchor="middle" font-size="14" font-weight="600" fill="var(--lead)">Bias b</text><text x="407" y="104" text-anchor="middle" font-size="12" fill="var(--fg)">−0.5</text><text x="407" y="124" text-anchor="middle" font-size="12" fill="var(--muted)">learned</text></g>
+      <text x="480" y="100" text-anchor="middle" font-size="18" fill="var(--muted)">→</text>
+      <g class="a" style="--d:3"><rect x="498" y="50" width="122" height="90" rx="10" fill="var(--deep-soft)" stroke="var(--deep)"/><text x="559" y="80" text-anchor="middle" font-size="14" font-weight="600" fill="var(--deep)">Activation</text><text x="559" y="104" text-anchor="middle" font-size="12" fill="var(--fg)">ReLU, the bend</text><text x="559" y="124" text-anchor="middle" font-size="12" fill="var(--muted)">fixed by design</text></g>
+      <text class="a" style="--d:4" x="320" y="186" text-anchor="middle" font-size="15" fill="var(--fg)">output = ReLU(w · x + b)</text>
+      <text class="a" style="--d:5" x="320" y="220" text-anchor="middle" font-size="13" fill="var(--muted)">Here you chose the weights. In a real network, training chooses them.</text>
+    </svg>
+    <p>That is the whole neuron: inputs times weights, plus a bias, then a bend. The weights and the bias are the <b>parameters</b>. You picked them here from common sense. A neural network starts with random ones and adjusts them, billions at a time, until its outputs match the data.</p>
+  </div>
+</div>
+
+<h3>A single neuron</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A tiny decision maker</span></div>
+  <p>A neuron is a very small decision maker. It takes a few numbers in, decides how much each one matters, adds them up with a constant nudge, and gives one number out. The "how much each one matters" numbers are called <b>weights</b>, the constant nudge is the <b>bias</b>, and the final squish or bend is the <b>activation function</b>.</p>
+  <p>The name comes from a loose analogy with brain cells, which also combine many incoming signals and either fire or stay quiet. The analogy stops there. An artificial neuron is two lines of arithmetic, and nobody designs them by hand: a network starts with random weights and the training process tunes them.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why "neuron" is a misleading unit of analysis</span></div>
+  <p>It is tempting to imagine each neuron in an LLM as a little expert with a job: a "French neuron" or a "sarcasm neuron". Some units do behave that way. Most do not. Interpretability research finds that individual units usually respond to several unrelated things at once (they are <b>polysemantic</b>), because a network can store more concepts than it has units by spreading each concept across many of them. Anthropic's "Toy Models of Superposition" (Elhage et al., 2022) studies this in small models, and "Towards Monosemanticity" (Bricken et al., 2023) recovers cleaner features with sparse dictionary learning on top of the units.</p>
+  <p>Practical consequence: claims like "we found the neuron for X and turned it off" deserve scrutiny. Ask whether the intervention was checked for side effects on unrelated behaviour, and whether the unit is a feature found by a method such as a sparse autoencoder or a raw neuron.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The formula</span></div>
+  <p>A neuron with inputs \(\mathbf{x} \in \mathbb{R}^n\), weights \(\mathbf{w} \in \mathbb{R}^n\), bias \(b\), and activation \(\phi\) computes</p>
+  <div class="eq">\[ y = \phi\Big(\sum_{i=1}^{n} w_i x_i + b\Big) = \phi(\mathbf{w}^\top \mathbf{x} + b) \]<span class="eqcap">\(z = \mathbf{w}^\top\mathbf{x} + b\) is the pre-activation. With \(\phi\) = identity this is linear regression; with \(\phi\) = sigmoid it is logistic regression. A neuron is a regression model with a bend at the end.</span></div>
+  <p>Geometrically, \(\mathbf{w}^\top\mathbf{x} + b = 0\) is a hyperplane (a line, in two dimensions). The neuron measures signed distance from that hyperplane, scaled by \(\|\mathbf{w}\|\), and the activation decides what to do with it. A ReLU neuron is "off" on one side of its hyperplane and grows linearly on the other.</p>
+</div>
+
+<h3>Why the bend matters: non-linear activations</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Converting units twice is still converting units</span></div>
+  <p>Convert miles to kilometres, then kilometres to metres. Two steps, but you could have done it in one: multiply by 1,609. Chaining "multiply and add" steps always collapses into a single "multiply and add" step. A stack of a hundred neurons with no bend is exactly as powerful as one neuron. It can only draw straight lines.</p>
+  <p>The activation function breaks that. ReLU's corner at zero means a neuron is off for some inputs and on for others. Combine many of those corners and you can trace curves, bumps, and any shape you like. Without the bend, depth buys nothing.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">A settled choice, mostly</span></div>
+  <p>Activation functions were a lively research topic for a decade. For LLMs the question is largely settled: GELU (BERT, GPT-2) and the gated variant SwiGLU (PaLM, LLaMA and most open models since) are standard. Switching between modern choices gives small, real gains in quality per unit of compute (Shazeer, 2020, reported SwiGLU among the best of several gated variants on transformer language modelling) and is not where a frontier program finds its next big win.</p>
+  <p>What still matters: some activations interact with numerical precision and quantization (large activation outliers make 8-bit and 4-bit inference harder), and gated variants add a third weight matrix to each MLP block, which changes parameter counts and memory planning.</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>A proposal that claims a big quality jump from a new activation function alone, measured on one small model, usually shrinks or vanishes at scale. Ask for the comparison at matched compute across at least two model sizes, with several seeds at the smallest size.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The collapse, and the common activations</span></div>
+  <p>Two linear layers compose into one:</p>
+  <div class="eq">\[ W_2(W_1\mathbf{x} + \mathbf{b}_1) + \mathbf{b}_2 = \underbrace{(W_2W_1)}_{W}\,\mathbf{x} + \underbrace{(W_2\mathbf{b}_1 + \mathbf{b}_2)}_{\mathbf{b}} \]<span class="eqcap">Any depth of purely linear layers is a single affine map \(W\mathbf{x} + \mathbf{b}\). The only thing extra depth adds is a constraint on the rank of \(W\).</span></div>
+  <div class="tw"><table>
+  <thead><tr><th>Activation</th><th>Formula</th><th>Where you meet it</th><th>Gradient note</th></tr></thead>
+  <tbody>
+  <tr><td>Sigmoid</td><td>\(\sigma(z) = 1/(1+e^{-z})\)</td><td>Early nets, gates, output probabilities</td><td>Derivative at most 0.25, so deep stacks shrink gradients toward zero</td></tr>
+  <tr><td>tanh</td><td>\(\tanh z\)</td><td>RNNs, LSTMs</td><td>Zero-centred, still saturates at both ends</td></tr>
+  <tr><td>ReLU</td><td>\(\max(0, z)\)</td><td>Default in vision since AlexNet (Krizhevsky et al., 2012)</td><td>Gradient is exactly 0 or 1; units stuck at 0 for every input are "dead"</td></tr>
+  <tr><td>GELU</td><td>\(z\,\Phi(z)\)</td><td>BERT, GPT-2 (Hendrycks and Gimpel, 2016)</td><td>A smooth ReLU; small negative outputs allowed</td></tr>
+  <tr><td>SwiGLU</td><td>\((\mathrm{SiLU}(\mathbf{x}W) \odot \mathbf{x}V)\,W_2\)</td><td>PaLM, LLaMA (Shazeer, 2020)</td><td>One branch gates the other; three matrices per MLP</td></tr>
+  </tbody></table></div>
+  <p>\(\Phi\) is the standard normal CDF, \(\mathrm{SiLU}(z) = z\,\sigma(z)\), and \(\odot\) is element-wise product. In the widget at the end of this chapter, choose "none" as the activation and the fit is a straight line however many units you add.</p>
+</div>
+
+<div class="story" id="st-nn-layers">
+  <div class="story-head"><div class="story-title">Reading a handwritten 7</div><p class="story-sub">How layers build complex features out of simple ones. Simplified, but true to what trained image networks do.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="A seven drawn on a grid of pixels, each just a brightness number">
+      <g class="a" style="--d:0">
+        <g fill="var(--sunk)" stroke="var(--line)">
+          <rect x="60" y="34" width="20" height="20"/><rect x="80" y="34" width="20" height="20"/><rect x="100" y="34" width="20" height="20"/><rect x="120" y="34" width="20" height="20"/><rect x="140" y="34" width="20" height="20"/><rect x="160" y="34" width="20" height="20"/><rect x="180" y="34" width="20" height="20"/>
+          <rect x="60" y="54" width="20" height="20"/><rect x="80" y="54" width="20" height="20"/><rect x="100" y="54" width="20" height="20"/><rect x="120" y="54" width="20" height="20"/><rect x="140" y="54" width="20" height="20"/><rect x="160" y="54" width="20" height="20"/><rect x="180" y="54" width="20" height="20"/>
+          <rect x="60" y="74" width="20" height="20"/><rect x="80" y="74" width="20" height="20"/><rect x="100" y="74" width="20" height="20"/><rect x="120" y="74" width="20" height="20"/><rect x="140" y="74" width="20" height="20"/><rect x="160" y="74" width="20" height="20"/><rect x="180" y="74" width="20" height="20"/>
+          <rect x="60" y="94" width="20" height="20"/><rect x="80" y="94" width="20" height="20"/><rect x="100" y="94" width="20" height="20"/><rect x="120" y="94" width="20" height="20"/><rect x="140" y="94" width="20" height="20"/><rect x="160" y="94" width="20" height="20"/><rect x="180" y="94" width="20" height="20"/>
+          <rect x="60" y="114" width="20" height="20"/><rect x="80" y="114" width="20" height="20"/><rect x="100" y="114" width="20" height="20"/><rect x="120" y="114" width="20" height="20"/><rect x="140" y="114" width="20" height="20"/><rect x="160" y="114" width="20" height="20"/><rect x="180" y="114" width="20" height="20"/>
+          <rect x="60" y="134" width="20" height="20"/><rect x="80" y="134" width="20" height="20"/><rect x="100" y="134" width="20" height="20"/><rect x="120" y="134" width="20" height="20"/><rect x="140" y="134" width="20" height="20"/><rect x="160" y="134" width="20" height="20"/><rect x="180" y="134" width="20" height="20"/>
+          <rect x="60" y="154" width="20" height="20"/><rect x="80" y="154" width="20" height="20"/><rect x="100" y="154" width="20" height="20"/><rect x="120" y="154" width="20" height="20"/><rect x="140" y="154" width="20" height="20"/><rect x="160" y="154" width="20" height="20"/><rect x="180" y="154" width="20" height="20"/>
+          <rect x="60" y="174" width="20" height="20"/><rect x="80" y="174" width="20" height="20"/><rect x="100" y="174" width="20" height="20"/><rect x="120" y="174" width="20" height="20"/><rect x="140" y="174" width="20" height="20"/><rect x="160" y="174" width="20" height="20"/><rect x="180" y="174" width="20" height="20"/>
+        </g>
+        <g fill="var(--fg)"><rect x="80" y="54" width="20" height="20"/><rect x="100" y="54" width="20" height="20"/><rect x="120" y="54" width="20" height="20"/><rect x="140" y="54" width="20" height="20"/><rect x="160" y="54" width="20" height="20"/><rect x="160" y="74" width="20" height="20"/><rect x="140" y="94" width="20" height="20"/><rect x="140" y="114" width="20" height="20"/><rect x="120" y="134" width="20" height="20"/><rect x="120" y="154" width="20" height="20"/><rect x="100" y="174" width="20" height="20"/></g>
+      </g>
+      <g class="a" style="--d:1" font-size="13" fill="var(--fg)"><text x="250" y="70">What the network receives:</text><text x="250" y="96" fill="var(--muted)">0 0 0 0 0 0 0</text><text x="250" y="116" fill="var(--muted)">0 1 1 1 1 1 0</text><text x="250" y="136" fill="var(--muted)">0 0 0 0 0 1 0</text><text x="250" y="156" fill="var(--muted)">0 0 0 0 1 0 0   … 56 numbers</text></g>
+      <text class="a" style="--d:2" x="250" y="196" font-size="13" fill="var(--muted)">No "line", no "corner", no "seven". Just brightness.</text>
+    </svg>
+    <p>To the network, a handwritten 7 is a grid of brightness numbers: 56 of them here, about 150,000 for a small colour photo. Nothing in the input says "line" or "corner". Whatever structure the network uses, it has to build itself.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="First layer units each detect a short stroke in one direction">
+      <g fill="var(--sunk)" stroke="var(--line)"><rect x="60" y="34" width="140" height="160"/></g>
+      <g fill="var(--eli5)"><rect x="80" y="54" width="20" height="20"/><rect x="100" y="54" width="20" height="20"/><rect x="120" y="54" width="20" height="20"/><rect x="140" y="54" width="20" height="20"/><rect x="160" y="54" width="20" height="20"/></g>
+      <g fill="var(--lead)"><rect x="160" y="74" width="20" height="20"/><rect x="140" y="94" width="20" height="20"/><rect x="140" y="114" width="20" height="20"/><rect x="120" y="134" width="20" height="20"/><rect x="120" y="154" width="20" height="20"/><rect x="100" y="174" width="20" height="20"/></g>
+      <text x="130" y="220" text-anchor="middle" font-size="12" fill="var(--muted)">layer 1 lights up</text>
+      <g class="a" style="--d:0"><rect x="260" y="40" width="160" height="62" rx="10" fill="var(--eli5-soft)" stroke="var(--eli5)"/><text x="340" y="64" text-anchor="middle" font-size="13" font-weight="600" fill="var(--eli5)">"horizontal edge"</text><text x="340" y="86" text-anchor="middle" font-size="12" fill="var(--fg)">unit fires: 5 places</text></g>
+      <g class="a" style="--d:1"><rect x="260" y="122" width="160" height="62" rx="10" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="340" y="146" text-anchor="middle" font-size="13" font-weight="600" fill="var(--lead)">"slanted edge"</text><text x="340" y="168" text-anchor="middle" font-size="12" fill="var(--fg)">unit fires: 6 places</text></g>
+      <text class="a" style="--d:2" x="530" y="100" text-anchor="middle" font-size="13" fill="var(--fg)">Each unit looks at</text><text class="a" style="--d:2" x="530" y="120" text-anchor="middle" font-size="13" fill="var(--fg)">a tiny patch and asks</text><text class="a" style="--d:2" x="530" y="140" text-anchor="middle" font-size="13" fill="var(--fg)">one simple question.</text>
+    </svg>
+    <p>The first layer's units each respond to something tiny and local, such as "bright above, dark below" (a horizontal edge) or a slanted edge. Nobody told them to. When researchers visualise what trained image networks respond to, the first layer is reliably full of edge and colour detectors (Zeiler and Fergus, 2014).</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Second layer units combine edges into parts such as a top bar and a corner">
+      <g class="a" style="--d:0"><rect x="30" y="40" width="160" height="56" rx="10" fill="var(--eli5-soft)" stroke="var(--eli5)"/><text x="110" y="73" text-anchor="middle" font-size="13" fill="var(--eli5)" font-weight="600">horizontal edge</text></g>
+      <g class="a" style="--d:0"><rect x="30" y="130" width="160" height="56" rx="10" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="110" y="163" text-anchor="middle" font-size="13" fill="var(--lead)" font-weight="600">slanted edge</text></g>
+      <g class="a" style="--d:1" stroke="var(--faint)" stroke-width="2" fill="none"><path d="M192 68 L298 68"/><path d="M192 68 L298 158"/><path d="M192 158 L298 158"/><path d="M192 158 L298 68"/></g>
+      <g class="a" style="--d:2"><rect x="300" y="40" width="170" height="56" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="385" y="64" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">"bar across the top"</text><text x="385" y="84" text-anchor="middle" font-size="12" fill="var(--muted)">edges in a row, high up</text></g>
+      <g class="a" style="--d:3"><rect x="300" y="130" width="170" height="56" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="385" y="154" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">"sharp top-right corner"</text><text x="385" y="174" text-anchor="middle" font-size="12" fill="var(--muted)">bar meets slant</text></g>
+      <text class="a" style="--d:4" x="555" y="104" text-anchor="middle" font-size="13" fill="var(--fg)">Layer 2 units are</text><text class="a" style="--d:4" x="555" y="124" text-anchor="middle" font-size="13" fill="var(--fg)">weighted sums of</text><text class="a" style="--d:4" x="555" y="144" text-anchor="middle" font-size="13" fill="var(--fg)">layer 1 units.</text>
+      <text class="a" style="--d:5" x="250" y="230" text-anchor="middle" font-size="13" fill="var(--muted)">Same neuron as before. Its inputs are now features instead of pixels.</text>
+    </svg>
+    <p>The next layer's inputs are the first layer's outputs. A unit there can fire for "edges in a row near the top" or "a bar meeting a slant at a sharp corner". It is the same weighted-sum-and-bend neuron as before; only its inputs got more meaningful.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="The last layer turns parts into a confident answer: seven">
+      <g class="a" style="--d:0"><rect x="30" y="50" width="170" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="115" y="77" text-anchor="middle" font-size="13" fill="var(--fg)">bar across the top</text></g>
+      <g class="a" style="--d:0"><rect x="30" y="120" width="170" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="115" y="147" text-anchor="middle" font-size="13" fill="var(--fg)">sharp top-right corner</text></g>
+      <g class="a" style="--d:0"><rect x="30" y="190" width="170" height="44" rx="10" fill="var(--sunk)" stroke="var(--line)"/><text x="115" y="217" text-anchor="middle" font-size="13" fill="var(--muted)">no closed loop</text></g>
+      <g class="a" style="--d:1" stroke="var(--faint)" stroke-width="2" fill="none"><path d="M202 72 L300 130"/><path d="M202 142 L300 136"/><path d="M202 212 L300 142"/></g>
+      <text x="380" y="40" font-size="12" fill="var(--muted)">output layer: which digit?</text>
+      <g font-size="14" font-weight="600" fill="var(--fg)"><text x="320" y="84">7</text><text x="320" y="134">1</text><text x="320" y="184">9</text></g>
+      <rect class="grow-x" style="--d:2" x="340" y="70" width="226" height="18" rx="4" fill="var(--accent)"/>
+      <rect class="grow-x" style="--d:3" x="340" y="120" width="12" height="18" rx="4" fill="var(--accent)" opacity=".6"/>
+      <rect class="grow-x" style="--d:3" x="340" y="170" width="5" height="18" rx="4" fill="var(--accent)" opacity=".6"/>
+      <g font-size="13" fill="var(--muted)"><text x="574" y="84">94%</text><text x="360" y="134">5%</text><text x="353" y="184">1%</text></g>
+      <text class="a" style="--d:4" x="460" y="226" text-anchor="middle" font-size="12" fill="var(--muted)">percentages illustrative</text>
+    </svg>
+    <p>The last layer weighs the parts: a top bar plus a sharp corner and no closed loop looks like a 7, not a 9. Each layer reuses the features below it, which is why depth is so efficient: a corner detector built once serves every digit that has a corner.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="In a language model, early layers handle word pieces and grammar, later layers handle meaning">
+      <text x="320" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">The same pattern in a language model</text>
+      <g class="a" style="--d:0"><rect x="70" y="170" width="500" height="44" rx="10" fill="var(--eli5-soft)" stroke="var(--eli5)"/><text x="90" y="197" font-size="13" font-weight="600" fill="var(--eli5)">early layers</text><text x="200" y="197" font-size="13" fill="var(--fg)">word pieces, parts of speech</text></g>
+      <g class="a" style="--d:1"><rect x="70" y="110" width="500" height="44" rx="10" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="90" y="137" font-size="13" font-weight="600" fill="var(--lead)">middle layers</text><text x="200" y="137" font-size="13" fill="var(--fg)">grammar: who did what to whom</text></g>
+      <g class="a" style="--d:2"><rect x="70" y="50" width="500" height="44" rx="10" fill="var(--deep-soft)" stroke="var(--deep)"/><text x="90" y="77" font-size="13" font-weight="600" fill="var(--deep)">later layers</text><text x="200" y="77" font-size="13" fill="var(--fg)">meaning, what "it" refers to</text></g>
+      <text class="a" style="--d:3" x="320" y="238" text-anchor="middle" font-size="12" fill="var(--muted)">A tendency found by probing (Tenney et al., 2019), not a strict division of labour.</text>
+    </svg>
+    <p>Language models show a similar ordering. Probing studies of BERT found that information about parts of speech peaks in earlier layers, sentence structure in the middle, and harder semantic relations like coreference later (Tenney et al., 2019). The boundaries are blurry, but the build-up from simple to complex is real.</p>
+  </div>
+</div>
+
+<h3>Layers: from simple features to complex ones</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">An assembly line for ideas</span></div>
+  <p>A <b>layer</b> is a row of neurons that all look at the same inputs. The outputs of one layer become the inputs of the next, like stations on an assembly line. The first station handles raw material (pixels, or pieces of words). Each later station works with what the previous one made, so the "parts" get bigger and more meaningful as you go: edges, then shapes, then objects.</p>
+  <p>The layers in the middle are called <b>hidden layers</b> because you never see their outputs directly. You only see the input you gave and the answer at the end.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Depth, width, and where to read more</span></div>
+  <p>Two knobs shape a network: <b>depth</b> (how many layers) and <b>width</b> (how many units per layer). Depth lets the network compose features, reusing simple parts to build complex ones. Width gives each layer more features to work with. Frontier LLMs have tens to over a hundred layers and widths in the thousands to tens of thousands. The ratio is a design choice that scaling-law work has found to matter much less than total size, within a broad sensible range (Kaplan et al., 2020).</p>
+  <p>For how a transformer specifically arranges its layers (attention blocks and MLP blocks), see <a href="#architecture">architecture</a> and <a href="#llm-inside">inside an LLM</a>. For the different model families built from these parts, see <a href="#family">the model family tree</a>.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A layer is a matrix multiply</span></div>
+  <p>Stack the weight vectors of a layer's \(m\) neurons as rows of a matrix \(W \in \mathbb{R}^{m \times n}\). Then the whole layer is</p>
+  <div class="eq">\[ \mathbf{h}^{(\ell)} = \phi\big(W^{(\ell)}\,\mathbf{h}^{(\ell-1)} + \mathbf{b}^{(\ell)}\big), \qquad \mathbf{h}^{(0)} = \mathbf{x} \]<span class="eqcap">\(\phi\) is applied to each element. A network of \(L\) layers is the composition \(f(\mathbf{x}) = f_L \circ \cdots \circ f_1(\mathbf{x})\). The last layer usually skips the activation (regression) or applies softmax (classification, including next-token prediction).</span></div>
+  <p>This is why GPUs matter: a layer is one matrix multiply plus an element-wise function, and matrix multiplies are what GPU hardware is built for. Process a batch of inputs at once and the matrix-vector product becomes a matrix-matrix product, which uses the hardware far more efficiently.</p>
+  <p>Why depth helps, formally: some functions that a deep network represents with a modest number of units need exponentially many units in a shallow one. Telgarsky (2016) constructs such functions for ReLU networks. Depth is not just a convenience; it changes what is cheap to represent.</p>
+</div>
+
+<div class="story" id="st-nn-forward">
+  <div class="story-head"><div class="story-title">Following the numbers through a tiny network</div><p class="story-sub">A forward pass by hand: estimating a delivery time from distance and number of stops. The weights are made up; training would set them.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A network with two inputs, two hidden units and one output, weights written on the connections">
+      <g stroke="var(--line-strong)" stroke-width="2" fill="none"><path d="M118 75 L292 75"/><path d="M118 185 L292 185"/><path d="M118 75 L292 185"/><path d="M118 185 L292 75"/><path d="M348 75 L510 130"/><path d="M348 185 L510 130"/></g>
+      <g font-size="12" font-weight="600" text-anchor="middle">
+        <rect x="217" y="64" width="46" height="22" rx="5" fill="var(--surface)" stroke="var(--good)"/><text x="240" y="80" fill="var(--good)">1.0</text>
+        <rect x="138" y="146" width="46" height="22" rx="5" fill="var(--surface)" stroke="var(--good)"/><text x="161" y="162" fill="var(--good)">0.5</text>
+        <rect x="138" y="91" width="46" height="22" rx="5" fill="var(--surface)" stroke="var(--warn)"/><text x="161" y="107" fill="var(--warn)">−1.0</text>
+        <rect x="217" y="174" width="46" height="22" rx="5" fill="var(--surface)" stroke="var(--good)"/><text x="240" y="190" fill="var(--good)">1.0</text>
+        <rect x="406" y="91" width="46" height="22" rx="5" fill="var(--surface)" stroke="var(--good)"/><text x="429" y="107" fill="var(--good)">20</text>
+        <rect x="406" y="146" width="46" height="22" rx="5" fill="var(--surface)" stroke="var(--warn)"/><text x="429" y="162" fill="var(--warn)">−10</text>
+      </g>
+      <g><circle cx="90" cy="75" r="28" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="81" text-anchor="middle" font-size="16" font-weight="700" fill="var(--accent)">2</text><text x="90" y="124" text-anchor="middle" font-size="12" fill="var(--muted)">km away</text></g>
+      <g><circle cx="90" cy="185" r="28" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="191" text-anchor="middle" font-size="16" font-weight="700" fill="var(--accent)">1</text><text x="90" y="234" text-anchor="middle" font-size="12" fill="var(--muted)">stop</text></g>
+      <g><circle cx="320" cy="75" r="28" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="320" y="80" text-anchor="middle" font-size="14" fill="var(--muted)">h₁</text></g>
+      <g><circle cx="320" cy="185" r="28" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="320" y="190" text-anchor="middle" font-size="14" fill="var(--muted)">h₂</text></g>
+      <g><circle cx="540" cy="130" r="30" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="540" y="135" text-anchor="middle" font-size="14" fill="var(--muted)">y</text></g>
+      <g font-size="12" fill="var(--lead)" text-anchor="middle"><text x="320" y="122">bias −1.0</text><text x="320" y="150">bias +0.5</text><text x="540" y="182">bias +5</text></g>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="90" y="30">inputs</text><text x="320" y="30">hidden layer (ReLU)</text><text x="540" y="30">output</text></g>
+    </svg>
+    <p>Two inputs (2 km away, 1 stop), a hidden layer of two ReLU neurons, and one output neuron with no bend. Every connection has a weight, and every neuron after the inputs has a bias. Green weights push up, orange ones push down.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Hidden unit one computes 1.5">
+      <g stroke="var(--line)" stroke-width="2" fill="none"><path d="M118 185 L292 185"/><path d="M118 75 L292 185"/><path d="M348 75 L510 130"/><path d="M348 185 L510 130"/></g>
+      <g stroke="var(--accent)" stroke-width="3" fill="none" class="a" style="--d:0"><path d="M118 75 L292 75"/><path d="M118 185 L292 75"/></g>
+      <g><circle cx="90" cy="75" r="28" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="81" text-anchor="middle" font-size="16" font-weight="700" fill="var(--accent)">2</text></g>
+      <g><circle cx="90" cy="185" r="28" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="191" text-anchor="middle" font-size="16" font-weight="700" fill="var(--accent)">1</text></g>
+      <g class="a" style="--d:1"><circle cx="320" cy="75" r="28" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="320" y="81" text-anchor="middle" font-size="16" font-weight="700" fill="var(--good)">1.5</text></g>
+      <g><circle cx="320" cy="185" r="28" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="320" y="190" text-anchor="middle" font-size="14" fill="var(--muted)">h₂</text></g>
+      <g><circle cx="540" cy="130" r="30" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="540" y="135" text-anchor="middle" font-size="14" fill="var(--muted)">y</text></g>
+      <text class="a" style="--d:1" x="320" y="28" text-anchor="middle" font-size="13" fill="var(--fg)">1.0 × 2 + 0.5 × 1 − 1.0 = 1.5 → ReLU → 1.5</text>
+    </svg>
+    <p>Hidden unit 1 takes a weighted sum of both inputs plus its bias: 1.0 × 2 + 0.5 × 1 − 1.0 = 1.5. That is positive, so ReLU passes it through unchanged. Think of h₁ as a rough "how much driving" signal.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Hidden unit two computes minus 0.5 and ReLU turns it off">
+      <g stroke="var(--line)" stroke-width="2" fill="none"><path d="M118 75 L292 75"/><path d="M118 185 L292 75"/><path d="M348 75 L510 130"/><path d="M348 185 L510 130"/></g>
+      <g stroke="var(--accent)" stroke-width="3" fill="none" class="a" style="--d:0"><path d="M118 185 L292 185"/><path d="M118 75 L292 185"/></g>
+      <g><circle cx="90" cy="75" r="28" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="81" text-anchor="middle" font-size="16" font-weight="700" fill="var(--accent)">2</text></g>
+      <g><circle cx="90" cy="185" r="28" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="191" text-anchor="middle" font-size="16" font-weight="700" fill="var(--accent)">1</text></g>
+      <g><circle cx="320" cy="75" r="28" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="320" y="81" text-anchor="middle" font-size="16" font-weight="700" fill="var(--good)">1.5</text></g>
+      <g class="a" style="--d:1"><circle cx="320" cy="185" r="28" fill="var(--sunk)" stroke="var(--tn)" stroke-width="2" stroke-dasharray="5 4"/><text x="320" y="191" text-anchor="middle" font-size="16" font-weight="700" fill="var(--muted)">0</text></g>
+      <g><circle cx="540" cy="130" r="30" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="540" y="135" text-anchor="middle" font-size="14" fill="var(--muted)">y</text></g>
+      <text class="a" style="--d:1" x="320" y="244" text-anchor="middle" font-size="13" fill="var(--fg)">−1.0 × 2 + 1.0 × 1 + 0.5 = −0.5 → ReLU → 0 (off)</text>
+    </svg>
+    <p>Hidden unit 2: −1.0 × 2 + 1.0 × 1 + 0.5 = −0.5. Negative, so ReLU outputs 0 and the unit is switched off for this input. It might switch on for a short trip with many stops. Different inputs switch on different units; that is how the network carves up the input space.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The output neuron combines the hidden units into 35 minutes">
+      <g stroke="var(--line)" stroke-width="2" fill="none"><path d="M118 75 L292 75"/><path d="M118 185 L292 75"/><path d="M118 185 L292 185"/><path d="M118 75 L292 185"/></g>
+      <g stroke="var(--accent)" stroke-width="3" fill="none" class="a" style="--d:0"><path d="M348 75 L510 130"/><path d="M348 185 L510 130" stroke-dasharray="6 5"/></g>
+      <g><circle cx="90" cy="75" r="28" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="81" text-anchor="middle" font-size="16" font-weight="700" fill="var(--accent)">2</text></g>
+      <g><circle cx="90" cy="185" r="28" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="191" text-anchor="middle" font-size="16" font-weight="700" fill="var(--accent)">1</text></g>
+      <g><circle cx="320" cy="75" r="28" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="320" y="81" text-anchor="middle" font-size="16" font-weight="700" fill="var(--good)">1.5</text></g>
+      <g><circle cx="320" cy="185" r="28" fill="var(--sunk)" stroke="var(--tn)" stroke-width="2" stroke-dasharray="5 4"/><text x="320" y="191" text-anchor="middle" font-size="16" font-weight="700" fill="var(--muted)">0</text></g>
+      <g class="a" style="--d:1"><circle cx="540" cy="130" r="30" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="540" y="136" text-anchor="middle" font-size="16" font-weight="700" fill="var(--accent)">35</text><text x="540" y="182" text-anchor="middle" font-size="12" fill="var(--muted)">minutes</text></g>
+      <text class="a" style="--d:1" x="430" y="40" text-anchor="middle" font-size="13" fill="var(--fg)">20 × 1.5 − 10 × 0 + 5 = 35</text>
+    </svg>
+    <p>The output neuron weighs the hidden units: 20 × 1.5 − 10 × 0 + 5 = 35 minutes. It has no ReLU, so it can output any number. Input to output, left to right, one layer at a time: that is a <b>forward pass</b>. It is the only thing a network does when you use it.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Counting parameters: six weights and three biases make nine">
+      <g class="a" style="--d:0"><rect x="40" y="40" width="170" height="80" rx="12" fill="var(--good-soft)" stroke="var(--good)"/><text x="125" y="72" text-anchor="middle" font-size="14" font-weight="600" fill="var(--good)">6 weights</text><text x="125" y="96" text-anchor="middle" font-size="12" fill="var(--fg)">one per connection</text></g>
+      <text class="a" style="--d:1" x="235" y="86" text-anchor="middle" font-size="20" fill="var(--muted)">+</text>
+      <g class="a" style="--d:1"><rect x="260" y="40" width="170" height="80" rx="12" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="345" y="72" text-anchor="middle" font-size="14" font-weight="600" fill="var(--lead)">3 biases</text><text x="345" y="96" text-anchor="middle" font-size="12" fill="var(--fg)">one per neuron</text></g>
+      <text class="a" style="--d:2" x="455" y="86" text-anchor="middle" font-size="20" fill="var(--muted)">=</text>
+      <g class="a" style="--d:2"><rect x="480" y="40" width="130" height="80" rx="12" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="545" y="86" text-anchor="middle" font-size="22" font-weight="700" fill="var(--accent)">9</text></g>
+      <g class="a" style="--d:3" font-size="13" fill="var(--fg)"><text x="60" y="170">This toy network</text><text x="440" y="170" text-anchor="end" font-weight="600">9 parameters</text>
+        <text x="60" y="198">GPT-3 (Brown et al., 2020)</text><text x="440" y="198" text-anchor="end" font-weight="600">175,000,000,000</text>
+        <text x="60" y="226">Same arithmetic per parameter</text><text x="440" y="226" text-anchor="end" font-weight="600">multiply, add, bend</text></g>
+    </svg>
+    <p>Six weights plus three biases: this network has 9 <b>parameters</b>. A frontier model is the same arithmetic with billions of parameters and dozens of layers. "A 70B model" means 70 billion of these numbers.</p>
+  </div>
+</div>
+
+<h3>The forward pass</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Numbers flow left to right</span></div>
+  <p>Running a network is called a <b>forward pass</b>. You put numbers in on the left, each layer does its weighted sums and bends, and the answer comes out on the right. No thinking happens elsewhere; the forward pass is the whole computation. When you chat with an LLM, every single word it writes is the result of one forward pass through the full network.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why forward passes set the serving bill</span></div>
+  <p>Because each generated token needs a full forward pass, serving cost scales with parameter count times tokens generated. A rule of thumb from Kaplan et al. (2020): a forward pass costs about 2 floating-point operations per parameter per token (one multiply and one add), ignoring the attention term that grows with context length. A 70B dense model therefore needs roughly 140 billion operations for every token it writes. Training costs about three times that per token, since the backward pass (next chapter) costs about twice the forward pass.</p>
+  <p>That arithmetic drives the business case for distillation, mixture-of-experts, and quantization, covered in <a href="#inference">inference</a>.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The same pass in code</span></div>
+  <p>The story's network, written as matrices: \(W_1 = \begin{pmatrix}1.0 &amp; 0.5\\ -1.0 &amp; 1.0\end{pmatrix}\), \(\mathbf{b}_1 = (-1.0, 0.5)\), \(\mathbf{w}_2 = (20, -10)\), \(b_2 = 5\).</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import numpy as np
+
+x = np.array([2.0, 1.0])                  # distance in km, number of stops
+W1 = np.array([[1.0, 0.5],                # hidden unit 1's weights
+               [-1.0, 1.0]])              # hidden unit 2's weights
+b1 = np.array([-1.0, 0.5])
+w2 = np.array([20.0, -10.0])              # output weights
+b2 = 5.0
+
+def relu(z):
+    return np.maximum(z, 0.0)             # keep positives, zero out negatives
+
+z = W1 @ x + b1                           # both hidden weighted sums in one matrix multiply
+h = relu(z)                               # the bend
+y = w2 @ h + b2                           # output layer: weighted sum, no bend
+print(f"z = {z[0]:.1f}, {z[1]:.1f}")      # z = 1.5, -0.5
+print(f"h = {h[0]:.1f}, {h[1]:.1f}")      # h = 1.5, 0.0
+print(f"y = {y:.1f} minutes")             # y = 35.0 minutes
+print(W1.size + b1.size + w2.size + 1)    # 9 parameters</code></pre>
+<pre class="code" data-lang="rust"><code>fn relu(z: f64) -&gt; f64 {
+    z.max(0.0) // keep positives, zero out negatives
+}
+
+fn main() {
+    let x = [2.0, 1.0]; // distance in km, number of stops
+    let w1 = [[1.0, 0.5], // hidden unit 1's weights
+              [-1.0, 1.0]]; // hidden unit 2's weights
+    let b1 = [-1.0, 0.5];
+    let w2 = [20.0, -10.0]; // output weights
+    let b2 = 5.0;
+
+    // both hidden weighted sums (a matrix multiply, written out)
+    let z: Vec&lt;f64&gt; = (0..2).map(|i| w1[i][0] * x[0] + w1[i][1] * x[1] + b1[i]).collect();
+    let h: Vec&lt;f64&gt; = z.iter().map(|&amp;v| relu(v)).collect(); // the bend
+    let y = w2[0] * h[0] + w2[1] * h[1] + b2; // output layer: weighted sum, no bend
+    println!("z = {:.1}, {:.1}", z[0], z[1]); // z = 1.5, -0.5
+    println!("h = {:.1}, {:.1}", h[0], h[1]); // h = 1.5, 0.0
+    println!("y = {:.1} minutes", y); // y = 35.0 minutes
+    println!("{}", 4 + b1.len() + w2.len() + 1); // 9 parameters
+}</code></pre>
+</div>
+</div>
+
+<h3>Parameters: what "a 70B model" counts</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Knobs on a giant mixing desk</span></div>
+  <p>Picture a sound engineer's mixing desk with a knob for every connection in the network. Each knob is a <b>parameter</b>: a weight or a bias. "A 70B model" has 70 billion knobs. Training is the process of turning all of them, a tiny bit at a time, until the network's outputs sound right.</p>
+  <p>More knobs means the network can capture more patterns, the same way a bigger desk can mix a more complex song. It also means more memory to store the knobs and more arithmetic every time the network runs.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What the number does and does not tell you</span></div>
+  <p>Parameter count is the single most quoted number about a model, and it answers three practical questions well:</p>
+  <ul>
+    <li><b>Memory.</b> Each parameter takes 2 bytes at 16-bit precision. A 70B model needs about 140 GB just to hold its weights, before any working memory, which is why it does not fit on one 80 GB GPU without quantization.</li>
+    <li><b>Serving compute.</b> About 2 operations per parameter per generated token for a dense model.</li>
+    <li><b>Training compute.</b> About 6 operations per parameter per training token (Kaplan et al., 2020).</li>
+  </ul>
+  <p>It answers capability badly on its own. Chinchilla (Hoffmann et al., 2022), at 70B parameters trained on 1.4 trillion tokens, beat the 280B-parameter Gopher trained on 300 billion tokens. Data volume and quality, training recipe, and post-training all matter as much as size; see <a href="#scaling">scaling laws</a>.</p>
+  <p><b>Mixture-of-experts</b> models complicate the count. Only some "expert" sub-networks run for each token, so they quote total parameters (memory) and active parameters (compute per token) separately. Mixtral 8x7B (Mistral AI, 2024) has about 47B total and about 13B active.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>Is that total or active parameters? What precision will it serve at, and what does the weight memory come to on our hardware? How many training tokens per parameter, and how does that compare with the compute-optimal ratio? If two models differ in size, were they trained on the same data and compute, or is size standing in for everything else that differs?</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Counting a real transformer</span></div>
+  <p>For a decoder-only transformer, almost every parameter lives in weight matrices inside the repeated blocks. Using the published Llama 2 70B shape (Touvron et al., 2023): width 8,192, 80 layers, MLP width 28,672, 64 query heads sharing 8 key/value heads (grouped-query attention), and a 32,000-token vocabulary:</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def count_params(d, layers, ffn, vocab, heads, kv_heads):
+    head_dim = d // heads
+    attn = 2 * d * d + 2 * d * kv_heads * head_dim   # Q and output full size; K and V shrunk by grouped-query attention
+    mlp = 3 * d * ffn                                # SwiGLU has three matrices: gate, up, down
+    norms = 2 * d                                    # two RMSNorm scale vectors per layer
+    embed = 2 * vocab * d                            # input embedding plus a separate output head
+    return layers * (attn + mlp + norms) + embed + d # + the final norm
+
+n = count_params(d=8192, layers=80, ffn=28672, vocab=32000, heads=64, kv_heads=8)
+print(f"{n:,}")                                                            # 68,976,648,192
+print(f"{n / 1e9:.1f}B parameters, {2 * n / 1e9:.0f} GB at 2 bytes each")  # 69.0B parameters, 138 GB at 2 bytes each</code></pre>
+<pre class="code" data-lang="rust"><code>fn count_params(d: u64, layers: u64, ffn: u64, vocab: u64, heads: u64, kv_heads: u64) -&gt; u64 {
+    let head_dim = d / heads;
+    let attn = 2 * d * d + 2 * d * kv_heads * head_dim; // Q and output full size; K and V shrunk by grouped-query attention
+    let mlp = 3 * d * ffn; // SwiGLU has three matrices: gate, up, down
+    let norms = 2 * d; // two RMSNorm scale vectors per layer
+    let embed = 2 * vocab * d; // input embedding plus a separate output head
+    layers * (attn + mlp + norms) + embed + d // + the final norm
+}
+
+/// Formats 68976648192 as "68,976,648,192", like Python's f"{n:,}".
+fn with_commas(n: u64) -&gt; String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i &gt; 0 &amp;&amp; (s.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn main() {
+    let n = count_params(8192, 80, 28672, 32000, 64, 8);
+    println!("{}", with_commas(n)); // 68,976,648,192
+    let nf = n as f64;
+    println!("{:.1}B parameters, {:.0} GB at 2 bytes each", nf / 1e9, 2.0 * nf / 1e9); // 69.0B parameters, 138 GB at 2 bytes each
+}</code></pre>
+</div>
+  <p>The breakdown is worth remembering: the MLP blocks hold about 82% of the parameters (56.4B), attention about 17.5% (12.1B), and embeddings plus norms under 1%. Biases are absent: most modern LLMs drop them from linear layers because they add little. "70B" is a rounded marketing number for 68.98 billion.</p>
+</div>
+
+<div class="story" id="st-nn-hinges">
+  <div class="story-head"><div class="story-title">Tracing a day of electricity demand with hinges</div><p class="story-sub">Why a network with enough ReLU units can draw any curve. The demand curve is illustrative; the fits are real least-squares fits.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A daily electricity demand curve with a morning peak and a bigger evening peak">
+      <line x1="70" y1="200" x2="600" y2="200" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="70" y="218">0:00</text><text x="202.5" y="218">6:00</text><text x="335" y="218">12:00</text><text x="467.5" y="218">18:00</text><text x="600" y="218">24:00</text></g>
+      <text x="74" y="40" font-size="12" fill="var(--muted)">↑ demand (GW)</text>
+      <polyline class="a" style="--d:0" points="70.0,151.6 78.8,154.2 87.7,157.5 96.5,161.7 105.3,166.4 114.2,171.3 123.0,175.9 131.8,179.5 140.7,181.7 149.5,181.9 158.3,179.9 167.2,175.8 176.0,169.6 184.8,161.4 193.7,151.4 202.5,140.0 211.3,127.7 220.2,115.7 229.0,105.2 237.8,97.6 246.7,94.2 255.5,95.0 264.3,99.4 273.2,105.9 282.0,113.0 290.8,119.0 299.7,123.2 308.5,125.2 317.3,125.3 326.2,124.3 335.0,122.7 343.8,121.3 352.7,120.5 361.5,120.6 370.3,121.5 379.2,123.2 388.0,125.2 396.8,127.1 405.7,128.2 414.5,127.8 423.3,125.3 432.2,120.3 441.0,112.5 449.8,102.6 458.7,91.5 467.5,80.9 476.3,72.5 485.2,67.9 494.0,68.1 502.8,73.0 511.7,82.0 520.5,93.4 529.3,105.5 538.2,116.9 547.0,126.5 555.8,133.9 564.7,139.2 573.5,142.6 582.3,144.7 591.2,145.9 600.0,146.5" fill="none" stroke="var(--fg)" stroke-width="2.5"/>
+      <g class="a" style="--d:1" font-size="12" fill="var(--muted)"><text x="246" y="80" text-anchor="middle">morning peak</text><text x="489" y="54" text-anchor="middle">evening peak</text><text x="150" y="140" text-anchor="middle">night low</text></g>
+    </svg>
+    <p>A grid operator wants a network that takes the hour of the day and outputs expected demand: low overnight, a morning peak, a midday plateau, a big evening peak. One input, one output, one hidden layer of ReLU units. How many units does it take?</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="One ReLU unit gives a flat line that bends once into a ramp">
+      <line x1="70" y1="200" x2="600" y2="200" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="70" y="218">0:00</text><text x="202.5" y="218">6:00</text><text x="335" y="218">12:00</text><text x="467.5" y="218">18:00</text><text x="600" y="218">24:00</text></g>
+      <polyline points="70.0,151.6 78.8,154.2 87.7,157.5 96.5,161.7 105.3,166.4 114.2,171.3 123.0,175.9 131.8,179.5 140.7,181.7 149.5,181.9 158.3,179.9 167.2,175.8 176.0,169.6 184.8,161.4 193.7,151.4 202.5,140.0 211.3,127.7 220.2,115.7 229.0,105.2 237.8,97.6 246.7,94.2 255.5,95.0 264.3,99.4 273.2,105.9 282.0,113.0 290.8,119.0 299.7,123.2 308.5,125.2 317.3,125.3 326.2,124.3 335.0,122.7 343.8,121.3 352.7,120.5 361.5,120.6 370.3,121.5 379.2,123.2 388.0,125.2 396.8,127.1 405.7,128.2 414.5,127.8 423.3,125.3 432.2,120.3 441.0,112.5 449.8,102.6 458.7,91.5 467.5,80.9 476.3,72.5 485.2,67.9 494.0,68.1 502.8,73.0 511.7,82.0 520.5,93.4 529.3,105.5 538.2,116.9 547.0,126.5 555.8,133.9 564.7,139.2 573.5,142.6 582.3,144.7 591.2,145.9 600.0,146.5" fill="none" stroke="var(--faint)" stroke-width="2" stroke-dasharray="5 4"/>
+      <g class="a" style="--d:0"><rect x="84" y="20" width="130" height="50" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><path d="M96 58 L140 58 L200 30" fill="none" stroke="var(--accent)" stroke-width="2.5"/><text x="96" y="38" font-size="12" fill="var(--muted)">one unit</text></g>
+      <polyline class="a" style="--d:1" points="70.0,145.8 180.4,145.8 600.0,98.2" fill="none" stroke="var(--accent)" stroke-width="3"/>
+      <circle class="a" style="--d:1" cx="180.4" cy="145.8" r="5" fill="var(--accent)"/>
+      <text class="a" style="--d:2" x="380" y="40" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">1 hidden unit: average miss 2.9 GW</text>
+    </svg>
+    <p>A single ReLU unit is a <b>hinge</b>: flat, then a straight ramp starting at its threshold (here about 5:00). Scaled and shifted by the output weight and bias, the best one hinge can do is a crude "demand rises during the day". Average miss: 2.9 GW.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Two hinges: the ramp rises then bends over">
+      <line x1="70" y1="200" x2="600" y2="200" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="70" y="218">0:00</text><text x="202.5" y="218">6:00</text><text x="335" y="218">12:00</text><text x="467.5" y="218">18:00</text><text x="600" y="218">24:00</text></g>
+      <polyline points="70.0,151.6 78.8,154.2 87.7,157.5 96.5,161.7 105.3,166.4 114.2,171.3 123.0,175.9 131.8,179.5 140.7,181.7 149.5,181.9 158.3,179.9 167.2,175.8 176.0,169.6 184.8,161.4 193.7,151.4 202.5,140.0 211.3,127.7 220.2,115.7 229.0,105.2 237.8,97.6 246.7,94.2 255.5,95.0 264.3,99.4 273.2,105.9 282.0,113.0 290.8,119.0 299.7,123.2 308.5,125.2 317.3,125.3 326.2,124.3 335.0,122.7 343.8,121.3 352.7,120.5 361.5,120.6 370.3,121.5 379.2,123.2 388.0,125.2 396.8,127.1 405.7,128.2 414.5,127.8 423.3,125.3 432.2,120.3 441.0,112.5 449.8,102.6 458.7,91.5 467.5,80.9 476.3,72.5 485.2,67.9 494.0,68.1 502.8,73.0 511.7,82.0 520.5,93.4 529.3,105.5 538.2,116.9 547.0,126.5 555.8,133.9 564.7,139.2 573.5,142.6 582.3,144.7 591.2,145.9 600.0,146.5" fill="none" stroke="var(--faint)" stroke-width="2" stroke-dasharray="5 4"/>
+      <polyline class="a" style="--d:0" points="70.0,166.5 180.4,166.5 257.7,105.4 600.0,118.6" fill="none" stroke="var(--accent)" stroke-width="3"/>
+      <g class="a" style="--d:1" fill="var(--accent)"><circle cx="180.4" cy="166.5" r="5"/><circle cx="257.7" cy="105.4" r="5"/></g>
+      <text class="a" style="--d:1" x="257" y="68" text-anchor="middle" font-size="12" fill="var(--warn)">negative weight bends it back</text>
+      <text class="a" style="--d:2" x="440" y="40" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">2 hidden units: average miss 2.2 GW</text>
+    </svg>
+    <p>Add a second hinge with a negative output weight and the ramp bends back down at about 8:30. Every extra unit adds one more corner where the slope can change. Average miss: 2.2 GW.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Six hinges follow the shape roughly">
+      <line x1="70" y1="200" x2="600" y2="200" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="70" y="218">0:00</text><text x="202.5" y="218">6:00</text><text x="335" y="218">12:00</text><text x="467.5" y="218">18:00</text><text x="600" y="218">24:00</text></g>
+      <polyline points="70.0,151.6 78.8,154.2 87.7,157.5 96.5,161.7 105.3,166.4 114.2,171.3 123.0,175.9 131.8,179.5 140.7,181.7 149.5,181.9 158.3,179.9 167.2,175.8 176.0,169.6 184.8,161.4 193.7,151.4 202.5,140.0 211.3,127.7 220.2,115.7 229.0,105.2 237.8,97.6 246.7,94.2 255.5,95.0 264.3,99.4 273.2,105.9 282.0,113.0 290.8,119.0 299.7,123.2 308.5,125.2 317.3,125.3 326.2,124.3 335.0,122.7 343.8,121.3 352.7,120.5 361.5,120.6 370.3,121.5 379.2,123.2 388.0,125.2 396.8,127.1 405.7,128.2 414.5,127.8 423.3,125.3 432.2,120.3 441.0,112.5 449.8,102.6 458.7,91.5 467.5,80.9 476.3,72.5 485.2,67.9 494.0,68.1 502.8,73.0 511.7,82.0 520.5,93.4 529.3,105.5 538.2,116.9 547.0,126.5 555.8,133.9 564.7,139.2 573.5,142.6 582.3,144.7 591.2,145.9 600.0,146.5" fill="none" stroke="var(--faint)" stroke-width="2" stroke-dasharray="5 4"/>
+      <polyline class="a" style="--d:0" points="70.0,169.5 125.2,169.5 191.5,162.7 246.7,87.5 312.9,126.7 423.3,122.0 500.6,69.3 600.0,166.2" fill="none" stroke="var(--accent)" stroke-width="3"/>
+      <g class="a" style="--d:1" fill="var(--accent)"><circle cx="125.2" cy="169.5" r="4.5"/><circle cx="191.5" cy="162.7" r="4.5"/><circle cx="246.7" cy="87.5" r="4.5"/><circle cx="312.9" cy="126.7" r="4.5"/><circle cx="423.3" cy="122.0" r="4.5"/><circle cx="500.6" cy="69.3" r="4.5"/></g>
+      <text class="a" style="--d:2" x="330" y="40" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">6 hidden units: average miss 0.9 GW</text>
+    </svg>
+    <p>With six hinges the network can follow the night low, both peaks, and the plateau, as a sequence of straight segments. It looks like a child's drawing of the curve, but it already has the right shape. Average miss: 0.9 GW.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Twenty hinges trace the curve closely">
+      <line x1="70" y1="200" x2="600" y2="200" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="70" y="218">0:00</text><text x="202.5" y="218">6:00</text><text x="335" y="218">12:00</text><text x="467.5" y="218">18:00</text><text x="600" y="218">24:00</text></g>
+      <polyline points="70.0,151.6 78.8,154.2 87.7,157.5 96.5,161.7 105.3,166.4 114.2,171.3 123.0,175.9 131.8,179.5 140.7,181.7 149.5,181.9 158.3,179.9 167.2,175.8 176.0,169.6 184.8,161.4 193.7,151.4 202.5,140.0 211.3,127.7 220.2,115.7 229.0,105.2 237.8,97.6 246.7,94.2 255.5,95.0 264.3,99.4 273.2,105.9 282.0,113.0 290.8,119.0 299.7,123.2 308.5,125.2 317.3,125.3 326.2,124.3 335.0,122.7 343.8,121.3 352.7,120.5 361.5,120.6 370.3,121.5 379.2,123.2 388.0,125.2 396.8,127.1 405.7,128.2 414.5,127.8 423.3,125.3 432.2,120.3 441.0,112.5 449.8,102.6 458.7,91.5 467.5,80.9 476.3,72.5 485.2,67.9 494.0,68.1 502.8,73.0 511.7,82.0 520.5,93.4 529.3,105.5 538.2,116.9 547.0,126.5 555.8,133.9 564.7,139.2 573.5,142.6 582.3,144.7 591.2,145.9 600.0,146.5" fill="none" stroke="var(--faint)" stroke-width="2" stroke-dasharray="5 4"/>
+      <polyline class="a" style="--d:0" points="70.0,154.0 83.2,154.0 109.8,169.2 136.2,182.0 162.8,179.8 189.2,157.9 215.7,120.9 242.2,92.1 268.8,101.4 295.2,123.1 321.8,125.6 348.2,120.2 374.8,121.8 401.2,128.6 427.7,125.3 454.2,97.4 480.8,66.2 507.3,74.6 533.8,112.4 560.2,138.4 586.8,145.9 600.0,146.4" fill="none" stroke="var(--accent)" stroke-width="3"/>
+      <text class="a" style="--d:1" x="330" y="40" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">20 hidden units: average miss 0.1 GW</text>
+      <text class="a" style="--d:2" x="335" y="244" text-anchor="middle" font-size="13" fill="var(--muted)">More hinges, more corners, closer fit.</text>
+    </svg>
+    <p>Twenty hinges and the fit is within 0.1 GW almost everywhere. Keep adding units and the error keeps falling toward zero. That is the <b>universal approximation</b> idea in one picture: enough bends can trace any reasonable curve. It says nothing about whether training will find those bends, or what the network does at hours it never saw.</p>
+  </div>
+</div>
+
+<h3>Universal approximation: what it promises and what it does not</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Enough bends can draw anything</span></div>
+  <p>The universal approximation theorem says that a network with one hidden layer and enough units can imitate any smooth-enough curve as closely as you like. The story above is the whole idea: each unit adds a bend, and enough bends can trace any shape.</p>
+  <p>It is a statement that a good setting of the knobs <i>exists</i>. It does not say how many knobs you need (possibly an astronomical number), whether training will find the right setting, or whether the network will give sensible answers for inputs unlike its training data. Those three gaps are where all the real work in machine learning happens.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">An argument you will hear misused</span></div>
+  <p>"Neural networks are universal approximators, so the model can learn this" is a common and empty argument. The theorem guarantees representation only. Whether a capability is learned depends on three things it is silent about: whether the data contains the signal, whether optimization finds it (next chapter), and whether what was learned generalizes beyond the training examples.</p>
+  <p>The widget below makes the third gap visible. Switch to "20 noisy points" and add units: error on the training points keeps falling while error against the true curve stops improving and gets worse. Fitting the data you have is not the same as learning the pattern that produced it.</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Universal approximation is an existence theorem. It is often cited to dismiss a concern ("a big enough model can represent that"). The useful questions are about data, optimization, and generalization, and the theorem answers none of them.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The statement and its fine print</span></div>
+  <p>For any continuous \(f\) on a compact set \(K \subset \mathbb{R}^n\) and any \(\varepsilon &gt; 0\), there exist \(N\) and parameters \(v_j, b_j \in \mathbb{R}\), \(\mathbf{w}_j \in \mathbb{R}^n\) such that</p>
+  <div class="eq">\[ \sup_{\mathbf{x}\in K}\; \Big|\, f(\mathbf{x}) - \sum_{j=1}^{N} v_j\, \phi(\mathbf{w}_j^\top\mathbf{x} + b_j) \Big| &lt; \varepsilon \]<span class="eqcap">Proved for sigmoid activations by Cybenko (1989) and Hornik, Stinchcombe and White (1989). Leshno et al. (1993) showed it holds exactly when \(\phi\) is not a polynomial, which covers ReLU, tanh and GELU.</span></div>
+  <p>The fine print:</p>
+  <ul>
+    <li><b>No bound on \(N\).</b> For general continuous functions the number of units can grow exponentially with input dimension. Barron (1993) showed that for functions whose Fourier transform has a bounded first moment, squared error falls like \(1/N\) regardless of dimension, which is one reason smooth high-dimensional targets are tractable.</li>
+    <li><b>In one dimension, ReLU networks are piecewise-linear functions.</b> \(g(x) = a + \sum_j v_j \max(0, x - t_j)\) has a kink at each \(t_j\). Linear interpolation of a twice-differentiable \(f\) with kink spacing \(h\) has error at most \(h^2 \max|f''|/8\), so error falls like \(1/N^2\) when the kinks are well placed.</li>
+    <li><b>Depth changes the economics.</b> Telgarsky (2016) gives functions that a deep ReLU network computes with few units but any shallow one needs exponentially many units to approximate.</li>
+    <li><b>Nothing about learning or generalization.</b> The theorem is silent on whether gradient descent reaches a good \(\{v_j, \mathbf{w}_j, b_j\}\), and on behaviour off the training data.</li>
+  </ul>
+</div>
+
+<div class="widget" id="w-nn-fit">
+  <div class="wtitle">Build a curve from hidden units</div>
+  <div class="wsub">A network with one input, one hidden layer of H units, and one output, fitted to a wiggly target. The top panel shows the target (dashed) and the network's output. The bottom panel shows what each hidden unit contributes; the output is their sum plus a bias. Method: each unit's input weight and bias are fixed at random, and the output weights are solved exactly by least squares with a tiny ridge penalty. Real networks train all the weights by gradient descent (next chapter); this shortcut keeps the demo instant and deterministic.</div>
+  <div class="controls">
+    <div class="ctl"><label for="nn-h">Hidden units H: <output id="nn-h-o">6</output></label><input type="range" id="nn-h" min="1" max="40" step="1" value="6"></div>
+    <div class="ctl"><label for="nn-act">Activation</label><select id="nn-act"><option value="relu">ReLU (hinges)</option><option value="tanh">tanh (smooth steps)</option><option value="none">none (linear)</option></select></div>
+    <div class="ctl"><label for="nn-data">Training data</label><select id="nn-data"><option value="curve">Whole curve (200 points, no noise)</option><option value="noisy">20 noisy points</option></select></div>
+  </div>
+  <div class="btnrow"><button class="b" type="button" data-reseed>Draw new random hidden units</button></div>
+  <canvas data-cv="fit"></canvas>
+  <canvas data-cv="parts"></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Parameters (3H + 1)</div><div class="v" data-params>—</div></div>
+    <div class="mc"><div class="l">Error on training data</div><div class="v" data-tr>—</div></div>
+    <div class="mc"><div class="l">Error against true curve</div><div class="v" data-te>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="callout eval"><span class="tag">Eval lens</span><div>The two error cards are the whole story of evaluation in miniature. "Error on training data" is what the optimizer sees and drives down; "error against true curve" is what you care about, and it can only be measured on data the model was not fitted to. In noisy mode, past about 12 units the training error keeps shrinking while the true error stalls or rises. Any eval that reuses training data, or data that leaked into training, reports the first number while claiming the second. See <a href="#contamination">contamination</a>.</div></div>
+
+<div class="callout key"><span class="tag">Key idea</span><div>A neural network is weighted sums with bends, stacked. The weights are the parameters; the bends make depth worth having; the forward pass is the entire computation. Everything else in this guide, from attention to RLHF, is about how to arrange those parts and how to set the weights.</div></div>
+</section>
