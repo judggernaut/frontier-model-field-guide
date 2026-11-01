@@ -24,7 +24,7 @@
   <div class="readout" data-out></div>
 </div>
 <div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why every lab distils</span></div>
-  <p>Distillation is how a lab turns one expensive frontier model into a family of cheaper ones. Small models trained from a strong teacher usually beat small models trained from scratch on the same compute. Gemma 2 (Google, 2024) trained its 2B and 9B models with distillation from a larger model in place of plain next-token prediction. DeepSeek-R1 (2025) distilled about 800K reasoning samples from R1 into smaller Qwen and Llama models and reported that this beat running RL directly on the small models.</p>
+  <p>Distillation is how a lab turns one expensive frontier model into a family of cheaper ones. Small models trained from a strong teacher usually beat small models trained from scratch on the same compute. Gemma 2 (Google, 2024) trained its 2B and 9B models with distillation from a larger model in place of plain next-token prediction. DeepSeek-R1 (2025) fine-tuned smaller Qwen and Llama models on about 800K curated samples (roughly 600K R1 reasoning traces plus 200K non-reasoning examples) and reported that this beat running RL directly on the small models.</p>
   <div class="four">
     <div class="tile"><h4>Logit distillation</h4><p>Match the teacher's full probability distribution at each token. Needs the teacher's logits and a shared tokenizer, so it is mostly done inside one lab.</p></div>
     <div class="tile"><h4>Sequence distillation</h4><p>Train on text the teacher generated (Kim &amp; Rush, 2016). Works through an API and across tokenizers. This is what "training on model outputs" usually means.</p></div>
@@ -39,7 +39,7 @@
   <p>The direction of the KL matters for generative models:</p>
   <ul>
     <li><b>Forward KL</b>, \(\mathrm{KL}(p^T \| p^S) = \sum_i p_i^T \log \frac{p_i^T}{p_i^S}\), punishes the student for putting low probability anywhere the teacher puts mass. It is <i>mode covering</i>: a small student spreads itself thin and can produce blends of answers.</li>
-    <li><b>Reverse KL</b>, \(\mathrm{KL}(p^S \| p^T)\), punishes the student for putting mass where the teacher doesn't. It is <i>mode seeking</i>: the student commits to the teacher's main modes. MiniLLM (Gu et al., 2024) argued reverse KL suits small generative students better. On-policy distillation minimises a per-token reverse KL on the student's own samples.</li>
+    <li><b>Reverse KL</b>, \(\mathrm{KL}(p^S \| p^T)\), punishes the student for putting mass where the teacher doesn't. It is <i>mode seeking</i>: the student commits to the teacher's main modes. MiniLLM (Gu et al., 2024) argued reverse KL suits small generative students better. On-policy distillation scores the student's own samples against the teacher, most often with a per-token reverse KL (GKD, Agarwal et al. 2024, allows other divergences).</li>
   </ul>
 <pre class="code" data-lang="python"><code>import torch, torch.nn.functional as F
 

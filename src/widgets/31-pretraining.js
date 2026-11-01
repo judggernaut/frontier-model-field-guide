@@ -62,7 +62,7 @@ G.widget('w-pt-bpe', function (root) {
     mbox.innerHTML = merges.length ? merges.map(function (m) { return '<li>' + m[0].replace('_', '·') + ' + ' + m[1].replace('_', '·') + ' → ' + (m[0] + m[1]).replace('_', '·') + ' <span style="color:var(--faint)">(' + m[2] + ')</span></li>'; }).join('') : '<li style="color:var(--faint);list-style:none">none yet</li>';
     var tot = 0, cnt = 0; words.forEach(function (w) { tot += w.syms.length * w.c; cnt += w.c; });
     var vocab = {}; words.forEach(function (w) { w.syms.forEach(function (s) { vocab[s] = 1; }); });
-    G.$(root, '[data-out]').innerHTML = merges.length + ' merges. Average tokens per word: <b>' + G.fmt(tot / cnt, 2) + '</b> (started at ' + G.fmt(start, 2) + '). Symbols in use: ' + Object.keys(vocab).length + '. The "·" marks end of word, so "est·" can only match at the end. Frequent suffixes like "er·" and "est·" become tokens first.';
+    G.$(root, '[data-out]').innerHTML = merges.length + ' merges. Average tokens per word: <b>' + G.fmt(tot / cnt, 2) + '</b> (started at ' + G.fmt(start, 2) + '). Symbols in use: ' + Object.keys(vocab).length + '. The "·" marks end of word, so "est·" can only match at the end. The most frequent adjacent pair always merges next, so common fragments and word endings (here "we", "ne", "r·", "st·") become tokens before whole words like "newer·" and "low·".';
   }
   reset(); for (var i = 0; i < 3; i++) step();
   G.on(G.$(root, '[data-next]'), 'click', function () { step(); render(); });

@@ -44,7 +44,7 @@ You are a concise assistant.&lt;|im_end|&gt;
 What is 17 * 3?&lt;|im_end|&gt;
 &lt;|im_start|&gt;assistant
 51&lt;|im_end|&gt;</code></pre>
-  <p>The special markers are single tokens added to the vocabulary, with embeddings learned in SFT. In Hugging Face tooling the template is stored with the tokenizer as a Jinja string and applied with <code>tokenizer.apply_chat_template</code>. Use the same function in training, serving, and the eval harness, and check a rendered example in each by eye.</p>
+  <p>The special markers are single tokens, either reserved in the pretraining vocabulary (as in Llama 3) or added before SFT; only when they are new are their embeddings learned during SFT. In Hugging Face tooling the template is stored with the tokenizer as a Jinja string and applied with <code>tokenizer.apply_chat_template</code>. Use the same function in training, serving, and the eval harness, and check a rendered example in each by eye.</p>
 </div>
 
 <h3>Loss masking: which tokens teach</h3>

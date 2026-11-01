@@ -82,7 +82,8 @@ print(round(((r_w - r_l) &gt; 0).float().mean().item(), 3))             # pairwi
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Architecture</span></div>
   <p>Take a transformer language model, drop the vocabulary projection, and add a linear head that maps the final hidden state of the last token to one scalar. Run the prompt and response through, read the scalar, done. Chosen and rejected responses are run as two sequences that share the prompt.</p>
-  <pre class="code" data-lang="python"><code>import torch.nn as nn
+  <pre class="code" data-lang="python"><code>import torch
+import torch.nn as nn
 
 class RewardModel(nn.Module):
     def __init__(self, backbone, hidden_size):
@@ -92,7 +93,7 @@ class RewardModel(nn.Module):
 
     def forward(self, input_ids, attention_mask):
         h = self.backbone(input_ids, attention_mask=attention_mask).last_hidden_state
-        last = attention_mask.sum(dim=1) - 1     # index of the final real token in each row
+        last = attention_mask.sum(dim=1) - 1     # index of the final real token (assumes right padding)
         h_last = h[torch.arange(h.size(0)), last]
         return self.value_head(h_last).squeeze(-1)   # one scalar reward per sequence</code></pre>
   <p>Alternatives you will hear about: <b>generative reward models</b> that write a critique and then a verdict (an LLM judge trained on preference data, see <a href="#judges">LLM as judge</a>), <b>multi-objective</b> heads that score helpfulness and harmlessness separately (Llama 2 trained two separate reward models), and <b>pairwise</b> models that read both responses at once and output which is better.</p>
@@ -112,7 +113,7 @@ class RewardModel(nn.Module):
       <tr><td>Downstream effect</td><td>Best-of-N or RL results using this reward model, scored by humans or a held-out judge</td><td>Static accuracy correlates only loosely with how good a policy it trains</td></tr>
     </tbody>
   </table></div>
-  <p>Public suites such as RewardBench (Lambert et al. 2024) and its successor RewardBench 2 (2025) give comparable numbers across categories like chat, hard chat, safety, and reasoning. They are useful for comparing reward models from different groups, and weak as a ship criterion, because your policy's failure modes are not in a public benchmark.</p>
+  <p>Public suites such as RewardBench (Lambert et al. 2024: chat, hard chat, safety, reasoning) and RewardBench 2 (Malik et al. 2025: factuality, precise instruction following, math, safety, focus, ties) give comparable numbers across categories. They are useful for comparing reward models from different groups, and weak as a ship criterion, because your policy's failure modes are not in a public benchmark.</p>
   <div class="callout eval"><span class="tag">Eval lens</span><div>Reward model evaluation is a binary classification problem on pairs, so everything in <a href="#classification">classification metrics</a> applies. Pairwise accuracy on randomly ordered pairs is a concordance measure, the same quantity ROC-AUC estimates. Report it with a confidence interval (a few thousand held-out pairs gives roughly ±1.5 points), report it per slice, and compare it to the human-human agreement on the same items. A 2-point gain between reward model versions on 1,000 pairs is inside the noise.</div></div>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Known biases and how to probe them</span></div>
@@ -131,7 +132,7 @@ class RewardModel(nn.Module):
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The scaling law</span></div>
   <p>Gao, Schulman and Hilton (2022) made this measurable. They used a large "gold" reward model as a stand-in for humans, trained smaller proxy reward models on its labels, optimized policies against the proxies, and tracked gold reward as a function of how far the policy moved from its starting point, measured by \(d = \sqrt{\mathrm{KL}(\pi \,\|\, \pi_{\text{ref}})}\). Gold reward followed simple functional forms:</p>
-  <div class="eq">\[ R_{\text{bon}}(d) = d\,(\alpha_{\text{bon}} - \beta_{\text{bon}}\, d), \qquad R_{\text{RL}}(d) = d\,(\alpha_{\text{RL}} - \beta_{\text{RL}} \log d) \]<span class="eqcap">Best-of-N sampling (left) and RL (right). Both rise, peak, and fall. Larger proxy reward models had larger \(\alpha\) and smaller \(\beta\): a later, higher peak. More proxy training data helped in the same direction.</span></div>
+  <div class="eq">\[ R_{\text{bon}}(d) = d\,(\alpha_{\text{bon}} - \beta_{\text{bon}}\, d), \qquad R_{\text{RL}}(d) = d\,(\alpha_{\text{RL}} - \beta_{\text{RL}} \log d) \]<span class="eqcap">Best-of-N sampling (left) and RL (right). Both rise, peak, and fall. Larger proxy reward models had smaller \(\beta\) (for RL, \(\alpha\) stayed roughly constant across reward-model sizes), so gold reward declines more slowly: a later, higher peak. More proxy training data helped in the same direction.</span></div>
   <p>Two practical lessons follow. The KL distance at which gold reward peaks is a budget, and it grows with reward model quality. And the proxy score is useless for finding that peak, because it keeps rising straight through it. You need an independent signal: fresh human ratings, a different reward model, or task-specific checks.</p>
 </div>
 
