@@ -120,7 +120,8 @@
   <p>Given scores \(s_i\), labels \(y_i \in \{0,1\}\), and a threshold \(\tau\), the prediction is \(\hat y_i = \mathbb{1}[s_i \ge \tau]\). Each cell counts a combination:</p>
   <div class="eq">\[ \mathrm{TP}(\tau)=\sum_i \mathbb{1}[\hat y_i=1, y_i=1],\quad \mathrm{FP}(\tau)=\sum_i \mathbb{1}[\hat y_i=1, y_i=0],\quad \mathrm{FN}(\tau)=\sum_i \mathbb{1}[\hat y_i=0, y_i=1] \]<span class="eqcap">TN is everything else. Raising \(\tau\) can only move items from the predicted-positive column to the predicted-negative column, so TP and FP never increase as \(\tau\) rises.</span></div>
   <p>Report a single precision or recall and you have silently reported a threshold choice as if it were a property of the model. Two teams can report very different F1 for the same model because they picked different operating points. Threshold-free metrics (section on AUC below) sidestep this and bring their own problems.</p>
-  <pre class="code" data-lang="python"><code>def confusion(y_true, y_pred):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def confusion(y_true, y_pred):
     """The four numbers everything else is built from.
     Always compute this first and show it next to any derived metric."""
     tp = sum(1 for a, b in zip(y_true, y_pred) if a == 1 and b == 1)
@@ -128,6 +129,30 @@
     fn = sum(1 for a, b in zip(y_true, y_pred) if a == 1 and b == 0)
     tn = sum(1 for a, b in zip(y_true, y_pred) if a == 0 and b == 0)
     return {"tp": tp, "fp": fp, "fn": fn, "tn": tn}</code></pre>
+<pre class="code" data-lang="rust"><code>#[derive(Debug, Clone, Copy, PartialEq)]
+struct Confusion {
+    tp: u64,
+    fp: u64,
+    fn_: u64, // `fn` is a Rust keyword, hence the underscore
+    tn: u64,
+}
+
+/// The four numbers everything else is built from.
+/// Always compute this first and show it next to any derived metric.
+fn confusion(y_true: &amp;[u8], y_pred: &amp;[u8]) -&gt; Confusion {
+    let mut c = Confusion { tp: 0, fp: 0, fn_: 0, tn: 0 };
+    for (&amp;a, &amp;b) in y_true.iter().zip(y_pred) {
+        match (a, b) {
+            (1, 1) =&gt; c.tp += 1,
+            (0, 1) =&gt; c.fp += 1,
+            (1, 0) =&gt; c.fn_ += 1,
+            (0, 0) =&gt; c.tn += 1,
+            _ =&gt; {} // anything other than 0/1 is not counted, as in the Python
+        }
+    }
+    c
+}</code></pre>
+</div>
 </div>
 
 <h3>Four metrics, four questions</h3>
@@ -173,13 +198,25 @@
 
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">F-beta, and the demonstration that F1 ignores TN</span></div>
   <div class="eq">\[ F_\beta = (1+\beta^2)\,\frac{P\cdot R}{\beta^2 P + R} \]<span class="eqcap">\(\beta&gt;1\) weights recall more, \(\beta&lt;1\) weights precision more. \(F_1\) is the harmonic mean of \(P\) and \(R\), which punishes imbalance: \(P=0.9, R=0.1\) gives 0.18, not 0.5.</span></div>
-  <pre class="code" data-lang="python"><code>def f_beta(precision, recall, beta=1.0):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def f_beta(precision, recall, beta=1.0):
     """beta > 1 weights recall more, beta < 1 weights precision more.
     beta = 2 says a miss costs about four times a false alarm (beta squared)."""
     if precision + recall == 0:
         return 0.0
     b2 = beta * beta
     return (1 + b2) * precision * recall / (b2 * precision + recall)</code></pre>
+<pre class="code" data-lang="rust"><code>/// beta &gt; 1 weights recall more, beta &lt; 1 weights precision more.
+/// beta = 2 says a miss costs about four times a false alarm (beta squared).
+/// Rust has no default arguments: pass beta = 1.0 for plain F1.
+fn f_beta(precision: f64, recall: f64, beta: f64) -&gt; f64 {
+    if precision + recall == 0.0 {
+        return 0.0;
+    }
+    let b2 = beta * beta;
+    (1.0 + b2) * precision * recall / (b2 * precision + recall)
+}</code></pre>
+</div>
   <div class="callout warn"><span class="tag">Watch out</span><div>Two classifiers, both with TP = 80, FP = 20, FN = 20. Scenario A has TN = 80; scenario B has TN = 9,980. Both score F1 = 0.800. MCC separates them: 0.600 versus 0.798. Same F1, materially different classifiers, because F1 never looks at the TN cell.</div></div>
 </div>
 
@@ -216,7 +253,8 @@
 
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The three averages, precisely</span></div>
   <div class="eq">\[ F_1^{\text{macro}}=\frac1K\sum_{k=1}^K F_1^{(k)},\qquad F_1^{\text{weighted}}=\sum_{k=1}^K \frac{n_k}{n}F_1^{(k)},\qquad F_1^{\text{micro}}=\frac{2\sum_k \mathrm{TP}_k}{2\sum_k \mathrm{TP}_k+\sum_k \mathrm{FP}_k+\sum_k \mathrm{FN}_k} \]<span class="eqcap">In single-label multiclass, every false positive for one class is a false negative for another, so \(\sum_k \mathrm{FP}_k=\sum_k \mathrm{FN}_k\) and micro-F1 equals accuracy.</span></div>
-  <pre class="code" data-lang="python"><code>from collections import Counter
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>from collections import Counter
 
 def multiclass_report(y_true, y_pred):
     """Per-class metrics plus all three averages. When macro and weighted
@@ -238,6 +276,62 @@ def multiclass_report(y_true, y_pred):
     confused = Counter((a, b) for a, b in zip(y_true, y_pred) if a != b).most_common(3)
     return {"per_class": per, "macro_f1": macro, "weighted_f1": weighted,
             "micro_f1": micro, "top_confused_pairs": confused}</code></pre>
+<pre class="code" data-lang="rust"><code>use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::hash::Hash;
+
+struct ClassStats {
+    f1: f64,
+    support: usize,
+    tp: usize,
+    fp: usize,
+    fn_: usize,
+}
+
+struct Report&lt;T&gt; {
+    per_class: BTreeMap&lt;T, ClassStats&gt;, // sorted by label, like sorted(set(...))
+    macro_f1: f64,
+    weighted_f1: f64,
+    micro_f1: f64,
+    top_confused_pairs: Vec&lt;((T, T), usize)&gt;,
+}
+
+/// Per-class metrics plus all three averages. When macro and weighted
+/// diverge sharply, that gap is the finding.
+fn multiclass_report&lt;T: Ord + Hash + Clone&gt;(y_true: &amp;[T], y_pred: &amp;[T]) -&gt; Report&lt;T&gt; {
+    let labels: BTreeSet&lt;&amp;T&gt; = y_true.iter().chain(y_pred).collect();
+    let pairs: Vec&lt;(&amp;T, &amp;T)&gt; = y_true.iter().zip(y_pred).collect();
+    let mut per = BTreeMap::new();
+    for &amp;lab in &amp;labels {
+        let tp = pairs.iter().filter(|&amp;&amp;(a, b)| a == lab &amp;&amp; b == lab).count();
+        let fp = pairs.iter().filter(|&amp;&amp;(a, b)| a != lab &amp;&amp; b == lab).count();
+        let fn_ = pairs.iter().filter(|&amp;&amp;(a, b)| a == lab &amp;&amp; b != lab).count();
+        let p = if tp + fp &gt; 0 { tp as f64 / (tp + fp) as f64 } else { 0.0 };
+        let r = if tp + fn_ &gt; 0 { tp as f64 / (tp + fn_) as f64 } else { 0.0 };
+        let f1 = if p + r &gt; 0.0 { 2.0 * p * r / (p + r) } else { 0.0 };
+        per.insert(lab.clone(), ClassStats { f1, support: tp + fn_, tp, fp, fn_ });
+    }
+    let n = y_true.len() as f64;
+    let macro_f1 = per.values().map(|v| v.f1).sum::&lt;f64&gt;() / labels.len() as f64;
+    let weighted_f1 = per.values().map(|v| v.f1 * v.support as f64).sum::&lt;f64&gt;() / n;
+    let micro_f1 = pairs.iter().filter(|&amp;&amp;(a, b)| a == b).count() as f64 / n;
+
+    // Counter(...).most_common(3): highest count first, ties in first-seen order
+    let mut counts: Vec&lt;((T, T), usize)&gt; = Vec::new();
+    let mut index: HashMap&lt;(T, T), usize&gt; = HashMap::new();
+    for &amp;(a, b) in pairs.iter().filter(|&amp;&amp;(a, b)| a != b) {
+        let key = (a.clone(), b.clone());
+        let i = *index.entry(key.clone()).or_insert_with(|| {
+            counts.push((key, 0));
+            counts.len() - 1
+        });
+        counts[i].1 += 1;
+    }
+    counts.sort_by(|x, y| y.1.cmp(&amp;x.1)); // stable sort keeps first-seen order on ties
+    counts.truncate(3);
+
+    Report { per_class: per, macro_f1, weighted_f1, micro_f1, top_confused_pairs: counts }
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-multiclass"><div class="wtitle">Multiclass confusion heatmap</div><div class="wsub">An intent taxonomy as a heatmap. Rows are true intent, columns are predicted. Raise imbalance and watch weighted F1 detach from macro F1 while the headline number stays comfortable.</div><div class="controls"><div class="ctl"><label data-l1>classes</label><input type="range" data-k min="3" max="8" step="1" value="6"></div><div class="ctl"><label data-l2>imbalance</label><input type="range" data-im min="0.0" max="0.6" step="0.05" value="0.35"></div><div class="ctl"><label data-l3>confusability</label><input type="range" data-cf min="0.0" max="0.5" step="0.02" value="0.18"></div></div><canvas></canvas><div class="readout" data-out></div></div>
@@ -369,7 +463,8 @@ def multiclass_report(y_true, y_pred):
   <div class="eq">\[ \mathrm{AP}=\frac{1}{n_+}\sum_{k:\,y_{(k)}=1} \mathrm{Precision}@k \]<span class="eqcap">The baseline for a random ranking is the prevalence \(\pi = n_+/n\), which is why PR-AUC must always be read next to \(\pi\).</span></div>
   <p>Precision depends on prevalence directly. If a classifier has true positive rate \(\mathrm{TPR}\) and false positive rate \(\mathrm{FPR}\), its precision at prevalence \(\pi\) is</p>
   <div class="eq">\[ \mathrm{Precision}(\pi)=\frac{\mathrm{TPR}\cdot\pi}{\mathrm{TPR}\cdot\pi+\mathrm{FPR}\cdot(1-\pi)} \]<span class="eqcap">TPR and FPR (the ROC axes) do not change with \(\pi\); precision does. That single line explains why ROC is prevalence-blind and PR is not.</span></div>
-  <pre class="code" data-lang="python"><code>def roc_auc(y_true, scores):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def roc_auc(y_true, scores):
     """Probability a random positive outscores a random negative (ties count half)."""
     order = sorted(range(len(scores)), key=lambda i: scores[i])
     ranks = [0.0] * len(scores)
@@ -397,6 +492,44 @@ def average_precision(y_true, scores):
             tp += 1
             ap += tp / rank
     return ap / sum(y_true)</code></pre>
+<pre class="code" data-lang="rust"><code>/// Probability a random positive outscores a random negative (ties count half).
+fn roc_auc(y_true: &amp;[u8], scores: &amp;[f64]) -&gt; f64 {
+    let mut order: Vec&lt;usize&gt; = (0..scores.len()).collect();
+    order.sort_by(|&amp;a, &amp;b| scores[a].partial_cmp(&amp;scores[b]).expect("NaN score"));
+    let mut ranks = vec![0.0; scores.len()];
+    let mut i = 0;
+    while i &lt; order.len() {
+        let mut j = i;
+        while j + 1 &lt; order.len() &amp;&amp; scores[order[j + 1]] == scores[order[i]] {
+            j += 1;
+        }
+        let avg = (i + j) as f64 / 2.0 + 1.0; // tied items share the average rank
+        for k in i..=j {
+            ranks[order[k]] = avg;
+        }
+        i = j + 1;
+    }
+    let n_pos = y_true.iter().map(|&amp;y| y as f64).sum::&lt;f64&gt;();
+    let n_neg = y_true.len() as f64 - n_pos;
+    let r_pos: f64 = ranks.iter().zip(y_true).filter(|&amp;(_, &amp;y)| y == 1).map(|(r, _)| r).sum();
+    (r_pos - n_pos * (n_pos + 1.0) / 2.0) / (n_pos * n_neg)
+}
+
+/// Step-wise PR-AUC: mean precision at each rank where a positive appears.
+fn average_precision(y_true: &amp;[u8], scores: &amp;[f64]) -&gt; f64 {
+    let mut order: Vec&lt;usize&gt; = (0..scores.len()).collect();
+    // highest score first; the sort is stable, so ties keep input order
+    order.sort_by(|&amp;a, &amp;b| scores[b].partial_cmp(&amp;scores[a]).expect("NaN score"));
+    let (mut tp, mut ap) = (0, 0.0);
+    for (rank, &amp;i) in (1..).zip(&amp;order) {
+        if y_true[i] == 1 {
+            tp += 1;
+            ap += tp as f64 / rank as f64;
+        }
+    }
+    ap / y_true.iter().map(|&amp;y| y as f64).sum::&lt;f64&gt;()
+}</code></pre>
+</div>
 </div>
 
 <h3>Better single numbers: MCC, balanced accuracy, kappa</h3>
@@ -414,7 +547,8 @@ def average_precision(y_true, scores):
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Definitions</span></div>
   <div class="eq">\[ \mathrm{MCC}=\frac{\mathrm{TP}\cdot\mathrm{TN}-\mathrm{FP}\cdot\mathrm{FN}}{\sqrt{(\mathrm{TP}+\mathrm{FP})(\mathrm{TP}+\mathrm{FN})(\mathrm{TN}+\mathrm{FP})(\mathrm{TN}+\mathrm{FN})}},\qquad \mathrm{BA}=\tfrac12\Big(\tfrac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FN}}+\tfrac{\mathrm{TN}}{\mathrm{TN}+\mathrm{FP}}\Big) \]<span class="eqcap">MCC uses all four margins, so swapping the class labels leaves it unchanged. F1 does not have that property.</span></div>
   <div class="eq">\[ \kappa=\frac{p_o-p_e}{1-p_e},\qquad p_e=\frac{(\mathrm{TP}+\mathrm{FP})(\mathrm{TP}+\mathrm{FN})+(\mathrm{TN}+\mathrm{FN})(\mathrm{TN}+\mathrm{FP})}{n^2} \]<span class="eqcap">\(p_o\) is observed agreement (plain accuracy); \(p_e\) is the agreement two independent raters with the same marginals would reach by luck. On a 95/5 split, luck alone gives about 90%.</span></div>
-  <pre class="code" data-lang="python"><code>import math
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
 
 def mcc(tp, fp, fn, tn):
     den = math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
@@ -431,6 +565,32 @@ def kappa(tp, fp, fn, tn):
 
 # The "flag nothing" model on 1% positives: accuracy 0.99, MCC 0, BA 0.5, kappa 0
 print(mcc(0, 0, 10, 990), balanced_accuracy(0, 0, 10, 990), kappa(0, 0, 10, 990))</code></pre>
+<pre class="code" data-lang="rust"><code>// Counts arrive as integers; convert once so products cannot overflow.
+fn mcc(tp: u64, fp: u64, fn_: u64, tn: u64) -&gt; f64 {
+    let (tp, fp, fn_, tn) = (tp as f64, fp as f64, fn_ as f64, tn as f64);
+    let den = ((tp + fp) * (tp + fn_) * (tn + fp) * (tn + fn_)).sqrt();
+    if den != 0.0 { (tp * tn - fp * fn_) / den } else { 0.0 } // 0 = chance when undefined
+}
+
+fn balanced_accuracy(tp: u64, fp: u64, fn_: u64, tn: u64) -&gt; f64 {
+    let (tp, fp, fn_, tn) = (tp as f64, fp as f64, fn_ as f64, tn as f64);
+    (tp / (tp + fn_) + tn / (tn + fp)) / 2.0
+}
+
+fn kappa(tp: u64, fp: u64, fn_: u64, tn: u64) -&gt; f64 {
+    let (tp, fp, fn_, tn) = (tp as f64, fp as f64, fn_ as f64, tn as f64);
+    let n = tp + fp + fn_ + tn;
+    let po = (tp + tn) / n;
+    let pe = ((tp + fp) * (tp + fn_) + (tn + fn_) * (tn + fp)) / (n * n);
+    if pe != 1.0 { (po - pe) / (1.0 - pe) } else { 0.0 }
+}
+
+fn main() {
+    // The "flag nothing" model on 1% positives: accuracy 0.99, MCC 0, BA 0.5, kappa 0
+    // {:?} prints floats the way Python does (0.0, not 0)
+    println!("{:?} {:?} {:?}", mcc(0, 0, 10, 990), balanced_accuracy(0, 0, 10, 990), kappa(0, 0, 10, 990));
+}</code></pre>
+</div>
   <p>MCC and kappa are often nearly identical on binary problems. Prefer MCC when scoring a model and kappa when scoring agreement between raters, because that is what each was designed to communicate.</p>
 </div>
 
@@ -466,7 +626,8 @@ print(mcc(0, 0, 10, 990), balanced_accuracy(0, 0, 10, 990), kappa(0, 0, 10, 990)
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Brier score and expected calibration error</span></div>
   <div class="eq">\[ \mathrm{Brier}=\frac1n\sum_{i=1}^n (p_i-y_i)^2,\qquad \mathrm{ECE}=\sum_{b=1}^{B}\frac{|S_b|}{n}\,\big|\mathrm{acc}(S_b)-\mathrm{conf}(S_b)\big| \]<span class="eqcap">Brier is a proper scoring rule: it is minimised by reporting your true belief. ECE buckets predictions by confidence \(S_b\) and compares mean confidence to observed accuracy in each bucket. ECE depends on the number of bins, so always state \(B\).</span></div>
-  <pre class="code" data-lang="python"><code>def brier(y_true, probs):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def brier(y_true, probs):
     # squared, not absolute: squaring is what makes it a proper scoring rule
     return sum((p - y) ** 2 for p, y in zip(probs, y_true)) / len(y_true)
 
@@ -481,6 +642,30 @@ def ece(y_true, probs, bins=10):
         acc = sum(y_true[i] for i in idx) / len(idx)
         total += len(idx) / n * abs(acc - conf)
     return total</code></pre>
+<pre class="code" data-lang="rust"><code>fn brier(y_true: &amp;[u8], probs: &amp;[f64]) -&gt; f64 {
+    // squared, not absolute: squaring is what makes it a proper scoring rule
+    probs.iter().zip(y_true).map(|(p, &amp;y)| (p - y as f64).powi(2)).sum::&lt;f64&gt;() / y_true.len() as f64
+}
+
+/// Pass bins = 10 to match the Python default.
+fn ece(y_true: &amp;[u8], probs: &amp;[f64], bins: usize) -&gt; f64 {
+    let (n, mut total) = (y_true.len() as f64, 0.0);
+    for b in 0..bins {
+        let (lo, hi) = (b as f64 / bins as f64, (b + 1) as f64 / bins as f64);
+        let idx: Vec&lt;usize&gt; = (0..probs.len())
+            .filter(|&amp;i| (lo &lt; probs[i] &amp;&amp; probs[i] &lt;= hi) || (b == 0 &amp;&amp; probs[i] == 0.0))
+            .collect();
+        if idx.is_empty() {
+            continue;
+        }
+        let m = idx.len() as f64;
+        let conf = idx.iter().map(|&amp;i| probs[i]).sum::&lt;f64&gt;() / m;
+        let acc = idx.iter().map(|&amp;i| y_true[i] as f64).sum::&lt;f64&gt;() / m;
+        total += m / n * (acc - conf).abs();
+    }
+    total
+}</code></pre>
+</div>
   <div class="callout note"><span class="tag">Note</span><div>In a simulation with 20% label noise, a moderately confident model scored Brier 0.162 and ECE 0.050. The same model pushed to 0.99 / 0.01 confidence scored Brier 0.196 and ECE 0.190: identical ranking, identical accuracy, nearly four times worse calibration.</div></div>
 </div>
 <div class="widget" id="w-cal"><div class="wtitle">Calibration</div><div class="wsub">Sharpening pushes confidence toward 0 and 1 without changing the ranking at all. Accuracy and AUC do not move. Watch ECE and Brier come apart. If you route, abstain or auto approve on a confidence score, this is the property that matters.</div><div class="controls"><div class="ctl"><label data-l1>confidence sharpening</label><input type="range" data-temp min="0.5" max="6" step="0.1" value="1"></div><div class="ctl"><label data-l2>label noise</label><input type="range" data-noise min="0" max="0.4" step="0.02" value="0.2"></div></div><canvas></canvas><div class="readout" data-out></div></div>
@@ -502,7 +687,8 @@ def ece(y_true, probs, bins=10):
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The coverage–risk curve</span></div>
   <p>Sort by confidence \(c_i\) descending and answer only the top fraction \(\kappa\) (coverage). Risk is the error rate over the answered set only; abstained items are handed off, not counted wrong.</p>
   <div class="eq">\[ \mathrm{risk}(\kappa)=\frac{1}{\lfloor\kappa n\rfloor}\sum_{i\in \text{top }\lfloor\kappa n\rfloor}\mathbb{1}[\hat y_i\neq y_i],\qquad \text{total cost}(\kappa)=\kappa\,\mathrm{risk}(\kappa)\,c_{\text{error}}+(1-\kappa)\,c_{\text{ask}} \]<span class="eqcap">The area under the risk–coverage curve (AURC) summarises how well confidence tracks correctness; lower is better.</span></div>
-  <pre class="code" data-lang="python"><code>def coverage_risk(y_true, preds, conf, coverages=(1.0, 0.9, 0.8, 0.6, 0.5)):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def coverage_risk(y_true, preds, conf, coverages=(1.0, 0.9, 0.8, 0.6, 0.5)):
     order = sorted(range(len(y_true)), key=lambda i: -conf[i])
     out = []
     for cov in coverages:
@@ -510,6 +696,26 @@ def ece(y_true, probs, bins=10):
         err = sum(preds[i] != y_true[i] for i in order[:k]) / k
         out.append({"coverage": cov, "risk": err, "answered": k})
     return out</code></pre>
+<pre class="code" data-lang="rust"><code>const DEFAULT_COVERAGES: [f64; 5] = [1.0, 0.9, 0.8, 0.6, 0.5];
+
+struct CoveragePoint {
+    coverage: f64,
+    risk: f64,
+    answered: usize,
+}
+
+fn coverage_risk&lt;T: PartialEq&gt;(y_true: &amp;[T], preds: &amp;[T], conf: &amp;[f64], coverages: &amp;[f64]) -&gt; Vec&lt;CoveragePoint&gt; {
+    let mut order: Vec&lt;usize&gt; = (0..y_true.len()).collect();
+    order.sort_by(|&amp;a, &amp;b| conf[b].partial_cmp(&amp;conf[a]).expect("NaN confidence"));
+    let mut out = Vec::new();
+    for &amp;cov in coverages {
+        let k = ((cov * order.len() as f64) as usize).max(1);
+        let err = order[..k].iter().filter(|&amp;&amp;i| preds[i] != y_true[i]).count() as f64 / k as f64;
+        out.push(CoveragePoint { coverage: cov, risk: err, answered: k });
+    }
+    out
+}</code></pre>
+</div>
 </div>
 
 <h3>Expected cost: the metric that is actually about your problem</h3>
@@ -519,7 +725,8 @@ def ece(y_true, probs, bins=10):
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Cost per decision and the Bayes-optimal threshold</span></div>
   <div class="eq">\[ \mathrm{Cost}(\tau)=\frac{c_{FP}\,\mathrm{FP}(\tau)+c_{FN}\,\mathrm{FN}(\tau)}{n},\qquad \tau^\ast=\frac{c_{FP}}{c_{FP}+c_{FN}}\ \text{ if scores are calibrated probabilities} \]<span class="eqcap">Flag an item when \(p\,c_{FN} &gt; (1-p)\,c_{FP}\). With equal costs that is \(p&gt;0.5\); if a miss costs 9 times a false alarm, flag at \(p&gt;0.1\). If scores are not calibrated, sweep thresholds on held-out data instead.</span></div>
-  <pre class="code" data-lang="python"><code>def best_threshold(y_true, scores, c_fp, c_fn):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def best_threshold(y_true, scores, c_fp, c_fn):
     """Only observed scores can change the confusion matrix, so sweep those."""
     best = None
     for t in sorted(set(scores)):
@@ -529,6 +736,28 @@ def ece(y_true, probs, bins=10):
         if best is None or cost &lt; best["cost"]:
             best = {"threshold": t, "cost": cost}
     return best   # tune on a validation split, report on a separate test split</code></pre>
+<pre class="code" data-lang="rust"><code>struct Best {
+    threshold: f64,
+    cost: f64,
+}
+
+/// Only observed scores can change the confusion matrix, so sweep those.
+fn best_threshold(y_true: &amp;[u8], scores: &amp;[f64], c_fp: f64, c_fn: f64) -&gt; Option&lt;Best&gt; {
+    let mut thresholds = scores.to_vec();
+    thresholds.sort_by(|a, b| a.partial_cmp(b).expect("NaN score"));
+    thresholds.dedup(); // sorted(set(scores))
+    let mut best: Option&lt;Best&gt; = None;
+    for t in thresholds {
+        let fp = scores.iter().zip(y_true).filter(|&amp;(&amp;s, &amp;y)| s &gt;= t &amp;&amp; y == 0).count() as f64;
+        let fn_ = scores.iter().zip(y_true).filter(|&amp;(&amp;s, &amp;y)| s &lt; t &amp;&amp; y == 1).count() as f64;
+        let cost = (c_fp * fp + c_fn * fn_) / y_true.len() as f64;
+        if best.as_ref().map_or(true, |b| cost &lt; b.cost) {
+            best = Some(Best { threshold: t, cost });
+        }
+    }
+    best // tune on a validation split, report on a separate test split
+}</code></pre>
+</div>
 </div>
 
 <p>The advanced playground below puts every metric from this chapter on one screen, including a cost ratio slider that finds the cost-minimising threshold.</p>

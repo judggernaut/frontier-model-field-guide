@@ -54,7 +54,8 @@
   <div class="eq">\[ \mathrm{AUC}_{\text{1 point}}=\tfrac12\,\mathrm{TPR}\cdot\mathrm{FPR}+\tfrac12(1-\mathrm{FPR})(1+\mathrm{TPR}) = \frac{\mathrm{TPR}+(1-\mathrm{FPR})}{2} \]<span class="eqcap">Exactly balanced accuracy. With TPR 0.8 and FPR 0.1, that is 0.85.</span></div>
   <p>A continuous score from a single call: renormalise the probability of the two verdict tokens at the answer position.</p>
   <div class="eq">\[ s=\frac{p(\texttt{Fail}\mid \text{prompt})}{p(\texttt{Fail}\mid \text{prompt})+p(\texttt{Pass}\mid \text{prompt})} \]<span class="eqcap">Check that the verdict token appears where you read it (put the verdict last, after reasoning, in a fixed format). The renormalised score is usually miscalibrated; that is fine for ranking and AUC, and fixable with temperature scaling if you need calibrated probabilities.</span></div>
-  <pre class="code" data-lang="python"><code>import math
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
 
 def judge_score(top_logprobs, pos="Fail", neg="Pass"):
     """top_logprobs: {token: logprob} at the verdict position."""
@@ -66,6 +67,22 @@ def judge_score(top_logprobs, pos="Fail", neg="Pass"):
 def vote_score(verdicts):
     """Fallback without logprobs: share of 'Fail' over k samples at temperature > 0."""
     return sum(v == "Fail" for v in verdicts) / len(verdicts)</code></pre>
+<pre class="code" data-lang="rust"><code>use std::collections::HashMap;
+
+/// top_logprobs: {token: logprob} at the verdict position.
+/// The Python defaults are pos = "Fail", neg = "Pass".
+fn judge_score(top_logprobs: &amp;HashMap&lt;&amp;str, f64&gt;, pos: &amp;str, neg: &amp;str) -&gt; f64 {
+    let lp_pos = top_logprobs.get(pos).copied().unwrap_or(-50.0); // treat a missing token as near-zero mass
+    let lp_neg = top_logprobs.get(neg).copied().unwrap_or(-50.0);
+    let (a, b) = (lp_pos.exp(), lp_neg.exp());
+    a / (a + b)
+}
+
+/// Fallback without logprobs: share of 'Fail' over k samples at temperature &gt; 0.
+fn vote_score(verdicts: &amp;[&amp;str]) -&gt; f64 {
+    verdicts.iter().filter(|&amp;&amp;v| v == "Fail").count() as f64 / verdicts.len() as f64
+}</code></pre>
+</div>
 </div>
 
 <h3>Agreement with humans</h3>
@@ -86,7 +103,8 @@ def vote_score(verdicts):
 
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Kappa and the judge report</span></div>
   <div class="eq">\[ \kappa=\frac{p_o-p_e}{1-p_e},\qquad p_e=\sum_{\ell} p_A(\ell)\,p_B(\ell) \]<span class="eqcap">\(p_o\) is observed agreement; \(p_e\) is the agreement expected if each rater labelled independently at their own rates. In the worked problem, \(p_o=0.79\) and \(p_e=0.61\cdot0.5+0.39\cdot0.5=0.5\), so \(\kappa=0.58\).</span></div>
-  <pre class="code" data-lang="python"><code>def cohens_kappa(a, b):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def cohens_kappa(a, b):
     n = len(a)
     labels = set(a) | set(b)
     po = sum(x == y for x, y in zip(a, b)) / n
@@ -108,6 +126,46 @@ def judge_report(judge, human):
         "judge_pass_rate": (tp + fp) / n,
         "human_pass_rate": (tp + fn) / n,
     }</code></pre>
+<pre class="code" data-lang="rust"><code>use std::collections::HashSet;
+use std::hash::Hash;
+
+fn cohens_kappa&lt;T: Eq + Hash&gt;(a: &amp;[T], b: &amp;[T]) -&gt; f64 {
+    let n = a.len() as f64;
+    let labels: HashSet&lt;&amp;T&gt; = a.iter().chain(b).collect();
+    let po = a.iter().zip(b).filter(|(x, y)| x == y).count() as f64 / n;
+    let count = |v: &amp;[T], l: &amp;T| v.iter().filter(|&amp;x| x == l).count() as f64;
+    let pe: f64 = labels.iter().map(|&amp;l| (count(a, l) / n) * (count(b, l) / n)).sum();
+    if pe == 1.0 { 1.0 } else { (po - pe) / (1.0 - pe) }
+}
+
+struct JudgeReport {
+    agreement: f64,
+    kappa: f64,
+    precision: f64,
+    recall: f64,
+    // these two fields are the point: good agreement can hide a generous judge
+    judge_pass_rate: f64,
+    human_pass_rate: f64,
+}
+
+/// The numbers to put next to any judge you ship (1 = pass).
+fn judge_report(judge: &amp;[u8], human: &amp;[u8]) -&gt; JudgeReport {
+    let pairs = || judge.iter().zip(human);
+    let tp = pairs().filter(|&amp;(&amp;j, &amp;h)| j == 1 &amp;&amp; h == 1).count() as f64;
+    let fp = pairs().filter(|&amp;(&amp;j, &amp;h)| j == 1 &amp;&amp; h == 0).count() as f64;
+    let fn_ = pairs().filter(|&amp;(&amp;j, &amp;h)| j == 0 &amp;&amp; h == 1).count() as f64;
+    let n = judge.len() as f64;
+    JudgeReport {
+        agreement: pairs().filter(|&amp;(j, h)| j == h).count() as f64 / n,
+        kappa: cohens_kappa(judge, human),
+        precision: if tp + fp &gt; 0.0 { tp / (tp + fp) } else { 0.0 },
+        recall: if tp + fn_ &gt; 0.0 { tp / (tp + fn_) } else { 0.0 },
+        // these two lines are the point: good agreement can hide a generous judge
+        judge_pass_rate: (tp + fp) / n,
+        human_pass_rate: (tp + fn_) / n,
+    }
+}</code></pre>
+</div>
   <p>Put a confidence interval on kappa too. On 200 items, a bootstrap interval on \(\kappa=0.58\) is roughly ±0.11, which matters when comparing two judge prompts. See <a href="#intervals">intervals and the bootstrap</a>.</p>
 </div>
 
@@ -124,7 +182,8 @@ def judge_report(judge, human):
 </table></div>
 <div class="widget" id="w-judge"><div class="wtitle">Judge bias simulator</div><div class="wsub">A judge with position bias, length bias and finite skill. Toggle order swapping and watch the win rate return toward 0.5 while agreement barely moves. The bias was inflating confidence, not accuracy.</div><div class="controls"><div class="ctl"><label data-l1>position bias</label><input type="range" data-pos min="0.0" max="0.8" step="0.05" value="0.35"></div><div class="ctl"><label data-l2>length bias</label><input type="range" data-len min="0.0" max="0.8" step="0.05" value="0.25"></div><div class="ctl"><label data-l3>judge skill</label><input type="range" data-skill min="0.0" max="1.5" step="0.05" value="0.7"></div><div class="ctl"><label>mitigation</label><label style="font-size:13px;color:var(--ink)"><input type="checkbox" data-swap> run both orderings</label></div></div><canvas></canvas><div class="readout" data-out></div></div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Debiased pairwise judging</span></div>
-  <pre class="code" data-lang="python"><code>async def judge_pairwise_debiased(judge_fn, task, resp_a, resp_b):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>async def judge_pairwise_debiased(judge_fn, task, resp_a, resp_b):
     """Run both orderings; treat disagreement as a bias signal, not a verdict."""
     fwd = await judge_fn(task, first=resp_a, second=resp_b)   # "first" | "second" | "tie"
     rev = await judge_fn(task, first=resp_b, second=resp_a)
@@ -133,6 +192,52 @@ def judge_report(judge, human):
     if fwd_w == rev_w:
         return {"winner": fwd_w, "consistent": True}
     return {"winner": "tie", "consistent": False}   # order flipped the verdict</code></pre>
+<pre class="code" data-lang="rust"><code>#[derive(Debug, Clone, Copy, PartialEq)]
+enum Verdict {
+    First,
+    Second,
+    Tie,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Winner {
+    A,
+    B,
+    Tie,
+}
+
+struct PairwiseResult {
+    winner: Winner,
+    consistent: bool,
+}
+
+/// Run both orderings; treat disagreement as a bias signal, not a verdict.
+/// The Python awaits an async judge. The standard library has no async runtime,
+/// so here judge_fn(task, first, second) is a blocking call.
+fn judge_pairwise_debiased(
+    mut judge_fn: impl FnMut(&amp;str, &amp;str, &amp;str) -&gt; Verdict,
+    task: &amp;str,
+    resp_a: &amp;str,
+    resp_b: &amp;str,
+) -&gt; PairwiseResult {
+    let fwd = judge_fn(task, resp_a, resp_b); // First | Second | Tie
+    let rev = judge_fn(task, resp_b, resp_a);
+    let fwd_w = match fwd {
+        Verdict::First =&gt; Winner::A,
+        Verdict::Second =&gt; Winner::B,
+        Verdict::Tie =&gt; Winner::Tie,
+    };
+    let rev_w = match rev {
+        Verdict::First =&gt; Winner::B,
+        Verdict::Second =&gt; Winner::A,
+        Verdict::Tie =&gt; Winner::Tie,
+    };
+    if fwd_w == rev_w {
+        return PairwiseResult { winner: fwd_w, consistent: true };
+    }
+    PairwiseResult { winner: Winner::Tie, consistent: false } // order flipped the verdict
+}</code></pre>
+</div>
   <p>The inconsistency rate across a batch is itself a useful number: it estimates how much of the judge's verdict is position rather than content. Track it per judge version.</p>
 </div>
 <div class="callout ask"><span class="tag">Principal asks</span><div>Judges are often used to catch models gaming a task: editing the test instead of the implementation, hard-coding an expected output, or reading a solution left in the environment. Expect to be asked for a concrete instance, then for how you detect the <i>class</i> of exploit rather than the one instance, and what changed in the harness so it cannot recur.</div></div>

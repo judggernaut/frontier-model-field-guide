@@ -126,7 +126,8 @@
   <p>The first version is simple: loop over the tasks, ask the model, mark the answer. The one rule that matters is that a failed task is written down as a failure and the loop keeps going.</p>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A sequential runner that records errors as data</span></div>
-  <pre class="code" data-lang="python"><code>from dataclasses import dataclass, field
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>from dataclasses import dataclass, field
 from typing import Callable, Any
 import time, json
 
@@ -162,6 +163,58 @@ def run_sync(tasks: list[Task], model_fn: Callable[[str], str],
                                   attempts=1,
                                   latency_s=time.perf_counter() - started))
     return results</code></pre>
+<pre class="code" data-lang="rust"><code>use std::collections::HashMap;
+use std::time::Instant;
+
+#[derive(Debug, Clone, Default)]
+pub struct Task {
+    pub task_id: String,
+    pub prompt: String,
+    pub reference: HashMap&lt;String, String&gt;, // Python's dict[str, Any]; strings keep the sketch simple
+}
+
+// `Result` in the Python; renamed so it does not shadow std's Result type.
+#[derive(Debug, Clone, Default)]
+pub struct EvalResult {
+    pub task_id: String,
+    pub output: Option&lt;String&gt;,
+    pub score: Option&lt;f64&gt;,
+    pub error: Option&lt;String&gt;,
+    pub attempts: u32,
+    pub latency_s: f64,
+    pub meta: HashMap&lt;String, String&gt;,
+}
+
+pub fn run_sync(
+    tasks: &amp;[Task],
+    model_fn: impl Fn(&amp;str) -&gt; Result&lt;String, String&gt;,
+    score_fn: impl Fn(&amp;Task, &amp;str) -&gt; f64,
+) -&gt; Vec&lt;EvalResult&gt; {
+    let mut results = Vec::new();
+    for t in tasks {
+        let started = Instant::now();
+        match model_fn(&amp;t.prompt) {
+            Ok(out) =&gt; results.push(EvalResult {
+                task_id: t.task_id.clone(),
+                score: Some(score_fn(t, &amp;out)),
+                output: Some(out),
+                attempts: 1,
+                latency_s: started.elapsed().as_secs_f64(),
+                ..Default::default()
+            }),
+            Err(e) =&gt; results.push(EvalResult {
+                // a failed task is DATA, not a crash
+                task_id: t.task_id.clone(),
+                error: Some(e),
+                attempts: 1,
+                latency_s: started.elapsed().as_secs_f64(),
+                ..Default::default()
+            }),
+        }
+    }
+    results
+}</code></pre>
+</div>
   <div class="callout example"><span class="tag">Worked problem</span><div>
     <p><b>Acceptance test.</b> Feed the runner ten tasks where the third raises an exception. The run must complete, return 10 results, and record the error on task three.</p>
     <p>The most common first-attempt failure is letting the exception escape the loop, which kills the run and loses the other nine results. Catch per task, record the error, keep going.</p>
@@ -174,7 +227,8 @@ def run_sync(tasks: list[Task], model_fn: Callable[[str], str],
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">asyncio, a semaphore, and exponential backoff with full jitter</span></div>
   <p>The backoff before attempt \(k\) is drawn uniformly from \([0, \min(\text{cap}, \text{base}\cdot 2^k)]\). The exponential envelope spaces retries out; the jitter stops a burst of failures from retrying in lockstep and knocking the endpoint over again.</p>
-  <pre class="code" data-lang="python"><code>import asyncio, random, time
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import asyncio, random, time
 
 class RetryPolicy:
     def __init__(self, max_attempts: int = 4, base: float = 0.5, cap: float = 20.0):
@@ -238,6 +292,240 @@ async def run_suite(tasks: list[Task], model_fn, score_fn,
     # gather runs them all concurrently, bounded by the semaphore, and returns
     # results in the ORIGINAL task order regardless of completion order.
     return await asyncio.gather(*coros)</code></pre>
+<pre class="code" data-lang="rust"><code>// asyncio becomes OS threads in this std-only sketch: a counting gate stands in
+// for asyncio.Semaphore and a channel with recv_timeout for asyncio.wait_for.
+// Production Rust would usually use tokio (tokio::sync::Semaphore,
+// tokio::time::timeout, join_all) and get cheap tasks and real cancellation.
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone, Default)]
+pub struct Task {
+    pub task_id: String,
+    pub prompt: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EvalResult {
+    // `Result` in the Python, trimmed to the fields used here
+    pub task_id: String,
+    pub output: Option&lt;String&gt;,
+    pub score: Option&lt;f64&gt;,
+    pub error: Option&lt;String&gt;,
+    pub attempts: u32,
+    pub latency_s: f64,
+}
+
+pub type ModelFn = Arc&lt;dyn Fn(&amp;str) -&gt; Result&lt;String, String&gt; + Send + Sync&gt;;
+pub type ScoreFn = dyn Fn(&amp;Task, &amp;str) -&gt; f64 + Sync;
+
+/// Small inline PRNG (SplitMix64) so the sketch needs no crates.
+pub struct SplitMix64(u64);
+
+impl SplitMix64 {
+    pub fn new(seed: u64) -&gt; Self {
+        SplitMix64(seed)
+    }
+    pub fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    pub fn uniform(&amp;mut self, lo: f64, hi: f64) -&gt; f64 {
+        let u = (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64; // in [0, 1)
+        lo + (hi - lo) * u
+    }
+}
+
+/// The asyncio.Semaphore stand-in: a counting gate built from Mutex + Condvar.
+pub struct Semaphore {
+    permits: Mutex&lt;usize&gt;,
+    freed: Condvar,
+}
+
+pub struct Permit&lt;'a&gt;(&amp;'a Semaphore);
+
+impl Semaphore {
+    pub fn new(n: usize) -&gt; Self {
+        Semaphore { permits: Mutex::new(n), freed: Condvar::new() }
+    }
+    pub fn acquire(&amp;self) -&gt; Permit&lt;'_&gt; {
+        let mut free = self.permits.lock().unwrap();
+        while *free == 0 {
+            free = self.freed.wait(free).unwrap();
+        }
+        *free -= 1;
+        Permit(self)
+    }
+}
+
+impl Drop for Permit&lt;'_&gt; {
+    // Dropping the permit gives the slot back, like leaving `async with sem`.
+    fn drop(&amp;mut self) {
+        *self.0.permits.lock().unwrap() += 1;
+        self.0.freed.notify_one();
+    }
+}
+
+pub struct RetryPolicy {
+    pub max_attempts: u32,
+    pub base: f64,
+    pub cap: f64,
+}
+
+impl Default for RetryPolicy {
+    fn default() -&gt; Self {
+        RetryPolicy { max_attempts: 4, base: 0.5, cap: 20.0 }
+    }
+}
+
+impl RetryPolicy {
+    /// Exponential with FULL JITTER.
+    pub fn backoff(&amp;self, attempt: u32, rng: &amp;mut SplitMix64) -&gt; f64 {
+        // base * 2^attempt is the exponential envelope; min() caps it so a late
+        // attempt does not sleep for minutes. uniform(0, ...) is the jitter:
+        // without it, every request from a failure burst retries at the same
+        // instant and re-overloads the endpoint you just knocked over.
+        rng.uniform(0.0, self.cap.min(self.base * 2f64.powi(attempt as i32)))
+    }
+
+    /// Only retry TRANSIENT failures.
+    pub fn retryable(&amp;self, err: &amp;str) -&gt; bool {
+        // Retrying a genuine 400 or an assertion error just burns quota and
+        // delays the real answer. Match on the message rather than the type
+        // because SDKs wrap errors differently.
+        let msg = err.to_lowercase();
+        ["timeout", "rate", "429", "500", "502", "503", "connection"]
+            .iter()
+            .any(|s| msg.contains(s))
+    }
+}
+
+/// asyncio.wait_for stand-in. A std thread cannot be cancelled, so on timeout
+/// the call is abandoned and left to finish in the background; tokio's
+/// timeout would drop the future instead.
+fn call_with_timeout(model_fn: &amp;ModelFn, prompt: &amp;str, timeout_s: f64) -&gt; Result&lt;String, String&gt; {
+    let (tx, rx) = mpsc::channel();
+    let (f, prompt) = (Arc::clone(model_fn), prompt.to_string());
+    thread::spawn(move || {
+        let _ = tx.send(f(&amp;prompt));
+    });
+    match rx.recv_timeout(Duration::from_secs_f64(timeout_s)) {
+        Ok(outcome) =&gt; outcome,
+        Err(RecvTimeoutError::Timeout) =&gt; Err(format!("timeout after {timeout_s}s")),
+        Err(RecvTimeoutError::Disconnected) =&gt; Err("model call panicked".to_string()),
+    }
+}
+
+pub fn run_one(
+    task: &amp;Task,
+    model_fn: &amp;ModelFn,
+    score_fn: &amp;ScoreFn,
+    policy: &amp;RetryPolicy,
+    timeout_s: f64,
+    sem: &amp;Semaphore,
+    rng: &amp;mut SplitMix64,
+) -&gt; EvalResult {
+    let started = Instant::now(); // wall clock for THIS task, retries included
+    let mut last_err = String::new();
+    let mut attempts = 0;
+
+    for attempt in 0..policy.max_attempts {
+        attempts = attempt + 1;
+        let outcome = {
+            // The semaphore caps how many requests are in flight across the
+            // whole suite. Acquire it INSIDE the loop so a sleeping retry
+            // releases its slot instead of blocking other tasks.
+            let _slot = sem.acquire();
+            call_with_timeout(model_fn, &amp;task.prompt, timeout_s)
+        }; // _slot dropped here, before any backoff sleep
+
+        match outcome {
+            Ok(out) =&gt; {
+                return EvalResult {
+                    task_id: task.task_id.clone(),
+                    score: Some(score_fn(task, &amp;out)),
+                    output: Some(out),
+                    attempts, // RECORD attempts
+                    latency_s: started.elapsed().as_secs_f64(),
+                    ..Default::default()
+                }
+            }
+            Err(e) =&gt; {
+                // Two ways to stop: the error is not worth retrying, or we are out
+                // of attempts. Checking both here keeps the exit conditions in one place.
+                let give_up = !policy.retryable(&amp;e) || attempt == policy.max_attempts - 1;
+                last_err = e;
+                if give_up {
+                    break;
+                }
+                thread::sleep(Duration::from_secs_f64(policy.backoff(attempt, rng)));
+            }
+        }
+    }
+
+    // A task that never succeeded is still DATA. Return a result carrying the
+    // error rather than panicking, so one bad task cannot kill a 2000 task run.
+    EvalResult {
+        task_id: task.task_id.clone(),
+        error: Some(last_err),
+        attempts,
+        latency_s: started.elapsed().as_secs_f64(),
+        ..Default::default()
+    }
+}
+
+/// Python defaults: concurrency = 16, timeout_s = 120.0.
+pub fn run_suite(
+    tasks: &amp;[Task],
+    model_fn: ModelFn,
+    score_fn: &amp;ScoreFn,
+    concurrency: usize,
+    timeout_s: f64,
+) -&gt; Vec&lt;EvalResult&gt; {
+    let sem = Semaphore::new(concurrency); // one shared limiter for every task
+    let policy = RetryPolicy::default();
+    let next = AtomicUsize::new(0);
+    // More workers than permits, so a worker sleeping in backoff does not
+    // leave a request slot idle. The gate, not the worker count, is the limit.
+    let n_workers = tasks.len().min(concurrency * 4).max(1);
+    let mut results: Vec&lt;Option&lt;EvalResult&gt;&gt; = vec![None; tasks.len()];
+
+    thread::scope(|s| {
+        let (sem, policy, next, model_fn) = (&amp;sem, &amp;policy, &amp;next, &amp;model_fn);
+        let workers: Vec&lt;_&gt; = (0..n_workers)
+            .map(|w| {
+                s.spawn(move || {
+                    let mut rng = SplitMix64::new(w as u64 + 1); // per-worker jitter stream
+                    let mut done = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        if i &gt;= tasks.len() {
+                            break;
+                        }
+                        let r = run_one(&amp;tasks[i], model_fn, score_fn, policy, timeout_s, sem, &amp;mut rng);
+                        done.push((i, r));
+                    }
+                    done
+                })
+            })
+            .collect();
+        // Like gather: slot each result back by index, so the output is in
+        // the ORIGINAL task order regardless of completion order.
+        for worker in workers {
+            for (i, r) in worker.join().unwrap() {
+                results[i] = Some(r);
+            }
+        }
+    });
+    results.into_iter().map(|r| r.expect("every task ran")).collect()
+}</code></pre>
+</div>
 </div>
 
 <div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Retries are a measurement decision, not just an engineering one</span></div>
@@ -257,7 +545,8 @@ async def run_suite(tasks: list[Task], model_fn, score_fn,
   <p>Model calls are expensive, so the harness saves every answer. If the run crashes halfway, it picks up where it left off. The rule is strict: reuse a saved answer only if the question, the model, and every setting are exactly the same. If anything changed, ask again.</p>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Cache keys over everything that can change the output, and an append-only log</span></div>
-  <pre class="code" data-lang="python"><code>import hashlib, json, pathlib
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import hashlib, json, pathlib
 
 def cache_key(task: Task, model_id: str, params: dict) -> str:
     """Key on EVERYTHING that can change the output."""
@@ -304,6 +593,138 @@ class ResultStore:
         with self.path.open("a") as f:
             f.write(json.dumps(rec, default=str) + "\n")   # default=str for datetimes
         self.seen[key] = rec</code></pre>
+<pre class="code" data-lang="rust"><code>use std::collections::{BTreeMap, HashMap};
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Default)]
+pub struct Task {
+    pub task_id: String,
+    pub prompt: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EvalResult {
+    // `Result` in the Python
+    pub task_id: String,
+    pub output: Option&lt;String&gt;,
+    pub score: Option&lt;f64&gt;,
+    pub error: Option&lt;String&gt;,
+    pub attempts: u32,
+    pub latency_s: f64,
+    pub meta: BTreeMap&lt;String, String&gt;,
+}
+
+/// 128-bit FNV-1a, so the sketch needs no crates. Real code would use SHA-256
+/// from a crate such as sha2: FNV is fast but not collision resistant.
+fn fnv1a_128_hex(data: &amp;str) -&gt; String {
+    let mut h: u128 = 0x6c62272e07bb014262b821756295c58d;
+    for b in data.bytes() {
+        h ^= b as u128;
+        h = h.wrapping_mul(0x0000000001000000000000000000013B);
+    }
+    format!("{h:032x}")
+}
+
+/// Quote a string as JSON. std has no JSON support; real code would use serde_json.
+fn json_str(s: &amp;str) -&gt; String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' =&gt; out.push_str("\\\""),
+            '\\' =&gt; out.push_str("\\\\"),
+            '\n' =&gt; out.push_str("\\n"),
+            c if (c as u32) &lt; 0x20 =&gt; out.push_str(&amp;format!("\\u{:04x}", c as u32)),
+            c =&gt; out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Key on EVERYTHING that can change the output.
+pub fn cache_key(task: &amp;Task, model_id: &amp;str, params: &amp;BTreeMap&lt;String, f64&gt;) -&gt; String {
+    // A BTreeMap iterates in sorted key order, so {"temp":0,"top_p":1} and
+    // {"top_p":1,"temp":0} produce the same key. Without it you get silent
+    // cache misses on every run.
+    let params_json: Vec&lt;String&gt; = params.iter().map(|(k, v)| format!("{}:{}", json_str(k), v)).collect();
+    // Outer fields written in sorted order by hand, same reason.
+    let payload = format!(
+        "{{\"model\":{},\"params\":{{{}}},\"prompt_hash\":{},\"task\":{}}}",
+        json_str(model_id),
+        params_json.join(","),
+        // Hash the prompt itself, not just the id. If someone edits a task's
+        // text without renaming it, the hash changes and the stale cached
+        // result is correctly missed.
+        json_str(&amp;fnv1a_128_hex(&amp;task.prompt)),
+        json_str(&amp;task.task_id),
+    );
+
+    // 20 hex chars is ~80 bits: collision risk is negligible at eval scale and
+    // the keys stay short enough to read in a directory listing.
+    fnv1a_128_hex(&amp;payload)[..20].to_string()
+}
+
+/// Append only JSONL. Restartable.
+pub struct ResultStore {
+    path: PathBuf,
+    // key -&gt; the raw JSON line. With no JSON parser in std we keep lines as text.
+    seen: HashMap&lt;String, String&gt;,
+}
+
+impl ResultStore {
+    pub fn new(path: &amp;str) -&gt; io::Result&lt;Self&gt; {
+        let path = PathBuf::from(path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?; // no crash on first run
+        }
+        let mut seen = HashMap::new();
+        if path.exists() {
+            // Replay the log into memory. Later lines overwrite earlier ones for
+            // the same key, so a re-run naturally supersedes an old result.
+            for line in fs::read_to_string(&amp;path)?.lines() {
+                // put() writes {"key":"&lt;hex&gt;",... first, so the key can be read
+                // off the front; real code would parse the line with serde_json.
+                // Blank lines (a trailing newline) simply fail to match.
+                let key = line.strip_prefix("{\"key\":\"").and_then(|rest| rest.split('"').next());
+                if let Some(key) = key {
+                    seen.insert(key.to_string(), line.to_string());
+                }
+            }
+        }
+        Ok(ResultStore { path, seen })
+    }
+
+    pub fn get(&amp;self, key: &amp;str) -&gt; Option&lt;&amp;str&gt; {
+        self.seen.get(key).map(String::as_str)
+    }
+
+    pub fn put(&amp;mut self, key: &amp;str, result: &amp;EvalResult) -&gt; io::Result&lt;()&gt; {
+        let opt_str = |s: &amp;Option&lt;String&gt;| s.as_deref().map_or("null".to_string(), json_str);
+        let meta: Vec&lt;String&gt; = result.meta.iter().map(|(k, v)| format!("{}:{}", json_str(k), json_str(v))).collect();
+        // Every field is formatted explicitly, so there is no default=str fallback.
+        let rec = format!(
+            "{{\"key\":{},\"task_id\":{},\"output\":{},\"score\":{},\"error\":{},\"attempts\":{},\"latency_s\":{},\"meta\":{{{}}}}}",
+            json_str(key),
+            json_str(&amp;result.task_id),
+            opt_str(&amp;result.output),
+            result.score.map_or("null".to_string(), |s| s.to_string()),
+            opt_str(&amp;result.error),
+            result.attempts,
+            result.latency_s,
+            meta.join(","),
+        );
+        // APPEND, never rewrite. A process killed mid-write loses at most the
+        // last line, and a run that dies at task 900 of 1000 resumes without
+        // re-spending 900 requests.
+        let mut f = OpenOptions::new().create(true).append(true).open(&amp;self.path)?;
+        writeln!(f, "{rec}")?;
+        self.seen.insert(key.to_string(), rec);
+        Ok(())
+    }
+}</code></pre>
+</div>
   <p>Add the harness version and the judge model and prompt version to the cache key as well. A judge change silently reusing old scores is one of the most expensive cache bugs, because it produces a regression that does not exist.</p>
   <div class="callout example"><span class="tag">Worked problem</span><div>
     <p><b>Acceptance test.</b> Run 1,000 tasks and kill the process at task 600. Restart. The run must finish with exactly 1,000 results and only 400 new model calls. Then change the temperature and confirm the cache misses on every task.</p>
@@ -311,7 +732,8 @@ class ResultStore:
   </div></div>
   <h4>Flakiness quarantine</h4>
   <p>Some tasks give different scores run to run even at fixed settings: nondeterministic environments, race conditions in test suites, judges sitting on a decision boundary. Run a sample of tasks five times at fixed settings and quarantine any whose score standard deviation exceeds about 0.25. Report quarantined tasks separately rather than averaging their noise into the headline.</p>
-  <pre class="code" data-lang="python"><code>import statistics
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import statistics
 
 def find_flaky(task_ids, run_once, repeats: int = 5, max_sd: float = 0.25) -> list[str]:
     """run_once(task_id) -> score in [0, 1] at FIXED settings. Returns tasks to quarantine."""
@@ -321,6 +743,31 @@ def find_flaky(task_ids, run_once, repeats: int = 5, max_sd: float = 0.25) -> li
         if statistics.pstdev(scores) > max_sd:   # a 0/1 task that flips 2 of 5 times has sd 0.49
             flaky.append(t)
     return flaky</code></pre>
+<pre class="code" data-lang="rust"><code>/// Population standard deviation, what Python's statistics.pstdev computes.
+fn pstdev(xs: &amp;[f64]) -&gt; f64 {
+    let mean = xs.iter().sum::&lt;f64&gt;() / xs.len() as f64;
+    (xs.iter().map(|x| (x - mean).powi(2)).sum::&lt;f64&gt;() / xs.len() as f64).sqrt()
+}
+
+/// run_once(task_id) -&gt; score in [0, 1] at FIXED settings. Returns tasks to quarantine.
+/// Python defaults: repeats = 5, max_sd = 0.25.
+pub fn find_flaky(
+    task_ids: &amp;[&amp;str],
+    mut run_once: impl FnMut(&amp;str) -&gt; f64,
+    repeats: usize,
+    max_sd: f64,
+) -&gt; Vec&lt;String&gt; {
+    let mut flaky = Vec::new();
+    for &amp;t in task_ids {
+        let scores: Vec&lt;f64&gt; = (0..repeats).map(|_| run_once(t)).collect();
+        if pstdev(&amp;scores) &gt; max_sd {
+            // a 0/1 task that flips 2 of 5 times has sd 0.49
+            flaky.push(t.to_string());
+        }
+    }
+    flaky
+}</code></pre>
+</div>
 </div>
 
 <h3>The report</h3>
@@ -329,7 +776,8 @@ def find_flaky(task_ids, run_once, repeats: int = 5, max_sd: float = 0.25) -> li
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A summary that cannot omit n, the interval, or the error count</span></div>
   <p>The interval is the Wilson interval from <a href="#evalstats">eval statistics</a>; the latency quantiles follow the advice in <a href="#intervals">intervals and the bootstrap</a> never to report a mean latency.</p>
-  <pre class="code" data-lang="python"><code>def summarize(results: list[Result]) -> dict:
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def summarize(results: list[Result]) -> dict:
     """A report that cannot omit n, the interval, or the error count."""
 
     # Split errored tasks out FIRST. Scoring None as a failure would conflate
@@ -360,6 +808,78 @@ def find_flaky(task_ids, run_once, repeats: int = 5, max_sd: float = 0.25) -> li
         "latency_p50": round(pct(0.50), 2),
         "latency_p95": round(pct(0.95), 2),   # never report a mean latency
     }</code></pre>
+<pre class="code" data-lang="rust"><code>#[derive(Debug, Clone, Default)]
+pub struct EvalResult {
+    // `Result` in the Python, trimmed to the fields used here
+    pub score: Option&lt;f64&gt;,
+    pub error: Option&lt;String&gt;,
+    pub attempts: u32,
+    pub latency_s: f64,
+}
+
+/// The dict the Python returns, as a struct so no field can be left out.
+#[derive(Debug)]
+pub struct Summary {
+    pub n_tasks: usize,
+    pub n_scored: usize,
+    pub n_errored: usize,
+    pub pass_rate: f64,
+    pub ci95: (f64, f64),
+    pub retried_tasks: usize,
+    pub latency_p50: f64,
+    pub latency_p95: f64,
+}
+
+/// Wilson score interval, as in the evaluation statistics chapter.
+fn wilson(k: usize, n: usize, z: f64) -&gt; (f64, f64) {
+    let (k, n) = (k as f64, n as f64);
+    let p = k / n;
+    let denom = 1.0 + z * z / n;
+    let center = (p + z * z / (2.0 * n)) / denom;
+    let margin = z * (p * (1.0 - p) / n + z * z / (4.0 * n * n)).sqrt() / denom;
+    ((center - margin).max(0.0), (center + margin).min(1.0))
+}
+
+/// Python's round(x, digits).
+fn round_to(x: f64, digits: i32) -&gt; f64 {
+    let scale = 10f64.powi(digits);
+    (x * scale).round() / scale
+}
+
+/// A report that cannot omit n, the interval, or the error count.
+pub fn summarize(results: &amp;[EvalResult]) -&gt; Summary {
+    // Split errored tasks out FIRST. Scoring None as a failure would conflate
+    // "the model got it wrong" with "our infrastructure fell over", which are
+    // completely different findings.
+    let ok: Vec&lt;&amp;EvalResult&gt; = results.iter().filter(|r| r.error.is_none() &amp;&amp; r.score.is_some()).collect();
+
+    let passed = ok.iter().filter(|r| r.score.is_some_and(|s| s &gt;= 1.0)).count();
+    let n = ok.len();
+    let (lo, hi) = if n &gt; 0 { wilson(passed, n, 1.96) } else { (0.0, 1.0) }; // interval, never bare rate
+
+    let mut lat: Vec&lt;f64&gt; = ok.iter().map(|r| r.latency_s).collect();
+    lat.sort_by(f64::total_cmp);
+    let pct = |q: f64| {
+        // Guard the index: at q = 1.0 the naive (q * len) as usize runs one past the end.
+        if lat.is_empty() { 0.0 } else { lat[(lat.len() - 1).min((q * lat.len() as f64) as usize)] }
+    };
+
+    Summary {
+        n_tasks: results.len(),
+        n_scored: n,
+        // SURFACE the errors. A pass rate computed over a shrunken denominator
+        // is biased upward if failures correlate with difficulty, which they do.
+        n_errored: results.len() - n,
+        pass_rate: if n &gt; 0 { passed as f64 / n as f64 } else { 0.0 },
+        ci95: (round_to(lo, 4), round_to(hi, 4)),
+        // Retried tasks effectively got more than one sample, inflating their
+        // contribution. Reporting the count lets a reader discount for it.
+        retried_tasks: ok.iter().filter(|r| r.attempts &gt; 1).count(),
+        latency_p50: round_to(pct(0.50), 2),
+        latency_p95: round_to(pct(0.95), 2), // never report a mean latency
+    }
+}</code></pre>
+</div>
   <div class="callout example"><span class="tag">Worked problem</span><div>
     <p><b>Acceptance test.</b> The summary must refuse to omit the error count, and the flakiness report must identify tasks you deliberately injected as flaky. A useful extra check: inject 5% infrastructure errors concentrated on the hardest tasks and confirm the report shows both the error count and the upward bias it would cause if those tasks were silently dropped.</p>
   </div></div>

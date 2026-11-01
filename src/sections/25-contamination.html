@@ -134,7 +134,8 @@
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Overlap, canaries, membership signals, perturbation</span></div>
   <h4>N-gram overlap</h4>
   <p>The standard data-side check. Tokenise each benchmark item and each training document, and flag items that share long n-grams with the corpus. Thirteen-gram overlap was used for decontamination in the GPT-3 paper (Brown et al., 2020); other labs use 8 to 50 tokens or a fraction-of-item threshold. Short n-grams flag common phrases; long ones miss paraphrases.</p>
-  <pre class="code" data-lang="python"><code>import hashlib, re
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import hashlib, re
 
 def ngrams(text: str, n: int = 13) -> set[str]:
     toks = re.findall(r"\w+", text.lower())
@@ -147,6 +148,31 @@ def contamination_overlap(task_text: str, model_output: str, n: int = 13) -> flo
     memorization signal, not proof, but it tells you where to look."""
     t, o = ngrams(task_text, n), ngrams(model_output, n)
     return len(t &amp; o) / len(t) if t else 0.0</code></pre>
+<pre class="code" data-lang="rust"><code>use std::collections::HashSet;
+
+fn ngrams(text: &amp;str, n: usize) -&gt; HashSet&lt;String&gt; {
+    // re.findall(r"\w+", text.lower()): runs of letters, digits and underscores
+    let lower = text.to_lowercase();
+    let toks: Vec&lt;&amp;str&gt; = lower
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|t| !t.is_empty())
+        .collect();
+    // windows(n) yields nothing when there are fewer than n tokens
+    toks.windows(n).map(|w| w.join(" ")).collect()
+}
+
+/// Fraction of the task's n-grams reproduced verbatim in the output.
+/// High overlap on a task the model should have had to reason about is a
+/// memorization signal, not proof, but it tells you where to look.
+/// The Python default is n = 13.
+fn contamination_overlap(task_text: &amp;str, model_output: &amp;str, n: usize) -&gt; f64 {
+    let (t, o) = (ngrams(task_text, n), ngrams(model_output, n));
+    if t.is_empty() {
+        return 0.0;
+    }
+    t.intersection(&amp;o).count() as f64 / t.len() as f64
+}</code></pre>
+</div>
   <p>At corpus scale the same idea runs over hashed n-grams in a Bloom filter or suffix array, so trillions of training tokens can be checked against every benchmark in one pass.</p>
   <h4>Embedding similarity</h4>
   <p>To catch paraphrases, embed benchmark items and training chunks and flag nearest neighbours above a similarity threshold, then have a person or a strong model confirm. This finds rewritten solutions and translated copies that n-grams miss, at the cost of false positives on genuinely similar but independent text.</p>
@@ -162,7 +188,8 @@ def contamination_overlap(task_text: str, model_output: str, n: int = 13) -> flo
   <p>These are evidence, not proof. Famous text is low-perplexity whether or not it was in a benchmark.</p>
   <h4>Perturbation tests</h4>
   <p>The strongest practical test available to an outsider. Rename variables, change constants, reorder independent clauses, shuffle options, translate and back-translate. A model that reasons keeps roughly the same score. A model that memorised falls off a cliff. GSM-Symbolic (Mirzadeh et al., 2024) applied this to grade-school maths and found measurable drops for many models when only names and numbers changed.</p>
-  <pre class="code" data-lang="python"><code>def perturbation_check(run_fn, task, perturb_fn, trials: int = 5) -> dict:
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def perturbation_check(run_fn, task, perturb_fn, trials: int = 5) -> dict:
     """Rename variables, change constants, reorder independent clauses.
     A model that reasons stays at roughly the same score.
     A model that memorized falls off a cliff."""
@@ -170,6 +197,28 @@ def contamination_overlap(task_text: str, model_output: str, n: int = 13) -> flo
     perturbed = [run_fn(perturb_fn(task, seed=i)) for i in range(trials)]
     mean_p = sum(perturbed) / trials
     return {"base": base, "perturbed_mean": mean_p, "drop": base - mean_p}</code></pre>
+<pre class="code" data-lang="rust"><code>struct PerturbationResult {
+    base: f64,
+    perturbed_mean: f64,
+    drop: f64,
+}
+
+/// Rename variables, change constants, reorder independent clauses.
+/// A model that reasons stays at roughly the same score.
+/// A model that memorized falls off a cliff.
+/// The Python default is trials = 5.
+fn perturbation_check(
+    mut run_fn: impl FnMut(&amp;str) -&gt; f64,
+    task: &amp;str,
+    perturb_fn: impl Fn(&amp;str, u64) -&gt; String, // (task, seed) -&gt; perturbed task
+    trials: u64,
+) -&gt; PerturbationResult {
+    let base = run_fn(task);
+    let perturbed: Vec&lt;f64&gt; = (0..trials).map(|i| run_fn(&amp;perturb_fn(task, i))).collect();
+    let mean_p = perturbed.iter().sum::&lt;f64&gt;() / trials as f64;
+    PerturbationResult { base, perturbed_mean: mean_p, drop: base - mean_p }
+}</code></pre>
+</div>
   <p>The drop alone is not the contamination signal, because perturbations can also make items genuinely harder. The clean comparison is a <b>difference in differences</b>: the suspect model's drop minus the drop of a control model that could not have seen the items (or a model trained before the benchmark existed).</p>
   <div class="eq">\[ \widehat{\Delta}_{\text{contam}} = \big(\bar a^{\,S}_{\text{orig}} - \bar a^{\,S}_{\text{pert}}\big) - \big(\bar a^{\,C}_{\text{orig}} - \bar a^{\,C}_{\text{pert}}\big), \qquad \operatorname{SE} = \frac{s_d}{\sqrt{n}} \]<span class="eqcap">\(S\) is the suspect model, \(C\) the clean control, and \(\bar a\) is accuracy on original or perturbed items. Compute the per-item difference \(d_i\) on the same \(n\) items so the comparison is paired; \(s_d\) is its standard deviation. This is the same pairing logic as in <a href="#evalstats">eval statistics</a>.</span></div>
 </div>

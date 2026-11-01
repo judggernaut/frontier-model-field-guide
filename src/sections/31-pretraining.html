@@ -53,7 +53,8 @@
   <p>This is cross-entropy between the data distribution and the model. It decomposes as \(H(p_{\text{data}}) + \mathrm{KL}(p_{\text{data}} \,\|\, p_\theta)\): the irreducible entropy of language plus how far the model is from the truth. Only the KL part can be trained away, which is why loss curves flatten toward a floor rather than zero.</p>
   <p><b>Bits per byte</b> removes the tokenizer from the comparison: total bits over a document divided by its length in UTF-8 bytes.</p>
   <div class="eq">\[ \text{BPB} = \frac{T \cdot \mathcal{L}_{\text{nats}}}{B \cdot \ln 2} \]<span class="eqcap">\(T\) tokens, \(B\) bytes in the same text. A tokenizer with more bytes per token has fewer, harder tokens; BPB corrects for that.</span></div>
-  <pre class="code" data-lang="python"><code>import numpy as np
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import numpy as np
 
 def log_softmax(z):
     z = z - z.max()                      # subtract max for numerical stability
@@ -69,6 +70,27 @@ for name, idx in [("mat", 0), ("floor", 1), ("volcano", 4)]:
 
 # bits per byte for a document: 1,000 tokens, 4,300 bytes, mean loss 2.1 nats
 print(round(1000 * 2.1 / (4300 * np.log(2)), 3))   # 0.705 bits per byte</code></pre>
+<pre class="code" data-lang="rust"><code>fn log_softmax(z: &amp;[f64]) -&gt; Vec&lt;f64&gt; {
+    let max = z.iter().cloned().fold(f64::NEG_INFINITY, f64::max); // subtract max for numerical stability
+    let log_sum = z.iter().map(|x| (x - max).exp()).sum::&lt;f64&gt;().ln();
+    z.iter().map(|x| x - max - log_sum).collect()
+}
+
+fn token_loss(logits: &amp;[f64], target: usize) -&gt; f64 {
+    -log_softmax(logits)[target] // nats
+}
+
+fn main() {
+    let logits = [3.1, 2.4, 1.2, 0.3, -1.0]; // mat, floor, sofa, roof, volcano
+    for (name, idx) in [("mat", 0), ("floor", 1), ("volcano", 4)] {
+        println!("{} {:.3}", name, token_loss(&amp;logits, idx));
+    }
+    // mat 0.544   floor 1.244   volcano 4.644
+
+    // bits per byte for a document: 1,000 tokens, 4,300 bytes, mean loss 2.1 nats
+    println!("{:.3}", 1000.0 * 2.1 / (4300.0 * 2f64.ln())); // 0.705 bits per byte
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-pt-softmax">
@@ -134,7 +156,8 @@ print(round(1000 * 2.1 / (4300 * np.log(2)), 3))   # 0.705 bits per byte</code><
 
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The BPE training loop</span></div>
   <p>Byte-pair encoding (Sennrich et al., 2016, adapted from a 1994 compression method) is greedy: count every adjacent symbol pair weighted by word frequency, merge the most frequent pair everywhere, repeat until the vocabulary hits its target size. Modern tokenizers usually run BPE on bytes rather than characters so that any input string can be encoded, and apply a regex pre-split so merges never cross word or digit-group boundaries.</p>
-  <pre class="code" data-lang="python"><code>from collections import Counter
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>from collections import Counter
 
 def bpe(word_counts, n_merges):
     vocab = {tuple(w): c for w, c in word_counts.items()}     # words as tuples of symbols
@@ -162,6 +185,69 @@ def bpe(word_counts, n_merges):
 
 merges, vocab = bpe({"low": 5, "lower": 2, "newest": 6, "widest": 3}, 4)
 print(merges)  # [('e', 's'), ('es', 't'), ('l', 'o'), ('lo', 'w')]</code></pre>
+<pre class="code" data-lang="rust"><code>use std::collections::HashMap;
+
+type Pair = (String, String);
+
+fn bpe(word_counts: &amp;[(&amp;str, u64)], n_merges: usize) -&gt; (Vec&lt;Pair&gt;, Vec&lt;(Vec&lt;String&gt;, u64)&gt;) {
+    // words as sequences of symbols
+    let mut vocab: Vec&lt;(Vec&lt;String&gt;, u64)&gt; = word_counts
+        .iter()
+        .map(|(w, c)| (w.chars().map(String::from).collect(), *c))
+        .collect();
+    let mut merges = Vec::new();
+    for _ in 0..n_merges {
+        // Counts kept in first-seen order, like Python's Counter, so a tie goes
+        // to the pair seen first: ('e','s') beats ('s','t') at 9 each.
+        let mut pairs: Vec&lt;(Pair, u64)&gt; = Vec::new();
+        let mut index: HashMap&lt;Pair, usize&gt; = HashMap::new();
+        for (syms, c) in &amp;vocab {
+            for w in syms.windows(2) {
+                let pair = (w[0].clone(), w[1].clone());
+                let i = *index.entry(pair.clone()).or_insert_with(|| {
+                    pairs.push((pair, 0));
+                    pairs.len() - 1
+                });
+                pairs[i].1 += c; // weight by word frequency
+            }
+        }
+        if pairs.is_empty() {
+            break;
+        }
+        // strict &gt; keeps the FIRST maximum, as Python's max() does
+        let mut best = &amp;pairs[0];
+        for p in &amp;pairs[1..] {
+            if p.1 &gt; best.1 {
+                best = p;
+            }
+        }
+        let best = best.0.clone();
+        let mut new = Vec::with_capacity(vocab.len());
+        for (syms, c) in &amp;vocab {
+            let (mut out, mut i) = (Vec::new(), 0);
+            while i &lt; syms.len() {
+                if i + 1 &lt; syms.len() &amp;&amp; syms[i] == best.0 &amp;&amp; syms[i + 1] == best.1 {
+                    out.push(format!("{}{}", syms[i], syms[i + 1]));
+                    i += 2;
+                } else {
+                    out.push(syms[i].clone());
+                    i += 1;
+                }
+            }
+            new.push((out, *c));
+        }
+        merges.push(best);
+        vocab = new;
+    }
+    (merges, vocab)
+}
+
+fn main() {
+    let (merges, _vocab) = bpe(&amp;[("low", 5), ("lower", 2), ("newest", 6), ("widest", 3)], 4);
+    let shown: Vec&lt;String&gt; = merges.iter().map(|(a, b)| format!("('{a}', '{b}')")).collect();
+    println!("[{}]", shown.join(", ")); // [('e', 's'), ('es', 't'), ('l', 'o'), ('lo', 'w')]
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-pt-bpe">
@@ -225,7 +311,8 @@ print(merges)  # [('e', 's'), ('es', 't'), ('l', 'o'), ('lo', 'w')]</code></pre>
 
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Near-duplicate detection with MinHash</span></div>
   <p>Represent each document as a set of word n-grams (shingles). The Jaccard similarity of two sets is \(J(A,B) = |A\cap B| / |A\cup B|\). MinHash estimates it cheaply: for a random hash function \(h\), \(\Pr[\min h(A) = \min h(B)] = J(A,B)\). With \(k\) hash functions, the fraction of matching minimums estimates \(J\). Locality-sensitive hashing then groups signatures into bands so that only likely duplicates are compared.</p>
-  <pre class="code" data-lang="python"><code>import hashlib
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import hashlib
 
 def shingles(text, n=5):
     w = text.lower().split()
@@ -240,6 +327,45 @@ def est_jaccard(a, b):
 d1 = "the quick brown fox jumps over the lazy dog near the river bank today"
 d2 = "the quick brown fox jumps over the lazy dog near the river bank tonight"
 print(round(est_jaccard(minhash(shingles(d1)), minhash(shingles(d2))), 2))  # about 0.8: near duplicate</code></pre>
+<pre class="code" data-lang="rust"><code>use std::collections::HashSet;
+
+fn shingles(text: &amp;str, n: usize) -&gt; HashSet&lt;String&gt; {
+    let w: Vec&lt;String&gt; = text.to_lowercase().split_whitespace().map(String::from).collect();
+    if w.len() &lt; n {
+        return HashSet::new();
+    }
+    (0..=w.len() - n).map(|i| w[i..i + n].join(" ")).collect()
+}
+
+/// 64-bit FNV-1a plus a SplitMix64 finalizer so nearby inputs spread out.
+/// It stands in for md5 so the sketch needs no crates; real code would use a
+/// proper hash from a crate. Different hash, so the estimate differs slightly.
+fn hash64(s: &amp;str) -&gt; u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in s.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h = (h ^ (h &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    h = (h ^ (h &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    h ^ (h &gt;&gt; 31)
+}
+
+fn minhash(s: &amp;HashSet&lt;String&gt;, k: usize) -&gt; Vec&lt;u64&gt; {
+    (0..k).map(|i| s.iter().map(|x| hash64(&amp;format!("{i}:{x}"))).min().unwrap_or(u64::MAX)).collect()
+}
+
+fn est_jaccard(a: &amp;[u64], b: &amp;[u64]) -&gt; f64 {
+    a.iter().zip(b).filter(|(x, y)| x == y).count() as f64 / a.len() as f64
+}
+
+fn main() {
+    let d1 = "the quick brown fox jumps over the lazy dog near the river bank today";
+    let d2 = "the quick brown fox jumps over the lazy dog near the river bank tonight";
+    let est = est_jaccard(&amp;minhash(&amp;shingles(d1, 5), 64), &amp;minhash(&amp;shingles(d2, 5), 64));
+    println!("{:.2}", est); // 0.86 here (md5 in the Python gives 0.83; true Jaccard 9/11 = 0.82): near duplicate
+}</code></pre>
+</div>
 </div>
 
 <h3>What loss predicts, and what it does not</h3>
