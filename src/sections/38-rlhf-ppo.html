@@ -2,6 +2,80 @@
 <h2>RLHF and PPO: optimizing against a learned reward</h2>
 <p>Reinforcement learning from human feedback takes the reward model from the <a href="#reward-models">previous chapter</a> and trains the language model to produce responses that score well, while a leash keeps it close to where it started. PPO was the algorithm behind InstructGPT and the first wave of ChatGPT-style assistants. Newer methods (<a href="#dpo">DPO</a>, <a href="#grpo">GRPO</a>) are easiest to understand as fixes for PPO's costs, so this chapter is the foundation for both.</p>
 
+<div class="story" id="st-rl-dog">
+  <div class="story-head"><div class="story-title">Treats, a coach, and a leash</div><p class="story-sub">RLHF and PPO, told as training a dog. Six pictures.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="A dog tries three tricks and earns different numbers of treats">
+      <g class="a" style="--d:0"><ellipse cx="95" cy="140" rx="48" ry="26" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><circle cx="140" cy="108" r="22" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><circle cx="147" cy="104" r="3" fill="var(--fg)"/><text x="100" y="200" text-anchor="middle" font-size="13" font-weight="600" fill="var(--lead)">The model</text></g>
+      <g class="a" style="--d:1"><rect x="220" y="40" width="380" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="240" y="67" font-size="14" fill="var(--fg)">Answer 1: sit</text><g fill="var(--fn)"><circle cx="470" cy="62" r="7"/><circle cx="490" cy="62" r="7"/><circle cx="510" cy="62" r="7"/></g></g>
+      <g class="a" style="--d:2"><rect x="220" y="96" width="380" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="240" y="123" font-size="14" fill="var(--fg)">Answer 2: roll over</text><g fill="var(--fn)"><circle cx="470" cy="118" r="7"/><circle cx="490" cy="118" r="7"/><circle cx="510" cy="118" r="7"/><circle cx="530" cy="118" r="7"/><circle cx="550" cy="118" r="7"/></g></g>
+      <g class="a" style="--d:3"><rect x="220" y="152" width="380" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="240" y="179" font-size="14" fill="var(--fg)">Answer 3: bark at the door</text><g fill="var(--fn)"><circle cx="470" cy="174" r="7"/></g></g>
+      <text class="a" style="--d:4" x="410" y="230" text-anchor="middle" font-size="13" fill="var(--muted)">treats = reward model score</text>
+    </svg>
+    <p>The model writes several answers to a prompt, like a dog trying tricks. The reward model hands out treats: one number per answer. Nobody shows the model the right answer. It learns from its own attempts.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Probabilities shift toward the trick that earned the most treats">
+      <text x="40" y="36" font-size="13" font-weight="600" fill="var(--muted)">How often the model picks each trick</text>
+      <g font-size="14" fill="var(--fg)"><text x="40" y="84">sit</text><text x="40" y="134">roll over</text><text x="40" y="184">bark</text></g>
+      <rect x="150" y="68" width="160" height="22" rx="5" fill="var(--accent)" opacity=".25"/><rect class="grow-x" style="--d:1" x="150" y="68" width="140" height="22" rx="5" fill="var(--accent)"/>
+      <rect x="150" y="118" width="120" height="22" rx="5" fill="var(--accent)" opacity=".25"/><rect class="grow-x" style="--d:2" x="150" y="118" width="200" height="22" rx="5" fill="var(--accent)"/>
+      <rect x="150" y="168" width="120" height="22" rx="5" fill="var(--accent)" opacity=".25"/><rect class="grow-x" style="--d:3" x="150" y="168" width="60" height="22" rx="5" fill="var(--accent)"/>
+      <g font-size="13" fill="var(--muted)"><text x="320" y="84">40% → 35%</text><text x="360" y="134">30% → 50%</text><text x="280" y="184">30% → 15%</text></g>
+      <text class="a" style="--d:4" x="320" y="230" text-anchor="middle" font-size="14" fill="var(--fg)">More of what earned treats, less of what didn't.</text>
+    </svg>
+    <p>After each batch, the model makes high-scoring answers a little more likely and low-scoring ones a little less likely. The faint bars are before the update, the solid bars after. Numbers are illustrative.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="A coach compares each result to what was expected">
+      <text x="320" y="34" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">The coach predicts the treats before each attempt</text>
+      <line x1="120" y1="95" x2="560" y2="95" stroke="var(--line-strong)" stroke-width="2"/><line x1="120" y1="175" x2="560" y2="175" stroke="var(--line-strong)" stroke-width="2"/>
+      <g font-size="12" fill="var(--muted)"><text x="120" y="118">0</text><text x="555" y="118">6</text><text x="120" y="198">0</text><text x="555" y="198">6</text></g>
+      <text x="40" y="100" font-size="13" fill="var(--fg)">Easy trick</text><text x="40" y="180" font-size="13" fill="var(--fg)">Hard trick</text>
+      <g class="a" style="--d:1"><line x1="340" y1="80" x2="340" y2="110" stroke="var(--faint)" stroke-width="3"/><text x="340" y="72" text-anchor="middle" font-size="12" fill="var(--muted)">expected 3</text></g>
+      <g class="a" style="--d:2"><circle cx="413" cy="95" r="9" fill="var(--tp)"/><text x="413" y="72" text-anchor="middle" font-size="12" font-weight="600" fill="var(--tp)">got 5: +2</text></g>
+      <g class="a" style="--d:3"><line x1="340" y1="160" x2="340" y2="190" stroke="var(--faint)" stroke-width="3"/><text x="340" y="152" text-anchor="middle" font-size="12" fill="var(--muted)">expected 3</text></g>
+      <g class="a" style="--d:4"><circle cx="193" cy="175" r="9" fill="var(--fp)"/><text x="193" y="152" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fp)">got 1: −2</text></g>
+      <text class="a" style="--d:5" x="320" y="232" text-anchor="middle" font-size="13" fill="var(--muted)">advantage = treats received − treats expected</text>
+    </svg>
+    <p>Three treats is great on a hard prompt and poor on an easy one. So a second network, the value model or critic, predicts what each attempt should earn. Only the surprise, called the advantage, drives learning: positive pushes that answer up, negative pushes it down.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="A leash ties the dog to its starting behaviour while a tempting shortcut sits out of reach">
+      <g class="a" style="--d:0"><rect x="150" y="90" width="16" height="90" rx="4" fill="var(--tn)"/><text x="158" y="205" text-anchor="middle" font-size="12" fill="var(--muted)">starting model</text><text x="158" y="221" text-anchor="middle" font-size="12" fill="var(--muted)">(reference)</text></g>
+      <circle class="a dash" style="--d:1" cx="158" cy="110" r="150" fill="none" stroke="var(--eli5)" stroke-width="2"/>
+      <g class="a" style="--d:2"><path d="M166 110 Q240 90 290 110" stroke="var(--eli5)" stroke-width="3" fill="none"/><ellipse cx="320" cy="122" rx="30" ry="16" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><circle cx="350" cy="102" r="14" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/></g>
+      <g class="a" style="--d:3"><circle cx="530" cy="110" r="22" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="2" class="pulse"/><text x="530" y="152" text-anchor="middle" font-size="13" font-weight="600" fill="var(--warn)">reward model</text><text x="530" y="168" text-anchor="middle" font-size="13" font-weight="600" fill="var(--warn)">blind spot</text><text x="530" y="186" text-anchor="middle" font-size="12" fill="var(--muted)">e.g. endless length</text></g>
+      <text class="a" style="--d:4" x="320" y="30" text-anchor="middle" font-size="14" fill="var(--fg)">β sets the leash length</text>
+    </svg>
+    <p>Without limits the dog sprints toward whatever the reward model over-rates. The KL penalty is a leash to the starting model: every bit of drift costs reward. A short leash (large β) is safe but changes little. A long leash (small β) lets the model reach the shortcut.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="PPO allows each token probability to move only within a band per batch">
+      <text x="320" y="34" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">One lesson can change a habit by at most ±20%</text>
+      <line x1="80" y1="130" x2="560" y2="130" stroke="var(--line-strong)" stroke-width="2"/>
+      <rect class="a" style="--d:1" x="272" y="100" width="96" height="60" rx="6" fill="var(--good-soft)" stroke="var(--good)"/>
+      <g font-size="12" fill="var(--muted)"><text x="80" y="180" text-anchor="middle">0.5×</text><text x="272" y="180" text-anchor="middle">0.8×</text><text x="320" y="180" text-anchor="middle">1.0×</text><text x="368" y="180" text-anchor="middle">1.2×</text><text x="560" y="180" text-anchor="middle">1.5×</text></g>
+      <text x="320" y="200" text-anchor="middle" font-size="12" fill="var(--muted)">new probability ÷ old probability</text>
+      <g class="a" style="--d:2"><circle cx="320" cy="130" r="8" fill="var(--faint)"/><path d="M330 130 L362 130" stroke="var(--tp)" stroke-width="3"/><circle cx="368" cy="130" r="9" fill="var(--tp)"/></g>
+      <g class="a" style="--d:3"><path d="M378 130 L470 130" stroke="var(--faint)" stroke-width="2" class="dash"/><text x="470" y="112" text-anchor="middle" font-size="12" fill="var(--muted)">no extra credit past here</text></g>
+      <text class="a" style="--d:4" x="320" y="232" text-anchor="middle" font-size="13" fill="var(--fg)">ε = 0.2 is the standard clip range</text>
+    </svg>
+    <p>Scoring answers is expensive, so PPO squeezes a few updates out of each batch. To stop one batch from wrecking the model, it clips: once a token's probability has moved 20 percent from where the batch started, pushing further earns nothing.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="The RLHF loop: generate, score, compare, update">
+      <g class="a" style="--d:0"><rect x="250" y="20" width="140" height="44" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="320" y="47" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">1. Generate answers</text></g>
+      <g class="a" style="--d:1"><rect x="450" y="100" width="150" height="44" rx="10" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="525" y="127" text-anchor="middle" font-size="13" font-weight="600" fill="var(--lead)">2. Score (treats)</text></g>
+      <g class="a" style="--d:2"><rect x="235" y="180" width="170" height="44" rx="10" fill="var(--eli5-soft)" stroke="var(--eli5)"/><text x="320" y="207" text-anchor="middle" font-size="13" font-weight="600" fill="var(--eli5)">3. Compare to expected</text></g>
+      <g class="a" style="--d:3"><rect x="30" y="100" width="170" height="44" rx="10" fill="var(--good-soft)" stroke="var(--good)"/><text x="115" y="127" text-anchor="middle" font-size="13" font-weight="600" fill="var(--good)">4. Small, leashed step</text></g>
+      <g stroke="var(--faint)" stroke-width="2" fill="none" class="a" style="--d:4"><path class="dash" d="M392 45 Q480 55 515 98"/><path class="dash" d="M515 146 Q480 195 407 200"/><path class="dash" d="M233 200 Q150 195 120 146"/><path class="dash" d="M120 98 Q160 55 248 45"/></g>
+      <text class="a" style="--d:5" x="320" y="128" text-anchor="middle" font-size="13" fill="var(--muted)">repeat thousands of times</text>
+    </svg>
+    <p>That is the whole loop: generate, score, compare with what the critic expected, take a small clipped step on a leash, repeat. The rest of this chapter is the math behind each arrow.</p>
+  </div>
+</div>
+
 <h3>The RL vocabulary, mapped to language models</h3>
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Training with treats</span></div>
   <p>You teach a dog a trick by letting it try things and giving a treat when it does well. Over time it does more of whatever earned treats. Nobody shows the dog exactly what to do; it learns from the results.</p>
@@ -38,6 +112,10 @@
   <div class="eq">\[ \pi^*(y \mid x) = \frac{1}{Z(x)}\, \pi_{\text{ref}}(y \mid x)\, \exp\!\Big(\tfrac{1}{\beta}\, r_\phi(x, y)\Big), \qquad Z(x) = \sum_{y} \pi_{\text{ref}}(y \mid x)\, e^{r_\phi(x,y)/\beta} \]<span class="eqcap">Reweight the reference policy by exponentiated reward. You cannot compute this directly for a language model because the sum over all responses is intractable, which is why we need RL (or DPO's trick).</span></div>
 </div>
 
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">β is a risk dial</span></div>
+  <p>The KL coefficient is the single most consequential knob in RLHF. Set it too high and the run is expensive and changes nothing. Set it too low and the policy finds the reward model's blind spots: the widget below shows true quality rising at first and then falling as the length-biased answer takes over. Set the length bias to zero and the problem disappears, which is the point: the damage comes from the gap between the reward model and what you actually want, and β controls how hard the optimizer can exploit that gap.</p>
+</div>
+
 <div class="widget" id="w-rl-bandit">
   <div class="wtitle">RLHF on a five-answer bandit</div>
   <div class="wsub">A prompt with five kinds of response. The reward model scores true quality plus a bias toward length. Because there are only five options, the KL-regularised optimum can be computed exactly. Lower the KL coefficient and watch the policy abandon the reference and pile onto whatever the reward model over-rates. The response types and numbers are illustrative.</div>
@@ -54,9 +132,6 @@
     <div class="mc"><div class="l">True quality change</div><div class="v" data-tr>—</div></div>
   </div>
   <div class="readout" data-out></div>
-</div>
-<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">β is a risk dial</span></div>
-  <p>The KL coefficient is the single most consequential knob in RLHF. Set it too high and the run is expensive and changes nothing. Set it too low and the policy finds the reward model's blind spots: the widget shows true quality rising at first and then falling as the length-biased answer takes over. Set the length bias to zero and the problem disappears, which is the point: the damage comes from the gap between the reward model and what you actually want, and β controls how hard the optimizer can exploit that gap.</p>
 </div>
 
 <h3>Policy gradients: learning from your own samples</h3>
@@ -99,20 +174,7 @@ print([round(a, 3) for a in adv])   # [0.346, 0.27, 0.2]</code></pre>
   <div class="eq">\[ \mathcal{L}^{\text{CLIP}}(\theta) = \mathbb{E}_t\Big[\min\big(\rho_t(\theta)\,\hat{A}_t,\; \mathrm{clip}(\rho_t(\theta),\, 1-\epsilon,\, 1+\epsilon)\,\hat{A}_t\big)\Big] \]<span class="eqcap">Maximized. For a good token (\(\hat A_t &gt; 0\)) the gain stops once its probability has risen by a factor \(1+\epsilon\). For a bad token the gain stops once it has fallen to \(1-\epsilon\). The <b>min</b> makes the bound pessimistic: if an update already went the wrong way, the full penalty stays.</span></div>
   <p>The full loss adds a value-function regression term and often an entropy bonus. The standard \(\epsilon\) is 0.2.</p>
   <div class="eq">\[ \mathcal{L} = -\mathcal{L}^{\text{CLIP}} + c_v\,\mathbb{E}\big[(V_\theta(s_t) - \hat R_t)^2\big] - c_e\,\mathbb{E}\big[\mathcal{H}(\pi_\theta(\cdot \mid s_t))\big] \]</div>
-</div>
-
-<div class="widget" id="w-rl-clip">
-  <div class="wtitle">PPO clipping</div>
-  <div class="wsub">The objective PPO maximizes for one token, as a function of how much the update changed that token's probability. Shaded regions are where the gradient is zero. Widen ε and the policy is allowed bigger steps per batch.</div>
-  <div class="controls">
-    <div class="ctl"><label for="rl-clip-e">Clip range ε: <output id="rl-clip-e-o">0.20</output></label><input type="range" id="rl-clip-e" min="0.05" max="0.5" step="0.01" value="0.2"></div>
-  </div>
-  <canvas></canvas>
-  <div class="legend"><span><span class="sw" style="background:var(--faint)"></span>Unclipped ratio × advantage (dashed)</span><span><span class="sw" style="background:var(--tp)"></span>PPO objective, good action</span><span><span class="sw" style="background:var(--fp)"></span>PPO objective, bad action</span></div>
-  <div class="readout" data-out></div>
-</div>
-
-<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The loss in code</span></div>
+  <p>In code:</p>
   <pre class="code" data-lang="python"><code>import torch
 
 def ppo_loss(logp_new, logp_old, adv, values_new, returns, eps=0.2, vf_coef=0.5):
@@ -130,7 +192,53 @@ for r, a in [(1.5, 1.0), (0.6, -1.0), (1.1, 1.0)]:
     print(r, a, min(r * a, max(0.8, min(1.2, r)) * a))     # 1.2, -0.8, 1.1</code></pre>
 </div>
 
+<div class="widget" id="w-rl-clip">
+  <div class="wtitle">PPO clipping</div>
+  <div class="wsub">The objective PPO maximizes for one token, as a function of how much the update changed that token's probability. Shaded regions are where the gradient is zero. Widen ε and the policy is allowed bigger steps per batch.</div>
+  <div class="controls">
+    <div class="ctl"><label for="rl-clip-e">Clip range ε: <output id="rl-clip-e-o">0.20</output></label><input type="range" id="rl-clip-e" min="0.05" max="0.5" step="0.01" value="0.2"></div>
+  </div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--faint)"></span>Unclipped ratio × advantage (dashed)</span><span><span class="sw" style="background:var(--tp)"></span>PPO objective, good action</span><span><span class="sw" style="background:var(--fp)"></span>PPO objective, bad action</span></div>
+  <div class="readout" data-out></div>
+</div>
+
+
 <h3>Four models in memory: why PPO is expensive</h3>
+<div class="story" id="st-rl-room">
+  <div class="story-head"><div class="story-title">Four people in the training room</div><p class="story-sub">Why PPO needs so much memory, one seat at a time.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 230" role="img" aria-label="Policy: writes the answers"><g class="a" style="--d:0"><circle cx="90" cy="80" r="32" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="3"/><text x="90" y="140" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Policy</text><text x="90" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">writes the answers</text><rect x="58" y="172" width="64" height="22" rx="11" fill="var(--surface)" stroke="var(--good)"/><text x="90" y="187" text-anchor="middle" font-size="11" font-weight="600" fill="var(--good)">trained</text></g><text class="a" style="--d:2" x="320" y="222" text-anchor="middle" font-size="13" fill="var(--muted)">1 of 4 networks in memory</text></svg>
+    <p>The student, the policy, writes every answer. It is the network being trained, so it needs weights, gradients, and optimizer state: about 16 bytes per parameter.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 230" role="img" aria-label="Reward model: scores the answers"><g opacity=".45"><circle cx="90" cy="80" r="32" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="140" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Policy</text><text x="90" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">writes the answers</text><rect x="58" y="172" width="64" height="22" rx="11" fill="var(--surface)" stroke="var(--good)"/><text x="90" y="187" text-anchor="middle" font-size="11" font-weight="600" fill="var(--good)">trained</text></g><g class="a" style="--d:0"><circle cx="245" cy="80" r="32" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="3"/><text x="245" y="140" text-anchor="middle" font-size="14" font-weight="600" fill="var(--lead)">Reward model</text><text x="245" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">scores the answers</text><rect x="213" y="172" width="64" height="22" rx="11" fill="var(--surface)" stroke="var(--muted)"/><text x="245" y="187" text-anchor="middle" font-size="11" font-weight="600" fill="var(--muted)">frozen</text></g><text class="a" style="--d:2" x="320" y="222" text-anchor="middle" font-size="13" fill="var(--muted)">2 of 4 networks in memory</text></svg>
+    <p>The judge, the reward model, scores each answer. It is frozen, so it needs only its weights, about 2 bytes per parameter in bf16.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 230" role="img" aria-label="Value model: predicts the score"><g opacity=".45"><circle cx="90" cy="80" r="32" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="140" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Policy</text><text x="90" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">writes the answers</text><rect x="58" y="172" width="64" height="22" rx="11" fill="var(--surface)" stroke="var(--good)"/><text x="90" y="187" text-anchor="middle" font-size="11" font-weight="600" fill="var(--good)">trained</text></g><g opacity=".45"><circle cx="245" cy="80" r="32" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="245" y="140" text-anchor="middle" font-size="14" font-weight="600" fill="var(--lead)">Reward model</text><text x="245" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">scores the answers</text><rect x="213" y="172" width="64" height="22" rx="11" fill="var(--surface)" stroke="var(--muted)"/><text x="245" y="187" text-anchor="middle" font-size="11" font-weight="600" fill="var(--muted)">frozen</text></g><g class="a" style="--d:0"><circle cx="400" cy="80" r="32" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="3"/><text x="400" y="140" text-anchor="middle" font-size="14" font-weight="600" fill="var(--eli5)">Value model</text><text x="400" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">predicts the score</text><rect x="368" y="172" width="64" height="22" rx="11" fill="var(--surface)" stroke="var(--good)"/><text x="400" y="187" text-anchor="middle" font-size="11" font-weight="600" fill="var(--good)">trained</text></g><text class="a" style="--d:2" x="320" y="222" text-anchor="middle" font-size="13" fill="var(--muted)">3 of 4 networks in memory</text></svg>
+    <p>The coach, the value model, predicts what each answer should score so the policy can learn from surprises. It is trained too, and it is often as big as the policy.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 230" role="img" aria-label="Reference: the starting model"><g opacity=".45"><circle cx="90" cy="80" r="32" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="90" y="140" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Policy</text><text x="90" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">writes the answers</text><rect x="58" y="172" width="64" height="22" rx="11" fill="var(--surface)" stroke="var(--good)"/><text x="90" y="187" text-anchor="middle" font-size="11" font-weight="600" fill="var(--good)">trained</text></g><g opacity=".45"><circle cx="245" cy="80" r="32" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="245" y="140" text-anchor="middle" font-size="14" font-weight="600" fill="var(--lead)">Reward model</text><text x="245" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">scores the answers</text><rect x="213" y="172" width="64" height="22" rx="11" fill="var(--surface)" stroke="var(--muted)"/><text x="245" y="187" text-anchor="middle" font-size="11" font-weight="600" fill="var(--muted)">frozen</text></g><g opacity=".45"><circle cx="400" cy="80" r="32" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><text x="400" y="140" text-anchor="middle" font-size="14" font-weight="600" fill="var(--eli5)">Value model</text><text x="400" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">predicts the score</text><rect x="368" y="172" width="64" height="22" rx="11" fill="var(--surface)" stroke="var(--good)"/><text x="400" y="187" text-anchor="middle" font-size="11" font-weight="600" fill="var(--good)">trained</text></g><g class="a" style="--d:0"><circle cx="555" cy="80" r="32" fill="var(--sunk)" stroke="var(--tn)" stroke-width="3"/><text x="555" y="140" text-anchor="middle" font-size="14" font-weight="600" fill="var(--tn)">Reference</text><text x="555" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">the starting model</text><rect x="523" y="172" width="64" height="22" rx="11" fill="var(--surface)" stroke="var(--muted)"/><text x="555" y="187" text-anchor="middle" font-size="11" font-weight="600" fill="var(--muted)">frozen</text></g><text class="a" style="--d:2" x="320" y="222" text-anchor="middle" font-size="13" fill="var(--muted)">4 of 4 networks in memory</text></svg>
+    <p>The photo of the student on day one, the reference model, supplies the probabilities for the KL leash. Frozen, but always in memory.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Rough memory bill for a 70B-parameter PPO run">
+      <text x="40" y="30" font-size="13" font-weight="600" fill="var(--muted)">Rough memory for a 70B setup, before activations</text>
+      <g font-size="13" fill="var(--fg)"><text x="40" y="66">Policy</text><text x="40" y="104">Value model</text><text x="40" y="142">Reward model</text><text x="40" y="180">Reference</text></g>
+      <rect class="grow-x" style="--d:1" x="170" y="52" width="340" height="20" rx="5" fill="var(--accent)"/>
+      <rect class="grow-x" style="--d:2" x="170" y="90" width="340" height="20" rx="5" fill="var(--eli5)"/>
+      <rect class="grow-x" style="--d:3" x="170" y="128" width="43" height="20" rx="5" fill="var(--lead)"/>
+      <rect class="grow-x" style="--d:3" x="170" y="166" width="43" height="20" rx="5" fill="var(--tn)"/>
+      <g font-size="13" font-weight="600" fill="var(--fg)"><text x="518" y="67">1.1 TB</text><text x="518" y="105">1.1 TB</text><text x="221" y="143">0.14 TB</text><text x="221" y="181">0.14 TB</text></g>
+      <text class="a" style="--d:4" x="320" y="218" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">About 2.5 TB in total</text>
+      <text class="a" style="--d:5" x="320" y="240" text-anchor="middle" font-size="12" fill="var(--muted)">DPO keeps only policy + reference. GRPO drops the value model.</text>
+    </svg>
+    <p>Add it up with rough rules of thumb (16 bytes per trained parameter, 2 per frozen one) and a 70B run needs about 2.5 TB before counting activations or generation. That bill is why the next two chapters exist: DPO sends the judge and coach home, and GRPO sends the coach home.</p>
+  </div>
+</div>
+
 <div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The bill</span></div>
   <p>A PPO run for a language model keeps four networks alive at once:</p>
   <div class="four">

@@ -2,6 +2,82 @@
 <h2>Preferences and reward models: turning taste into a number</h2>
 <p>Pretraining and supervised fine-tuning teach a model to imitate text. They cannot teach it which of two good-looking answers people actually prefer. Reward models close that gap. They learn a scoring function from human (or AI) comparisons, and that score becomes the target for RLHF, the selector for best-of-N sampling, and the yardstick many teams quietly use as an eval. This chapter covers how comparisons are collected, the Bradley–Terry model behind almost every reward model, how to evaluate one, and how optimizing against it goes wrong.</p>
 
+<div class="story" id="st-rm-eyeexam">
+  <div class="story-head"><div class="story-title">Which is clearer, 1 or 2?</div><p class="story-sub">How an eye exam explains reward models, in five pictures.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Two raters give the same poem different scores">
+      <g class="a" style="--d:0"><rect x="250" y="30" width="140" height="120" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="320" y="56" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">A poem</text><rect x="270" y="72" width="100" height="7" rx="3" fill="var(--sunk)"/><rect x="270" y="88" width="84" height="7" rx="3" fill="var(--sunk)"/><rect x="270" y="104" width="96" height="7" rx="3" fill="var(--sunk)"/><rect x="270" y="120" width="70" height="7" rx="3" fill="var(--sunk)"/></g>
+      <g class="a" style="--d:1"><circle cx="110" cy="70" r="24" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><rect x="45" y="112" width="130" height="44" rx="10" fill="var(--surface)" stroke="var(--eli5)"/><text x="110" y="140" text-anchor="middle" font-size="17" font-weight="600" fill="var(--eli5)">6 / 10</text></g>
+      <g class="a" style="--d:2"><circle cx="530" cy="70" r="24" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><rect x="465" y="112" width="130" height="44" rx="10" fill="var(--surface)" stroke="var(--lead)"/><text x="530" y="140" text-anchor="middle" font-size="17" font-weight="600" fill="var(--lead)">8 / 10</text></g>
+      <text class="a" style="--d:3" x="320" y="215" text-anchor="middle" font-size="15" fill="var(--fg)">Same poem, two different scales.</text>
+    </svg>
+    <p>Ask people to score an answer from 1 to 10 and everyone uses their own scale. One person's 6 is another person's 8, so absolute scores are noisy.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="An eye exam asks which of two lenses is clearer">
+      <text class="a" style="--d:0" x="320" y="32" text-anchor="middle" font-size="16" font-weight="600" fill="var(--fg)">"Which is clearer, 1 or 2?"</text>
+      <g class="a" style="--d:1"><circle cx="220" cy="118" r="62" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="3"/><text x="220" y="129" text-anchor="middle" font-size="32" font-weight="700" fill="var(--fg)">E F P</text><text x="220" y="210" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">1</text></g>
+      <g class="a" style="--d:2"><circle cx="420" cy="118" r="62" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="3"/><text x="418" y="129" text-anchor="middle" font-size="32" font-weight="700" fill="var(--fg)" opacity=".25">E F P</text><text x="423" y="131" text-anchor="middle" font-size="32" font-weight="700" fill="var(--fg)" opacity=".18">E F P</text><text x="420" y="210" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">2</text></g>
+      <circle class="a pulse" style="--d:3" cx="220" cy="118" r="70" fill="none" stroke="var(--good)" stroke-width="3"/>
+      <text class="a" style="--d:4" x="320" y="240" text-anchor="middle" font-size="14" fill="var(--muted)">Picking between two is quick, and people agree far more often.</text>
+    </svg>
+    <p>An optometrist never asks you to rate a lens from 1 to 10. They show two and ask which is clearer. Labs collect model feedback the same way: two answers to one prompt, and a person picks the better one.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Many pairwise picks tallied into wins">
+      <text x="40" y="34" font-size="13" font-weight="600" fill="var(--muted)">Picks collected</text>
+      <g font-size="13" fill="var(--fg)">
+        <g class="a" style="--d:0"><text x="40" y="62">A vs B</text><text x="120" y="62" fill="var(--good)" font-weight="600">→ A</text></g>
+        <g class="a" style="--d:1"><text x="40" y="88">A vs C</text><text x="120" y="88" fill="var(--good)" font-weight="600">→ A</text></g>
+        <g class="a" style="--d:1"><text x="40" y="114">A vs D</text><text x="120" y="114" fill="var(--good)" font-weight="600">→ A</text></g>
+        <g class="a" style="--d:2"><text x="40" y="140">B vs C</text><text x="120" y="140" fill="var(--good)" font-weight="600">→ B</text></g>
+        <g class="a" style="--d:2"><text x="40" y="166">C vs D</text><text x="120" y="166" fill="var(--good)" font-weight="600">→ C</text></g>
+        <g class="a" style="--d:3"><text x="40" y="192">B vs D</text><text x="120" y="192" fill="var(--fp)" font-weight="600">→ D (upset)</text></g>
+      </g>
+      <text x="330" y="34" font-size="13" font-weight="600" fill="var(--muted)">Wins</text>
+      <g font-size="14" font-weight="600" fill="var(--fg)"><text x="330" y="68">A</text><text x="330" y="108">B</text><text x="330" y="148">C</text><text x="330" y="188">D</text></g>
+      <rect class="grow-x" style="--d:4" x="355" y="54" width="210" height="20" rx="5" fill="var(--accent)"/>
+      <rect class="grow-x" style="--d:5" x="355" y="94" width="70" height="20" rx="5" fill="var(--accent)" opacity=".7"/>
+      <rect class="grow-x" style="--d:5" x="355" y="134" width="70" height="20" rx="5" fill="var(--accent)" opacity=".7"/>
+      <rect class="grow-x" style="--d:6" x="355" y="174" width="70" height="20" rx="5" fill="var(--accent)" opacity=".7"/>
+      <g font-size="13" fill="var(--muted)"><text x="575" y="69">3</text><text x="435" y="109">1</text><text x="435" y="149">1</text><text x="435" y="189">1</text></g>
+      <text class="a" style="--d:7" x="320" y="236" text-anchor="middle" font-size="14" fill="var(--muted)">Upsets happen. The overall pattern is what counts.</text>
+    </svg>
+    <p>Collect thousands of these picks across many answers. Some picks disagree with the rest, because people are noisy. With enough of them, a clear ordering emerges anyway.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Hidden scores on a line and how score gaps map to preference chances">
+      <line x1="80" y1="70" x2="580" y2="70" stroke="var(--line-strong)" stroke-width="2"/>
+      <g class="a" style="--d:0"><circle cx="100" cy="70" r="9" fill="var(--accent)"/><text x="100" y="48" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">D</text></g>
+      <g class="a" style="--d:0"><circle cx="180" cy="70" r="9" fill="var(--accent)"/><text x="180" y="48" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">C</text></g>
+      <g class="a" style="--d:1"><circle cx="280" cy="70" r="9" fill="var(--accent)"/><text x="280" y="48" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">B</text></g>
+      <g class="a" style="--d:1"><circle cx="540" cy="70" r="9" fill="var(--accent)"/><text x="540" y="48" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">A</text></g>
+      <text x="80" y="94" font-size="12" fill="var(--muted)">lower hidden score</text><text x="580" y="94" text-anchor="end" font-size="12" fill="var(--muted)">higher</text>
+      <text class="a" style="--d:2" x="60" y="128" font-size="13" font-weight="600" fill="var(--muted)">Score gap → chance people prefer the higher one</text>
+      <g font-size="13" fill="var(--fg)"><text x="60" y="157">gap 0</text><text x="60" y="183">gap 1</text><text x="60" y="209">gap 2</text><text x="60" y="235">gap 4</text></g>
+      <rect class="grow-x" style="--d:3" x="130" y="145" width="175" height="16" rx="4" fill="var(--eli5)"/>
+      <rect class="grow-x" style="--d:4" x="130" y="171" width="256" height="16" rx="4" fill="var(--eli5)"/>
+      <rect class="grow-x" style="--d:5" x="130" y="197" width="308" height="16" rx="4" fill="var(--eli5)"/>
+      <rect class="grow-x" style="--d:6" x="130" y="223" width="344" height="16" rx="4" fill="var(--eli5)"/>
+      <g font-size="13" font-weight="600" fill="var(--fg)"><text x="313" y="158">50%</text><text x="394" y="184">73%</text><text x="446" y="210">88%</text><text x="482" y="236">98%</text></g>
+    </svg>
+    <p>Bradley–Terry pretends each answer has a hidden score, like a chess rating. The bigger the gap between two scores, the more likely people pick the higher one, but upsets stay possible. Only gaps matter: adding 100 to every score changes nothing.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="A trained reward model scores any new answer instantly and is used three ways">
+      <g class="a" style="--d:0"><rect x="30" y="50" width="120" height="70" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="90" y="80" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">New answer</text><text x="90" y="100" text-anchor="middle" font-size="12" fill="var(--muted)">never seen before</text></g>
+      <path class="a dash" style="--d:1" d="M152 85 L228 85" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:1"><rect x="230" y="40" width="170" height="90" rx="14" fill="var(--deep-soft)" stroke="var(--deep)" stroke-width="2"/><text x="315" y="80" text-anchor="middle" font-size="15" font-weight="600" fill="var(--deep)">Reward model</text><text x="315" y="102" text-anchor="middle" font-size="12" fill="var(--muted)">learned from the picks</text></g>
+      <path class="a dash" style="--d:2" d="M402 85 L458 85" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:2"><circle cx="510" cy="85" r="46" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="510" y="82" text-anchor="middle" font-size="12" fill="var(--muted)">score</text><text x="510" y="102" text-anchor="middle" font-size="18" font-weight="700" fill="var(--good)">+1.7</text></g>
+      <g class="a" style="--d:3"><rect x="20" y="170" width="190" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="115" y="197" text-anchor="middle" font-size="13" fill="var(--fg)">Trains the model (RLHF)</text></g>
+      <g class="a" style="--d:4"><rect x="225" y="170" width="190" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="320" y="197" text-anchor="middle" font-size="13" fill="var(--fg)">Picks the best of N</text></g>
+      <g class="a" style="--d:5"><rect x="430" y="170" width="190" height="44" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="525" y="197" text-anchor="middle" font-size="13" fill="var(--fg)">Quietly used as an eval</text></g>
+    </svg>
+    <p>Train a model to predict those picks and you get a reward model: a judge that scores any answer in milliseconds. It drives RLHF, picks the best of several samples, and often ends up on dashboards. Everything it knows came from the picks, including their blind spots.</p>
+  </div>
+</div>
+
 <h3>Why preferences instead of labels</h3>
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Picking is easier than scoring</span></div>
   <p>Ask ten people to score a poem from 1 to 10 and you get ten different scales: one person's 6 is another's 8. Ask the same ten people which of two poems is better and they agree far more often. Comparing is easier and more consistent than scoring on an absolute scale.</p>
@@ -54,6 +130,11 @@ print(round(bradley_terry_loss(r_w, r_l).item(), 3))                  # 0.466
 print(round(((r_w - r_l) &gt; 0).float().mean().item(), 3))             # pairwise accuracy 0.667</code></pre>
 </div>
 
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What the score does and does not mean</span></div>
+  <p>A reward score is a <b>relative</b> preference estimate within one prompt. It is not a quality grade, not a probability of correctness, and not comparable between reward model versions. If a dashboard shows "average reward went from 1.3 to 1.9", ask what it was normalized against, because a retrained reward model can shift every score without the policy changing at all.</p>
+  <p>Annotator noise is the hidden lever in the widget below. Doubling noise does not just make labels messier; it shrinks the learned scale, so the reward model becomes less confident everywhere, and downstream RL pushes less hard. That can look like "RLHF stopped working" when the real cause is a labeling vendor change.</p>
+</div>
+
 <div class="widget" id="w-rm-bt">
   <div class="wtitle">Bradley–Terry explorer</div>
   <div class="wsub">Left: how a score gap turns into a preference probability. Right: four responses with known true scores, simulated votes, and the scores Bradley–Terry recovers. Cut the votes or raise the annotator noise and watch the fitted ranking become unreliable.</div>
@@ -69,10 +150,6 @@ print(round(((r_w - r_l) &gt; 0).float().mean().item(), 3))             # pairwi
     <div class="mc"><div class="l">Fitted P(A beats D)</div><div class="v" data-ad>—</div></div>
   </div>
   <div class="readout" data-out></div>
-</div>
-<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What the score does and does not mean</span></div>
-  <p>A reward score is a <b>relative</b> preference estimate within one prompt. It is not a quality grade, not a probability of correctness, and not comparable between reward model versions. If a dashboard shows "average reward went from 1.3 to 1.9", ask what it was normalized against, because a retrained reward model can shift every score without the policy changing at all.</p>
-  <p>Annotator noise is the hidden lever in the widget above. Doubling noise does not just make labels messier; it shrinks the learned scale, so the reward model becomes less confident everywhere, and downstream RL pushes less hard. That can look like "RLHF stopped working" when the real cause is a labeling vendor change.</p>
 </div>
 
 <h3>Training a reward model</h3>
@@ -117,16 +194,81 @@ class RewardModel(nn.Module):
   <div class="callout eval"><span class="tag">Eval lens</span><div>Reward model evaluation is a binary classification problem on pairs, so everything in <a href="#classification">classification metrics</a> applies. Pairwise accuracy on randomly ordered pairs is a concordance measure, the same quantity ROC-AUC estimates. Report it with a confidence interval (a few thousand held-out pairs gives roughly ±1.5 points), report it per slice, and compare it to the human-human agreement on the same items. A 2-point gain between reward model versions on 1,000 pairs is inside the noise.</div></div>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Known biases and how to probe them</span></div>
-  <ul>
-    <li><b>Length.</b> Annotators tend to prefer longer, more thorough-looking answers, and reward models amplify this. Probe with counterfactual pairs: the same answer with and without padding. Singhal et al. (2023) showed much of the reward gain from RLHF on several datasets could be explained by length alone.</li>
-    <li><b>Sycophancy.</b> Answers that agree with the user's stated opinion get rated higher. Sharma et al. (2023) found this in human preference data and in reward models trained on it. Probe with paired prompts that differ only in the user's stated belief.</li>
-    <li><b>Formatting and tone.</b> Markdown headers, bullet lists, and confident phrasing earn reward independent of content. Probe by stripping formatting or swapping hedged for confident wording.</li>
-    <li><b>Position and self-preference.</b> Pairwise generative reward models can prefer whichever response comes first, or responses that sound like their own outputs. Score both orders and average.</li>
-  </ul>
+  <div class="four">
+    <div class="tile"><h4>Length</h4><p>Annotators tend to prefer longer, more thorough-looking answers, and reward models amplify this. Probe with counterfactual pairs: the same answer with and without padding. Singhal et al. (2023) showed much of the reward gain from RLHF on several datasets could be explained by length alone.</p></div>
+    <div class="tile"><h4>Sycophancy</h4><p>Answers that agree with the user's stated opinion get rated higher. Sharma et al. (2023) found this in human preference data and in reward models trained on it. Probe with paired prompts that differ only in the user's stated belief.</p></div>
+    <div class="tile"><h4>Formatting and tone</h4><p>Markdown headers, bullet lists, and confident phrasing earn reward independent of content. Probe by stripping formatting or swapping hedged for confident wording.</p></div>
+    <div class="tile"><h4>Position and self-preference</h4><p>Pairwise generative reward models can prefer whichever response comes first, or responses that sound like their own outputs. Score both orders and average.</p></div>
+  </div>
   <p>The standard mitigations are to balance the comparison data (include pairs where the shorter answer wins), add an explicit length penalty or length-normalized reward, train on counterfactual augmentations, and report length-controlled win rates in evaluation.</p>
 </div>
 
 <h3>Reward overoptimization: Goodhart in one chart</h3>
+<div class="story" id="st-rm-critic">
+  <div class="story-head"><div class="story-title">The kitchen that learned to please one critic</div><p class="story-sub">Reward overoptimization, told as a restaurant chasing reviews.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="A cook sends dishes to a critic who stands in for the diners">
+      <g class="a" style="--d:0"><circle cx="100" cy="90" r="30" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="100" y="150" text-anchor="middle" font-size="14" font-weight="600" fill="var(--lead)">Kitchen</text><text x="100" y="168" text-anchor="middle" font-size="12" fill="var(--muted)">the model</text></g>
+      <path class="a dash" style="--d:1" d="M135 80 L265 80" stroke="var(--faint)" stroke-width="2" fill="none"/><text class="a" style="--d:1" x="200" y="70" text-anchor="middle" font-size="12" fill="var(--muted)">dish</text>
+      <path class="a dash" style="--d:2" d="M265 105 L135 105" stroke="var(--faint)" stroke-width="2" fill="none"/><text class="a" style="--d:2" x="200" y="125" text-anchor="middle" font-size="12" fill="var(--muted)">score</text>
+      <g class="a" style="--d:1"><circle cx="300" cy="90" r="30" fill="var(--deep-soft)" stroke="var(--deep)" stroke-width="2"/><rect x="318" y="96" width="22" height="28" rx="3" fill="var(--surface)" stroke="var(--deep)"/><text x="300" y="150" text-anchor="middle" font-size="14" font-weight="600" fill="var(--deep)">Critic</text><text x="300" y="168" text-anchor="middle" font-size="12" fill="var(--muted)">the reward model</text></g>
+      <g class="a" style="--d:3"><circle cx="470" cy="80" r="16" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><circle cx="510" cy="80" r="16" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><circle cx="550" cy="80" r="16" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><circle cx="490" cy="115" r="16" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><circle cx="530" cy="115" r="16" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><text x="510" y="160" text-anchor="middle" font-size="14" font-weight="600" fill="var(--eli5)">Diners</text><text x="510" y="178" text-anchor="middle" font-size="12" fill="var(--muted)">what people actually want</text></g>
+      <text class="a" style="--d:4" x="320" y="225" text-anchor="middle" font-size="14" fill="var(--fg)">The kitchen can't ask every diner, so it learns from one critic.</text>
+    </svg>
+    <p>The critic is a stand-in. Asking real diners about every dish is too slow, so the kitchen optimizes the critic's score. That is exactly the deal RLHF makes with a reward model.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Early on, both the critic's score and the diners' happiness rise">
+      <text x="60" y="70" font-size="14" font-weight="600" fill="var(--fg)">Critic's score</text>
+      <rect x="230" y="54" width="360" height="22" rx="6" fill="var(--sunk)"/>
+      <rect x="230" y="54" width="110" height="22" rx="6" fill="var(--accent)" opacity=".35"/>
+      <rect class="grow-x" style="--d:1" x="230" y="54" width="230" height="22" rx="6" fill="var(--accent)"/>
+      <text x="60" y="130" font-size="14" font-weight="600" fill="var(--fg)">Diners' happiness</text>
+      <rect x="230" y="114" width="360" height="22" rx="6" fill="var(--sunk)"/>
+      <rect x="230" y="114" width="110" height="22" rx="6" fill="var(--good)" opacity=".35"/>
+      <rect class="grow-x" style="--d:2" x="230" y="114" width="215" height="22" rx="6" fill="var(--good)"/>
+      <text class="a" style="--d:3" x="320" y="190" text-anchor="middle" font-size="15" fill="var(--fg)">Better seasoning, hotter plates: real improvements lift both.</text>
+      <text class="a" style="--d:3" x="320" y="214" text-anchor="middle" font-size="12" fill="var(--muted)">faint bar = before training</text>
+    </svg>
+    <p>At first everything works. The kitchen fixes real problems, the critic notices, and diners are happier too. Early RLHF steps look like this: proxy reward and true quality rise together.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="The kitchen discovers the critic loves giant portions and garnish">
+      <g class="a" style="--d:0"><ellipse cx="200" cy="140" rx="120" ry="34" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><ellipse cx="200" cy="124" rx="78" ry="30" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/></g>
+      <g class="a" style="--d:1" fill="var(--good)"><circle cx="150" cy="104" r="7"/><circle cx="175" cy="96" r="6"/><circle cx="230" cy="98" r="7"/><circle cx="252" cy="110" r="6"/><circle cx="200" cy="92" r="6"/></g>
+      <text class="a" style="--d:2" x="200" y="205" text-anchor="middle" font-size="13" fill="var(--muted)">giant portion + garnish everywhere</text>
+      <g class="a" style="--d:3"><rect x="390" y="50" width="200" height="50" rx="10" fill="var(--surface)" stroke="var(--deep)"/><text x="490" y="81" text-anchor="middle" font-size="16" font-weight="600" fill="var(--deep)">Critic: 9.5 / 10</text></g>
+      <g class="a" style="--d:4"><rect x="390" y="115" width="200" height="50" rx="10" fill="var(--surface)" stroke="var(--fp)"/><text x="490" y="146" text-anchor="middle" font-size="16" font-weight="600" fill="var(--fp)">Diners: "meh"</text></g>
+      <text class="a" style="--d:5" x="490" y="195" text-anchor="middle" font-size="12" fill="var(--muted)">portion = longer answers</text>
+      <text class="a" style="--d:5" x="490" y="213" text-anchor="middle" font-size="12" fill="var(--muted)">garnish = headers, bullets, confident tone</text>
+    </svg>
+    <p>Then the kitchen finds the critic's quirks. Bigger portions and more garnish raise the score without making the food better. Language models find the same kinds of quirks in reward models: longer answers, heavy formatting, confident tone, flattery.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Proxy reward keeps rising while true reward peaks and falls">
+      <line x1="70" y1="215" x2="600" y2="215" stroke="var(--line-strong)" stroke-width="2"/><line x1="70" y1="215" x2="70" y2="30" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="335" y="245" text-anchor="middle" font-size="12" fill="var(--muted)">how far the recipe has drifted from the original (KL)</text>
+      <text x="78" y="38" font-size="12" fill="var(--muted)">score</text>
+      <path class="a" style="--d:0" d="M70 205 C 230 150, 400 100, 590 48" stroke="var(--accent)" stroke-width="3" fill="none"/>
+      <text class="a" style="--d:0" x="585" y="40" text-anchor="end" font-size="13" font-weight="600" fill="var(--accent)">critic (proxy)</text>
+      <path class="a" style="--d:2" d="M70 205 C 180 125, 270 108, 320 110 S 500 160, 590 196" stroke="var(--good)" stroke-width="3" fill="none"/>
+      <text class="a" style="--d:2" x="585" y="186" text-anchor="end" font-size="13" font-weight="600" fill="var(--fp)">diners (gold)</text>
+      <circle class="a pulse" style="--d:3" cx="300" cy="110" r="8" fill="var(--good)"/>
+      <text class="a" style="--d:3" x="300" y="92" text-anchor="middle" font-size="13" font-weight="600" fill="var(--good)">stop here</text>
+    </svg>
+    <p>Plot both against how far the kitchen has drifted from its original recipe. The critic's score climbs forever. The diners' score peaks and then falls. Gao et al. (2022) measured exactly this shape for reward models, and found better reward models push the peak later and higher.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Four defenses against overoptimization">
+      <g class="a" style="--d:0"><rect x="30" y="30" width="280" height="80" rx="12" fill="var(--eli5-soft)" stroke="var(--eli5)"/><text x="50" y="62" font-size="14" font-weight="600" fill="var(--eli5)">Keep a leash</text><text x="50" y="86" font-size="12" fill="var(--fg)">KL penalty holds the recipe near the original</text></g>
+      <g class="a" style="--d:1"><rect x="330" y="30" width="280" height="80" rx="12" fill="var(--deep-soft)" stroke="var(--deep)"/><text x="350" y="62" font-size="14" font-weight="600" fill="var(--deep)">Hire more critics</text><text x="350" y="86" font-size="12" fill="var(--fg)">Reward model ensembles are harder to fool</text></g>
+      <g class="a" style="--d:2"><rect x="30" y="130" width="280" height="80" rx="12" fill="var(--good-soft)" stroke="var(--good)"/><text x="50" y="162" font-size="14" font-weight="600" fill="var(--good)">Ask real diners</text><text x="50" y="186" font-size="12" fill="var(--fg)">An independent eval decides when to stop</text></g>
+      <g class="a" style="--d:3"><rect x="330" y="130" width="280" height="80" rx="12" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="350" y="162" font-size="14" font-weight="600" fill="var(--lead)">Retrain the critic</text><text x="350" y="186" font-size="12" fill="var(--fg)">Collect fresh picks on the new dishes</text></g>
+    </svg>
+    <p>The defenses map one to one: a KL penalty is the leash, ensembles are extra critics, an independent eval is asking real diners, and refreshing the reward model on current outputs is retraining the critic.</p>
+  </div>
+</div>
+
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Teaching to the test</span></div>
   <p>If you reward students only for test scores, they first learn the material, then they learn the test. Past some point, scores keep climbing while real understanding stops improving or even gets worse. A reward model is a test. Push a language model hard enough against it and the model finds the reward model's quirks: longer answers, more confident tone, flattering phrasing. The reward model's score keeps rising. What people actually want peaks and then falls.</p>
 </div>
@@ -134,6 +276,12 @@ class RewardModel(nn.Module):
   <p>Gao, Schulman and Hilton (2022) made this measurable. They used a large "gold" reward model as a stand-in for humans, trained smaller proxy reward models on its labels, optimized policies against the proxies, and tracked gold reward as a function of how far the policy moved from its starting point, measured by \(d = \sqrt{\mathrm{KL}(\pi \,\|\, \pi_{\text{ref}})}\). Gold reward followed simple functional forms:</p>
   <div class="eq">\[ R_{\text{bon}}(d) = d\,(\alpha_{\text{bon}} - \beta_{\text{bon}}\, d), \qquad R_{\text{RL}}(d) = d\,(\alpha_{\text{RL}} - \beta_{\text{RL}} \log d) \]<span class="eqcap">Best-of-N sampling (left) and RL (right). Both rise, peak, and fall. Larger proxy reward models had smaller \(\beta\) (for RL, \(\alpha\) stayed roughly constant across reward-model sizes), so gold reward declines more slowly: a later, higher peak. More proxy training data helped in the same direction.</span></div>
   <p>Two practical lessons follow. The KL distance at which gold reward peaks is a budget, and it grows with reward model quality. And the proxy score is useless for finding that peak, because it keeps rising straight through it. You need an independent signal: fresh human ratings, a different reward model, or task-specific checks.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Operating against a proxy</span></div>
+  <p>Every RL run against a learned reward is a bet on where the gold curve peaks. The controls are the KL penalty (how hard you hold the policy near its reference), early stopping on an independent eval, reward model ensembles (optimize the minimum or the mean minus the spread, so the policy cannot exploit one model's quirk), and refreshing the reward model on the policy's current outputs.</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>The signature of overoptimization is a training curve where reward rises smoothly while response length climbs, hedging disappears, and human or held-out-judge win rates flatten. If the only chart in a review is the training reward, you cannot tell a great run from a hacked one.</div></div>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>What independent signal told you when to stop? How did KL from the reference evolve, and where did the held-out win rate peak against it? Did response length change, and what is the length-controlled result? Was the reward model refreshed on samples from this policy?</div></div>
 </div>
 
 <div class="widget" id="w-rm-oo">
@@ -150,12 +298,6 @@ class RewardModel(nn.Module):
     <div class="mc"><div class="l">Gold peaks at KL</div><div class="v" data-pk>—</div></div>
   </div>
   <div class="readout" data-out></div>
-</div>
-
-<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Operating against a proxy</span></div>
-  <p>Every RL run against a learned reward is a bet on where the gold curve peaks. The controls are the KL penalty (how hard you hold the policy near its reference), early stopping on an independent eval, reward model ensembles (optimize the minimum or the mean minus the spread, so the policy cannot exploit one model's quirk), and refreshing the reward model on the policy's current outputs.</p>
-  <div class="callout warn"><span class="tag">Watch out</span><div>The signature of overoptimization is a training curve where reward rises smoothly while response length climbs, hedging disappears, and human or held-out-judge win rates flatten. If the only chart in a review is the training reward, you cannot tell a great run from a hacked one.</div></div>
-  <div class="callout ask"><span class="tag">Principal asks</span><div>What independent signal told you when to stop? How did KL from the reference evolve, and where did the held-out win rate peak against it? Did response length change, and what is the length-controlled result? Was the reward model refreshed on samples from this policy?</div></div>
 </div>
 
 <h3>Outcome rewards, process rewards, and verifiers</h3>
