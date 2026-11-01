@@ -65,7 +65,8 @@
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Winsorized, trimmed, and geometric means</span></div>
   <div class="eq">\[ \tilde{x}_i = \min\!\big(x_i,\ Q(0.99)\big) \qquad\qquad \bar{x}_\alpha = \frac{1}{n-2\lfloor \alpha n\rfloor}\sum_{i=\lfloor \alpha n\rfloor+1}^{n-\lfloor \alpha n\rfloor} x_{(i)} \]<span class="eqcap">Left: winsorizing caps each value at the 99th percentile. Right: the \(\alpha\)-trimmed mean averages the sorted values \(x_{(i)}\) after dropping a share \(\alpha\) from each end.</span></div>
   <div class="eq">\[ \text{GM} = \exp\!\left(\frac{1}{n}\sum \ln x_i\right) = \left(\prod x_i\right)^{1/n} \]<span class="eqcap">The geometric mean: average on the log scale, then come back. On lognormal data it lands on the median.</span></div>
-  <pre class="code" data-lang="python"><code>import numpy as np
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import numpy as np
 from scipy import stats
 
 lat = np.concatenate([stats.lognorm.rvs(0.7, scale=2, size=995, random_state=7),
@@ -91,6 +92,98 @@ for k, v in centres(lat).items():
 top = lat[lat &gt;= np.quantile(lat, 0.98)]
 print("distinct values in the top 2%:", len(np.unique(np.round(top, 3))))
 # If that comes back as 1 or 2, you have a timeout, not a tail.</code></pre>
+<pre class="code" data-lang="rust"><code>// numpy and scipy pieces written out by hand. The 995 lognormal draws come
+// from a small SplitMix64 + Box–Muller generator, so they differ from scipy's
+// random_state=7 draws and the numbers below are this program's output.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn uniform(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    fn normal(&amp;mut self) -&gt; f64 {
+        // Box–Muller: two uniforms in, one standard normal out
+        let u1 = 1.0 - self.uniform(); // in (0, 1], so ln is finite
+        let u2 = self.uniform();
+        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+    }
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+// np.quantile's default: linear interpolation between order statistics
+fn quantile(sorted: &amp;[f64], q: f64) -&gt; f64 {
+    let pos = q * (sorted.len() - 1) as f64;
+    let lo = pos.floor() as usize;
+    let hi = (lo + 1).min(sorted.len() - 1);
+    sorted[lo] + (pos - lo as f64) * (sorted[hi] - sorted[lo])
+}
+
+// stats.trim_mean: cut int(prop * n) points from EACH end, average the rest
+fn trim_mean(sorted: &amp;[f64], prop: f64) -&gt; f64 {
+    let cut = (prop * sorted.len() as f64) as usize;
+    mean(&amp;sorted[cut..sorted.len() - cut])
+}
+
+fn centres(x: &amp;[f64]) -&gt; Vec&lt;(&amp;'static str, f64)&gt; {
+    let mut s = x.to_vec();
+    s.sort_by(f64::total_cmp);
+    let cap = quantile(&amp;s, 0.99);
+    let capped: Vec&lt;f64&gt; = x.iter().map(|&amp;v| v.min(cap)).collect();
+    let logs: Vec&lt;f64&gt; = x.iter().map(|v| v.ln()).collect();
+    vec![
+        ("raw mean", mean(x)),                     // moves with every outlier
+        ("median", quantile(&amp;s, 0.5)),             // ignores them entirely
+        ("10% trimmed", trim_mean(&amp;s, 0.10)),      // drops both tails
+        ("winsorized p99", mean(&amp;capped)),         // caps rather than drops
+        ("geometric mean", mean(&amp;logs).exp()),     // centre on the log scale
+        ("p95", quantile(&amp;s, 0.95)),               // when the tail IS the point
+    ]
+}
+
+fn round_to(v: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (v * f).round() / f
+}
+
+fn main() {
+    let mut rng = Rng(7);
+    // lognorm(0.7, scale=2) is 2 * exp(0.7 * Z)
+    let mut lat: Vec&lt;f64&gt; = (0..995).map(|_| 2.0 * (0.7 * rng.normal()).exp()).collect();
+    lat.extend([45.0, 52.0, 61.0, 80.0, 120.0]);       // five real slow requests
+
+    for (k, v) in centres(&amp;lat) {
+        println!("{:&lt;16} {:?}", k, round_to(v, 3));
+    }
+    // This program's draws (they differ from scipy's):
+    // raw mean         2.941
+    // median           1.998
+    // 10% trimmed      2.25
+    // winsorized p99   2.611
+    // geometric mean   2.068
+    // p95              6.574
+
+    // CENSORING CHECK FIRST. A pile-up at one value near the top means those
+    // are lower bounds, not measurements, and every method above is then biased.
+    let mut s = lat.clone();
+    s.sort_by(f64::total_cmp);
+    let cut = quantile(&amp;s, 0.98);
+    let mut top: Vec&lt;i64&gt; = lat.iter().filter(|&amp;&amp;v| v &gt;= cut).map(|&amp;v| (v * 1000.0).round() as i64).collect();
+    top.sort();
+    top.dedup();
+    println!("distinct values in the top 2%: {}", top.len()); // 20
+    // If that comes back as 1 or 2, you have a timeout, not a tail.
+}</code></pre>
+</div>
 </div>
 
 <div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Outlier policy is a product decision</span></div>

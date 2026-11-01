@@ -61,13 +61,14 @@
 
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Measure coverage empirically</span></div>
   <p>Different constructions have different real coverage. The normal approximation on a proportion falls well below 95% near a boundary; Wilson holds up. Percentile bootstrap intervals are asymptotically correct but under-cover on small samples and skewed statistics, which BCa corrects. You can check any method in a few lines:</p>
-  <pre class="code" data-lang="python"><code>import random
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import random
 
 def coverage_check(true_p: float, n: int, method, trials: int = 5000, seed: int = 0) -&gt; float:
     """Empirically measure whether a '95%' interval covers 95% of the time.
 
-    true p = 0.95, n = 30:   Wilson 0.94   normal approximation 0.78
-    true p = 0.95, n = 50:   Wilson 0.96   normal approximation 0.92
+    true p = 0.95, n = 30:   Wilson 0.94   normal approximation 0.79
+    true p = 0.95, n = 50:   Wilson 0.96   normal approximation 0.93
     """
     rng = random.Random(seed)
     hits = 0
@@ -77,6 +78,44 @@ def coverage_check(true_p: float, n: int, method, trials: int = 5000, seed: int 
         if lo &lt;= true_p &lt;= hi:
             hits += 1
     return hits / trials</code></pre>
+<pre class="code" data-lang="rust"><code>// Small inline PRNG (SplitMix64); its draws differ from Python's random module.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    fn randrange(&amp;mut self, n: usize) -&gt; usize {
+        (self.random() * n as f64) as usize
+    }
+}
+
+/// Empirically measure whether a '95%' interval covers 95% of the time.
+///
+/// true p = 0.95, n = 30:   Wilson 0.94   normal approximation 0.79
+/// true p = 0.95, n = 50:   Wilson 0.96   normal approximation 0.92
+/// (this PRNG's draws with trials = 5000, seed = 0)
+fn coverage_check(true_p: f64, n: u64, method: impl Fn(u64, u64) -&gt; (f64, f64),
+                  trials: usize, seed: u64) -&gt; f64 {
+    let mut rng = Rng(seed);
+    let mut hits = 0;
+    for _ in 0..trials {
+        let k = (0..n).filter(|_| rng.random() &lt; true_p).count() as u64;
+        let (lo, hi) = method(k, n);
+        if lo &lt;= true_p &amp;&amp; true_p &lt;= hi {
+            hits += 1;
+        }
+    }
+    hits as f64 / trials as f64
+}</code></pre>
+</div>
 </div>
 
 <!-- ============ 3. bootstrap ============ -->
@@ -122,7 +161,8 @@ def coverage_check(true_p: float, n: int, method, trials: int = 5000, seed: int 
   <p>It works because your sample is your best estimate of the population, so resampling from it mimics resampling from the population. The percentile interval takes the \(\alpha/2\) and \(1-\alpha/2\) quantiles of the bootstrap replicates \(\hat\theta^\ast_b\). BCa shifts those quantiles using a bias term \(\hat z_0\) and an acceleration term \(\hat a\) from the jackknife:</p>
   <div class="eq">\[ \hat z_0 = \Phi^{-1}\!\left(\frac{\#\{\hat\theta^\ast_b &lt; \hat\theta\}}{B}\right), \qquad \hat a = \frac{\sum_i (\bar\theta_{(\cdot)} - \hat\theta_{(i)})^3}{6\left[\sum_i (\bar\theta_{(\cdot)} - \hat\theta_{(i)})^2\right]^{3/2}} \]
   \[ \alpha_{\text{lo,hi}} = \Phi\!\left(\hat z_0 + \frac{\hat z_0 + z_q}{1 - \hat a(\hat z_0 + z_q)}\right), \quad q \in \{\alpha/2,\, 1-\alpha/2\} \]<span class="eqcap">\(\hat\theta_{(i)}\) is the statistic with point \(i\) left out, and \(\bar\theta_{(\cdot)}\) their mean. When \(\hat z_0 = \hat a = 0\), BCa reduces to the percentile interval.</span></div>
-  <pre class="code" data-lang="python"><code>import random
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import random
 from statistics import NormalDist, mean
 
 def bootstrap_ci(data: list, stat_fn, iters: int = 10_000,
@@ -162,6 +202,130 @@ def bca_ci(data: list, stat_fn, iters: int = 10_000,
         z = N.inv_cdf(q)
         bounds.append(min(max(N.cdf(z0 + (z0 + z) / (1 - a * (z0 + z))), 0.0), 1.0))
     return theta, reps[min(iters - 1, int(bounds[0] * iters))], reps[min(iters - 1, int(bounds[1] * iters))]</code></pre>
+<pre class="code" data-lang="rust"><code>// Small inline PRNG (SplitMix64); its draws differ from Python's random module.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    fn randrange(&amp;mut self, n: usize) -&gt; usize {
+        (self.random() * n as f64) as usize
+    }
+}
+
+// Horner evaluation, highest coefficient first.
+fn poly(coeffs: &amp;[f64], r: f64) -&gt; f64 {
+    coeffs.iter().fold(0.0, |acc, &amp;c| acc * r + c)
+}
+
+// Inverse standard normal CDF: Wichura's AS241, the algorithm behind
+// Python's NormalDist().inv_cdf, so the results agree to the last bit.
+fn inv_cdf(p: f64) -&gt; f64 {
+    let q = p - 0.5;
+    if q.abs() &lt;= 0.425 {
+        let r = 0.180625 - q * q;
+        let num = poly(&amp;[2.5090809287301226727e+3, 3.3430575583588128105e+4, 6.7265770927008700853e+4,
+                         4.5921953931549871457e+4, 1.3731693765509461125e+4, 1.9715909503065514427e+3,
+                         1.3314166789178437745e+2, 3.3871328727963666080e+0], r) * q;
+        let den = poly(&amp;[5.2264952788528545610e+3, 2.8729085735721942674e+4, 3.9307895800092710610e+4,
+                         2.1213794301586595867e+4, 5.3941960214247511077e+3, 6.8718700749205790830e+2,
+                         4.2313330701600911252e+1, 1.0], r);
+        return num / den;
+    }
+    let r = if q &lt;= 0.0 { p } else { 1.0 - p };
+    let r = (-r.ln()).sqrt();
+    let (num, den) = if r &lt;= 5.0 {
+        let r = r - 1.6;
+        (poly(&amp;[7.7454501427834140764e-4, 2.2723844989269184583e-2, 2.4178072517745061177e-1,
+                1.2704582524523683826e+0, 3.6478483247632046050e+0, 5.7694972214606914055e+0,
+                4.6303378461565452959e+0, 1.4234371107496835773e+0], r),
+         poly(&amp;[1.0507500716444168432e-9, 5.4759380849953449460e-4, 1.5198666563616457197e-2,
+                1.4810397642748007459e-1, 6.8976733498510000455e-1, 1.6763848301838038494e+0,
+                2.0531916266377588219e+0, 1.0], r))
+    } else {
+        let r = r - 5.0;
+        (poly(&amp;[2.0103343992922881327e-7, 2.7115555687434875782e-5, 1.2426609473880784386e-3,
+                2.6532189526576123093e-2, 2.9656057182850489123e-1, 1.7848265399172913358e+0,
+                5.4637849111641143699e+0, 6.6579046435011037772e+0], r),
+         poly(&amp;[2.0442631033899397856e-15, 1.4215117583164458887e-7, 1.8463183175100546818e-5,
+                7.8686913114561325910e-4, 1.4875361290850614853e-2, 1.3692988092273580531e-1,
+                5.9983220655588793769e-1, 1.0], r))
+    };
+    if q &lt; 0.0 { -num / den } else { num / den }
+}
+
+// Standard normal CDF via erfc (Numerical Recipes' Chebyshev fit, relative
+// error below 1.2e-7: ample for picking a bootstrap percentile).
+fn cdf(x: f64) -&gt; f64 {
+    let z = x.abs() / std::f64::consts::SQRT_2;
+    let t = 1.0 / (1.0 + 0.5 * z);
+    let erfc = t * (-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418
+        + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587
+        + t * (-0.82215223 + t * 0.17087277))))))))).exp();
+    if x &gt;= 0.0 { 1.0 - 0.5 * erfc } else { 0.5 * erfc }
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+/// Percentile bootstrap. Works for ANY statistic: median, p95, a ratio, a slope.
+fn bootstrap_ci(data: &amp;[f64], stat_fn: impl Fn(&amp;[f64]) -&gt; f64, iters: usize,
+                alpha: f64, seed: u64) -&gt; (f64, f64, f64) {
+    let mut rng = Rng(seed);
+    let n = data.len();
+    // Draw n items WITH replacement each time. Without replacement every rep
+    // would be the same dataset reshuffled.
+    let mut reps: Vec&lt;f64&gt; = (0..iters)
+        .map(|_| stat_fn(&amp;(0..n).map(|_| data[rng.randrange(n)]).collect::&lt;Vec&lt;_&gt;&gt;()))
+        .collect();
+    reps.sort_by(f64::total_cmp);
+    let it = iters as f64;
+    (stat_fn(data), reps[((alpha / 2.0) * it) as usize], reps[((1.0 - alpha / 2.0) * it) as usize - 1])
+}
+
+/// Bias corrected and accelerated bootstrap.
+fn bca_ci(data: &amp;[f64], stat_fn: impl Fn(&amp;[f64]) -&gt; f64, iters: usize,
+          alpha: f64, seed: u64) -&gt; (f64, f64, f64) {
+    let mut rng = Rng(seed);
+    let n = data.len();
+    let it = iters as f64;
+    let theta = stat_fn(data);
+    let mut reps: Vec&lt;f64&gt; = (0..iters)
+        .map(|_| stat_fn(&amp;(0..n).map(|_| data[rng.randrange(n)]).collect::&lt;Vec&lt;_&gt;&gt;()))
+        .collect();
+    reps.sort_by(f64::total_cmp);
+
+    // Bias: if unbiased, half the reps land below theta.
+    let prop = reps.iter().filter(|&amp;&amp;r| r &lt; theta).count() as f64 / it;
+    let prop = prop.clamp(1.0 / it, 1.0 - 1.0 / it);   // keep inv_cdf defined
+    let z0 = inv_cdf(prop);
+
+    // Acceleration: skewness of the jackknife values.
+    let jack: Vec&lt;f64&gt; = (0..n)
+        .map(|i| stat_fn(&amp;[&amp;data[..i], &amp;data[i + 1..]].concat()))
+        .collect();
+    let jm = mean(&amp;jack);
+    let num: f64 = jack.iter().map(|x| (jm - x).powi(3)).sum();
+    let den = 6.0 * jack.iter().map(|x| (jm - x).powi(2)).sum::&lt;f64&gt;().powf(1.5);
+    let a = if den != 0.0 { num / den } else { 0.0 };
+
+    let bound = |q: f64| {
+        let z = inv_cdf(q);
+        cdf(z0 + (z0 + z) / (1.0 - a * (z0 + z))).clamp(0.0, 1.0)
+    };
+    let pick = |b: f64| reps[(iters - 1).min((b * it) as usize)];
+    (theta, pick(bound(alpha / 2.0)), pick(bound(1.0 - alpha / 2.0)))
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-boot"><div class="wtitle">Bootstrap, and where it breaks</div><div class="wsub">Pick a statistic and watch the bootstrap distribution form. Switch to p95 at small n, or to max at any n, and the widget will tell you why the interval you are looking at is not trustworthy.</div><div class="controls"><div class="ctl"><label>statistic</label><select data-stat><option value="mean">mean</option><option value="median" selected>median</option><option value="p95">p95</option><option value="max">max (a known failure)</option></select></div><div class="ctl"><label data-ln>n</label><input type="range" data-n min="10" max="600" step="10" value="200"></div><div class="ctl"><label data-lk>skew</label><input type="range" data-skew min="0.1" max="1.5" step="0.05" value="0.8"></div></div><canvas></canvas><div class="readout" data-out></div></div>
@@ -199,7 +363,8 @@ def bca_ci(data: list, stat_fn, iters: int = 10_000,
 
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Latency, counts, and ratings, worked</span></div>
   <h4>Latency</h4>
-  <pre class="code" data-lang="python"><code>def latency_report(samples: list[float]) -&gt; dict:
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def latency_report(samples: list[float]) -&gt; dict:
     """What a latency report should contain.
 
     Illustrative lognormal sample of 400 requests:
@@ -218,10 +383,80 @@ def bca_ci(data: list, stat_fn, iters: int = 10_000,
         "p99": q(0.99), "p99_warning": "p99 on n&lt;1000 rests on a handful of points.",
         "skew_ratio": (sum(samples) / n) / q(0.50),   # above 1.2: do not use the mean
     }</code></pre>
+<pre class="code" data-lang="rust"><code>// Small inline PRNG (SplitMix64); its draws differ from Python's random module.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    fn randrange(&amp;mut self, n: usize) -&gt; usize {
+        (self.random() * n as f64) as usize
+    }
+}
+
+// bootstrap_ci from the snippet above, repeated so this one compiles on its own.
+fn bootstrap_ci(data: &amp;[f64], stat_fn: impl Fn(&amp;[f64]) -&gt; f64, iters: usize,
+                alpha: f64, seed: u64) -&gt; (f64, f64, f64) {
+    let mut rng = Rng(seed);
+    let n = data.len();
+    let mut reps: Vec&lt;f64&gt; = (0..iters)
+        .map(|_| stat_fn(&amp;(0..n).map(|_| data[rng.randrange(n)]).collect::&lt;Vec&lt;_&gt;&gt;()))
+        .collect();
+    reps.sort_by(f64::total_cmp);
+    let it = iters as f64;
+    (stat_fn(data), reps[((alpha / 2.0) * it) as usize], reps[((1.0 - alpha / 2.0) * it) as usize - 1])
+}
+
+struct LatencyReport {
+    n: usize,
+    p50: f64,
+    p50_ci: (f64, f64),
+    p95: f64,
+    p95_ci: (f64, f64),
+    p99: f64,
+    p99_warning: &amp;'static str,
+    skew_ratio: f64,
+}
+
+fn sorted(d: &amp;[f64]) -&gt; Vec&lt;f64&gt; {
+    let mut s = d.to_vec();
+    s.sort_by(f64::total_cmp);
+    s
+}
+
+/// What a latency report should contain.
+///
+/// Illustrative lognormal sample of 400 requests:
+///   mean 2.81, median 2.15, p95 8.06, max 17.17
+/// The mean sits between the median and p95 and describes nobody's experience.
+fn latency_report(samples: &amp;[f64]) -&gt; LatencyReport {
+    let s = sorted(samples);
+    let n = s.len();
+    let q = |p: f64| s[(n - 1).min((p * n as f64) as usize)];
+    let p50_ci = bootstrap_ci(samples, |d| sorted(d)[d.len() / 2], 10_000, 0.05, 0);
+    let p95_ci = bootstrap_ci(samples, |d| sorted(d)[(d.len() - 1).min((0.95 * d.len() as f64) as usize)], 10_000, 0.05, 0);
+    LatencyReport {
+        n,
+        p50: q(0.50), p50_ci: (p50_ci.1, p50_ci.2),
+        p95: q(0.95), p95_ci: (p95_ci.1, p95_ci.2),
+        p99: q(0.99), p99_warning: "p99 on n&lt;1000 rests on a handful of points.",
+        skew_ratio: (samples.iter().sum::&lt;f64&gt;() / n as f64) / q(0.50),   // above 1.2: do not use the mean
+    }
+}</code></pre>
+</div>
 
   <h4>Counts, and why Poisson usually fails</h4>
   <p>Poisson assumes variance equals mean. In agent evals the rate is not constant: an easy task takes two tool calls and a hard one takes twenty. A mixture of Poissons with gamma-distributed rates is a negative binomial, which is why real counts are overdispersed. With variance/mean ratio \(R\), Poisson intervals are roughly \(\sqrt{R}\) times too narrow.</p>
-  <pre class="code" data-lang="python"><code>from statistics import mean
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>from statistics import mean
 
 def overdispersion_check(counts: list[int]) -&gt; dict:
     """Illustrative session mix: mean 5.15, variance 25.53, ratio 4.95.
@@ -233,9 +468,34 @@ def overdispersion_check(counts: list[int]) -&gt; dict:
     return {"mean": m, "variance": v, "ratio": ratio,
             "verdict": "poisson ok" if ratio &lt; 1.5 else "overdispersed: negative binomial or bootstrap",
             "zero_fraction": sum(1 for x in counts if x == 0) / n}</code></pre>
+<pre class="code" data-lang="rust"><code>struct Overdispersion {
+    mean: f64,
+    variance: f64,
+    ratio: f64,
+    verdict: &amp;'static str,
+    zero_fraction: f64,
+}
+
+/// Illustrative session mix: mean 5.15, variance 25.53, ratio 4.95.
+/// A ratio of 5 makes Poisson intervals about sqrt(5) = 2.2x too narrow.
+fn overdispersion_check(counts: &amp;[u64]) -&gt; Overdispersion {
+    let n = counts.len() as f64;
+    let m = counts.iter().sum::&lt;u64&gt;() as f64 / n;
+    let v = counts.iter().map(|&amp;x| (x as f64 - m).powi(2)).sum::&lt;f64&gt;() / (n - 1.0);
+    let ratio = if m != 0.0 { v / m } else { f64::INFINITY };
+    Overdispersion {
+        mean: m,
+        variance: v,
+        ratio,
+        verdict: if ratio &lt; 1.5 { "poisson ok" } else { "overdispersed: negative binomial or bootstrap" },
+        zero_fraction: counts.iter().filter(|&amp;&amp;x| x == 0).count() as f64 / n,
+    }
+}</code></pre>
+</div>
 
   <h4>Satisfaction: ordinal, not interval</h4>
-  <pre class="code" data-lang="python"><code>def mann_whitney_u(x: list[float], y: list[float]) -&gt; dict:
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def mann_whitney_u(x: list[float], y: list[float]) -&gt; dict:
     """Compare two groups on ordinal data without pretending it is interval.
 
     Illustrative Likert shift: means 3.21 -&gt; 3.35, which looks like nothing.
@@ -261,12 +521,49 @@ def overdispersion_check(counts: list[int]) -&gt; dict:
 def top_two_box(ratings: list[int], scale_max: int = 5) -&gt; float:
     """Fraction rating 4 or 5: the number product teams can act on."""
     return sum(1 for r in ratings if r &gt;= scale_max - 1) / len(ratings)</code></pre>
+<pre class="code" data-lang="rust"><code>struct MannWhitney {
+    u: f64,
+    common_language_effect: f64,   // P(random x &gt; random y)
+}
+
+/// Compare two groups on ordinal data without pretending it is interval.
+///
+/// Illustrative Likert shift: means 3.21 -&gt; 3.35, which looks like nothing.
+/// Common-language effect 0.54: a random new rating beats a random old one 54%
+/// of the time. Top-two-box moved 0.470 -&gt; 0.525. Those two are actionable.
+fn mann_whitney_u(x: &amp;[f64], y: &amp;[f64]) -&gt; MannWhitney {
+    let mut combined: Vec&lt;(f64, u8)&gt; = x.iter().map(|&amp;v| (v, 0)).chain(y.iter().map(|&amp;v| (v, 1))).collect();
+    combined.sort_by(|a, b| a.0.total_cmp(&amp;b.0));
+    let mut ranks = vec![0.0; combined.len()];
+    let mut i = 0;
+    while i &lt; combined.len() {               // average ranks across ties
+        let mut j = i;
+        while j + 1 &lt; combined.len() &amp;&amp; combined[j + 1].0 == combined[i].0 {
+            j += 1;
+        }
+        for k in i..=j {
+            ranks[k] = (i + j) as f64 / 2.0 + 1.0;
+        }
+        i = j + 1;
+    }
+    let r1: f64 = ranks.iter().zip(&amp;combined).filter(|(_, &amp;(_, g))| g == 0).map(|(r, _)| r).sum();
+    let (n1, n2) = (x.len() as f64, y.len() as f64);
+    let u1 = r1 - n1 * (n1 + 1.0) / 2.0;
+    MannWhitney { u: u1, common_language_effect: u1 / (n1 * n2) }
+}
+
+/// Fraction rating 4 or 5: the number product teams can act on.
+fn top_two_box(ratings: &amp;[u32], scale_max: u32) -&gt; f64 {
+    ratings.iter().filter(|&amp;&amp;r| r &gt;= scale_max - 1).count() as f64 / ratings.len() as f64
+}</code></pre>
+</div>
 </div>
 
 <!-- ============ 6. clustering ============ -->
 <div class="callout example"><span class="tag">Worked problem</span><div>
   <p><b>p95 latency moved. Is it real?</b> After a change, p95 latency went from 9.81 s to 11.79 s, on 800 requests each side. A 2-second regression. Do you block the release?</p>
-  <pre class="code" data-lang="python"><code>import numpy as np
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import numpy as np
 
 def p95(x):
     return float(np.quantile(x, 0.95))
@@ -284,6 +581,56 @@ def bootstrap_diff(before, after, iters=4000, seed=1):
     return float(np.quantile(reps, 0.025)), float(np.quantile(reps, 0.975))
 
 # illustrative run: observed +1.98 s, bootstrap 95% CI [-0.45, +3.91]</code></pre>
+<pre class="code" data-lang="rust"><code>// Small inline PRNG (SplitMix64) in place of np.random.default_rng; its draws
+// differ from numpy's, so a run gives a slightly different interval.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    fn randrange(&amp;mut self, n: usize) -&gt; usize {
+        (self.random() * n as f64) as usize
+    }
+}
+
+// np.quantile's default: linear interpolation between order statistics
+fn quantile(x: &amp;[f64], q: f64) -&gt; f64 {
+    let mut s = x.to_vec();
+    s.sort_by(f64::total_cmp);
+    let pos = q * (s.len() - 1) as f64;
+    let lo = pos.floor() as usize;
+    let hi = (lo + 1).min(s.len() - 1);
+    s[lo] + (pos - lo as f64) * (s[hi] - s[lo])
+}
+
+fn p95(x: &amp;[f64]) -&gt; f64 {
+    quantile(x, 0.95)
+}
+
+/// CI on the DIFFERENCE in p95. No closed form exists, which is what the
+/// bootstrap is for. Resample each side separately: these are different requests.
+fn bootstrap_diff(before: &amp;[f64], after: &amp;[f64], iters: usize, seed: u64) -&gt; (f64, f64) {
+    let mut rng = Rng(seed);
+    let mut choice = |x: &amp;[f64]| -&gt; Vec&lt;f64&gt; { (0..x.len()).map(|_| x[rng.randrange(x.len())]).collect() };
+    let mut reps = Vec::with_capacity(iters);
+    for _ in 0..iters {
+        let a = choice(before);
+        let b = choice(after);
+        reps.push(p95(&amp;b) - p95(&amp;a));
+    }
+    (quantile(&amp;reps, 0.025), quantile(&amp;reps, 0.975))
+}
+
+// illustrative run: observed +1.98 s, bootstrap 95% CI [-0.45, +3.91]</code></pre>
+</div>
   <p>The interval crosses zero. p95 on 800 points rests on about 40 observations, so a 2-second move that looks alarming on a dashboard is not distinguishable from noise at this sample size. Do not block on this alone; say what sample size would settle it. In this data the mean/median ratio was 1.42, so anyone reporting mean latency was reporting a number no user experienced.</p>
 </div></div>
 
@@ -325,7 +672,8 @@ def bootstrap_diff(before, after, iters=4000, seed=1):
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Design effect and the cluster bootstrap</span></div>
   <p>With average cluster size \(\bar m\) and intraclass correlation \(\rho\) (the share of variance that lives between clusters), Kish's design effect and the effective sample size are</p>
   <div class="eq">\[ \text{deff} = 1 + (\bar m - 1)\,\rho, \qquad n_\text{eff} = \frac{N}{\text{deff}}, \qquad \text{SE}_\text{true} \approx \sqrt{\text{deff}}\;\text{SE}_\text{naive} \]<span class="eqcap">Bigger clusters amplify the penalty: \(\rho = 0.3\) with 20 calls per session gives deff 6.7; the same \(\rho\) with 3 calls gives 1.6.</span></div>
-  <pre class="code" data-lang="python"><code>import random
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import random
 from statistics import mean
 
 def cluster_bootstrap_ci(clusters: list[list[float]], iters: int = 10_000,
@@ -355,6 +703,63 @@ def design_effect(clusters: list[list[float]]) -&gt; float:
 # Illustrative, 40 sessions with 450 tool calls:
 #   naive row bootstrap: [0.7289, 0.8067]  width 0.078
 #   cluster bootstrap:   [0.6711, 0.8581]  width 0.187   (2.4x wider)</code></pre>
+<pre class="code" data-lang="rust"><code>// Small inline PRNG (SplitMix64); its draws differ from Python's random module.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+    fn randrange(&amp;mut self, n: usize) -&gt; usize {
+        (self.random() * n as f64) as usize
+    }
+}
+
+/// Resample SESSIONS, not individual calls.
+fn cluster_bootstrap_ci(clusters: &amp;[Vec&lt;f64&gt;], iters: usize, seed: u64) -&gt; (f64, f64, f64) {
+    let mut rng = Rng(seed);
+    let m = clusters.len();              // number of independent units: the real n
+    let total_of = |cs: &amp;[&amp;Vec&lt;f64&gt;]| cs.iter().map(|c| c.iter().sum::&lt;f64&gt;()).sum::&lt;f64&gt;();
+    let count_of = |cs: &amp;[&amp;Vec&lt;f64&gt;]| cs.iter().map(|c| c.len()).sum::&lt;usize&gt;();
+    // The point estimate is unaffected by clustering; only its uncertainty is.
+    let all: Vec&lt;&amp;Vec&lt;f64&gt;&gt; = clusters.iter().collect();
+    let observed = total_of(&amp;all) / count_of(&amp;all) as f64;
+    let mut reps = Vec::with_capacity(iters);
+    for _ in 0..iters {
+        let picked: Vec&lt;&amp;Vec&lt;f64&gt;&gt; = (0..m).map(|_| &amp;clusters[rng.randrange(m)]).collect();  // whole sessions
+        let (total, count) = (total_of(&amp;picked), count_of(&amp;picked));
+        reps.push(if count &gt; 0 { total / count as f64 } else { 0.0 });                     // recount: sizes vary
+    }
+    reps.sort_by(f64::total_cmp);
+    let it = iters as f64;
+    (observed, reps[(0.025 * it) as usize], reps[(0.975 * it) as usize - 1])
+}
+
+fn design_effect(clusters: &amp;[Vec&lt;f64&gt;]) -&gt; f64 {
+    let sizes: Vec&lt;usize&gt; = clusters.iter().map(|c| c.len()).collect();
+    let n_total: usize = sizes.iter().sum();
+    let mean_of = |c: &amp;Vec&lt;f64&gt;| c.iter().sum::&lt;f64&gt;() / c.len() as f64;
+    let grand = clusters.iter().map(|c| c.iter().sum::&lt;f64&gt;()).sum::&lt;f64&gt;() / n_total as f64;
+    let between = clusters.iter().map(|c| c.len() as f64 * (mean_of(c) - grand).powi(2)).sum::&lt;f64&gt;()
+        / (clusters.len() - 1) as f64;
+    let within = clusters.iter().map(|c| { let m = mean_of(c); c.iter().map(|x| (x - m).powi(2)).sum::&lt;f64&gt;() }).sum::&lt;f64&gt;()
+        / 1.max(n_total - clusters.len()) as f64;
+    let icc = if between + within != 0.0 { between / (between + within) } else { 0.0 };
+    let mean_size = n_total as f64 / sizes.len() as f64;
+    1.0 + (mean_size - 1.0) * icc
+}
+
+// Illustrative, 40 sessions with 450 tool calls:
+//   naive row bootstrap: [0.7289, 0.8067]  width 0.078
+//   cluster bootstrap:   [0.6711, 0.8581]  width 0.187   (2.4x wider)</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-cluster"><div class="wtitle">Clustering and the design effect</div><div class="wsub">Tool calls nested in sessions. The naive bootstrap resamples individual calls, the cluster bootstrap resamples whole sessions. Raise the within session correlation and watch how much confidence the naive interval invents.</div><div class="controls"><div class="ctl"><label data-l1>within-session correlation</label><input type="range" data-icc min="0.0" max="0.95" step="0.05" value="0.6"></div><div class="ctl"><label data-l2>calls per session</label><input type="range" data-sz min="2" max="30" step="1" value="12"></div><div class="ctl"><label data-l3>sessions</label><input type="range" data-m min="10" max="200" step="5" value="40"></div></div><canvas></canvas><div class="readout" data-out></div></div>
