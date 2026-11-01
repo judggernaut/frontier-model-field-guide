@@ -98,6 +98,48 @@ print((sum(lat) / len(lat)) / median)   # 3.05 -&gt; heavily right skewed</code>
 <tr><td><b>IQR</b></td><td>The range covering the middle 50%, p75 minus p25</td><td>Outliers cannot touch it</td><td>Ignores the tails entirely, which may be the thing you care about</td></tr>
 <tr><td><b>MAD</b></td><td>Median of the absolute distances from the median</td><td>Very robust</td><td>Less familiar, and needs a scaling constant to compare with sd</td></tr>
 </tbody></table></div>
+<p>The centre tells you what is typical. Spread tells you how far from typical things wander. There are four measures you will meet everywhere, and they disagree in useful ways: two are built from squared distances and react strongly to extremes, two are built from ranks and barely notice them. Try it below, then read each one in depth.</p>
+
+<div class="widget" id="w-sp-explorer">
+  <div class="wtitle">Spread explorer: one dataset, four rulers</div>
+  <div class="wsub">Twenty-four response times (seconds) plus one request you control. Drag it out to the right and watch which measures react. The lower chart shows how much of the total variance each point owns.</div>
+  <div class="controls">
+    <div class="ctl"><label for="sp-out">The last request takes (s) <output id="sp-out-o"></output></label><input type="range" id="sp-out" min="2" max="60" step="0.5" value="4"></div>
+    <div class="ctl"><label for="sp-wide">Everyday variation <output id="sp-wide-o"></output></label><input type="range" id="sp-wide" min="0.3" max="2" step="0.05" value="1"></div>
+  </div>
+  <canvas data-c="strip"></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--accent)"></span>mean ± 1 SD</span><span><span class="sw" style="background:var(--tp)"></span>median and IQR (middle 50%)</span><span><span class="sw" style="background:var(--eli5)"></span>median ± scaled MAD</span><span><span class="sw" style="background:var(--fp)"></span>the request you control</span></div>
+  <canvas data-c="own"></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Variance (s²)</div><div class="v" data-k="var"></div></div>
+    <div class="mc"><div class="l">Standard deviation</div><div class="v" data-k="sd"></div></div>
+    <div class="mc"><div class="l">IQR</div><div class="v" data-k="iqr"></div></div>
+    <div class="mc"><div class="l">MAD (scaled ×1.4826)</div><div class="v" data-k="mad"></div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Four ways to say "how much does my commute vary?"</span></div>
+  <p>Picture a month of commutes. Most days take about 25 minutes, give or take a few. One day a crash makes it 95.</p>
+  <ul>
+    <li><b>Variance</b> asks: on average, how big is the surprise, squared? Squaring makes the crash day count enormously, and the answer comes out in "minutes squared", which nobody can picture.</li>
+    <li><b>Standard deviation</b> takes the square root of that, back to minutes: "a typical day is about this far from average". It is still pulled up by the crash.</li>
+    <li><b>IQR</b> ignores the best and worst quarter of days and reports how wide the middle half is: "half my commutes fall in this 6-minute window". The crash does not change it.</li>
+    <li><b>MAD</b> asks: on a typical day, how far am I from my usual commute? It looks at the middle of the distances, so one disaster cannot move it.</li>
+  </ul>
+  <p>None is "right". Variance and SD describe the whole month including the disaster. IQR and MAD describe a normal day. Which one you want depends on whether the disaster is the point.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Which spread to ask for, and when</span></div>
+  <ul>
+    <li><b>Error bars and significance run on variance.</b> Every standard error, confidence interval, power calculation, and sample-size estimate in Part II is built from variance. If someone shows an interval, the variance behind it is the thing to question.</li>
+    <li><b>For skewed operational metrics, ask for IQR or percentiles, not SD.</b> Latency, cost per request, and tokens per response are long tailed. A mean plus or minus SD on them describes no real user and can imply negative latencies.</li>
+    <li><b>For monitoring and anomaly alerts, MAD is the safe default.</b> A single incident inflates the SD, which then hides the next incident. MAD-based thresholds stay put.</li>
+    <li><b>When SD and scaled MAD disagree by more than about 1.5 times, the data has heavy tails or outliers.</b> That gap is a finding. Ask what is in the tail before choosing which number to report.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>Is that standard deviation of the users, or standard error of the average? What does the spread look like with the top 1% removed? Are we alerting on SD-based thresholds, and what happens to them the day after an incident?</div></div>
+</div>
+
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Four measures of spread</span></div>
   <div class="eq">\[ s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i-\bar{x})^2 \qquad\qquad s = \sqrt{s^2} \]<span class="eqcap">Sample variance and standard deviation. Dividing by \(n-1\) rather than \(n\) corrects for having used the same data to estimate the mean.</span></div>
   <div class="eq">\[ \text{IQR} = Q_3 - Q_1 = p_{75} - p_{25} \qquad\qquad \text{MAD} = \operatorname{median}\big(\lvert x_i - \operatorname{median}(x)\rvert\big) \]<span class="eqcap">The two robust measures. Multiply MAD by 1.4826 to compare it with the sd on normal data.</span></div>
@@ -209,6 +251,69 @@ fn main() {
 }</code></pre>
 </div>
 </div>
+
+<h4>Variance in depth</h4>
+<div class="eq">\[ \sigma^2 = \mathbb{E}\big[(X-\mu)^2\big] \qquad\qquad s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i-\bar x)^2 \]<span class="eqcap">Left: the population variance, a property of the process that generates the data. Right: the sample variance, your estimate of it from \(n\) observations.</span></div>
+<div class="four">
+  <div class="tile"><h4>By hand</h4><p>Data 2, 4, 4, 4, 5, 5, 7, 9. Mean 5. Squared distances 9, 1, 1, 1, 0, 0, 4, 16, sum 32. Divide by \(n-1=7\): \(s^2 = 4.57\). Divide by \(n=8\) instead and you get 4.00, which underestimates.</p></div>
+  <div class="tile"><h4>Why squares</h4><p>Squares make variance <b>add up</b>: for independent sources, \(\operatorname{Var}(X+Y)=\operatorname{Var}X+\operatorname{Var}Y\). Scaling multiplies it: \(\operatorname{Var}(aX)=a^2\operatorname{Var}X\). These two rules are why all of inference is built on variance.</p></div>
+  <div class="tile"><h4>Use it for</h4><p>The arithmetic underneath standard errors, power, bootstrap, ANOVA, the design effect, and in training: Adam's second moment, advantage normalisation, LayerNorm.</p></div>
+  <div class="tile"><h4>Watch out</h4><p>Units are squared and one point can own most of it. Add a 60 to the data above and that single point contributes 88% of the total variance.</p></div>
+</div>
+<p>The \(n-1\) (Bessel's correction) exists because the deviations are measured from \(\bar x\), which was fitted to the same data and sits closer to the points than the true \(\mu\) does. Dividing by \(n-1\) makes \(s^2\) unbiased for \(\sigma^2\). For large \(n\) the difference vanishes; for a 5-seed ablation it is 25%.</p>
+<p>The general addition rule includes a covariance term: \(\operatorname{Var}(X+Y) = \operatorname{Var}X + \operatorname{Var}Y + 2\operatorname{Cov}(X,Y)\). That term is why paired comparisons are so powerful: for a difference \(X-Y\) the sign flips, and positively correlated scores on shared tasks <i>subtract</i> variance (see <a href="#evalstats">paired comparisons</a>). It is also why clustered data needs care: correlated items add variance a naive formula ignores (see <a href="#intervals">clustering</a>).</p>
+
+<h4>Standard deviation in depth</h4>
+<div class="eq">\[ \sigma = \sqrt{\sigma^2} \qquad\qquad s = \sqrt{s^2} \qquad\qquad z = \frac{x - \bar x}{s} \]<span class="eqcap">SD is variance brought back to the original units. The z-score expresses any value as "how many SDs from the mean".</span></div>
+<div class="four">
+  <div class="tile"><h4>By hand</h4><p>Same data: \(s=\sqrt{4.57}=2.14\). A value of 9 has \(z = (9-5)/2.14 = 1.87\): almost two typical distances above the mean.</p></div>
+  <div class="tile"><h4>Normal benchmarks</h4><p>For normal data, about 68%, 95%, and 99.7% of values fall within 1, 2, and 3 SDs. Only for normal data: for skewed data these percentages are wrong.</p></div>
+  <div class="tile"><h4>Use it for</h4><p>Describing variability in readable units, z-scores, effect sizes such as Cohen's \(d = (\bar x_1-\bar x_2)/s\), seed-to-seed noise in training runs, and as the numerator of the standard error.</p></div>
+  <div class="tile"><h4>Watch out</h4><p>SD does not add. \(\sigma_{X+Y} = \sqrt{\sigma_X^2+\sigma_Y^2}\), not \(\sigma_X+\sigma_Y\). And SD is as fragile as variance: with the 60 added, SD jumps from 2.14 to 18.4.</p></div>
+</div>
+
+<h4>Interquartile range in depth</h4>
+<div class="eq">\[ \text{IQR} = Q_3 - Q_1 = F^{-1}(0.75) - F^{-1}(0.25) \qquad\qquad \text{fences: } \big[\,Q_1 - 1.5\,\text{IQR},\; Q_3 + 1.5\,\text{IQR}\,\big] \]<span class="eqcap">The width of the middle half of the data, from the quantile function \(F^{-1}\). The Tukey fences on the right are the usual box-plot rule for flagging outliers.</span></div>
+<div class="four">
+  <div class="tile"><h4>By hand</h4><p>Sorted 2, 4, 4, 4, 5, 5, 7, 9. With linear interpolation (numpy's default) \(Q_1=4\), \(Q_3=5.5\), IQR \(=1.5\). Add the 60 and IQR becomes 3.0. Quantile conventions differ slightly between tools, so state which one you use.</p></div>
+  <div class="tile"><h4>Normal benchmark</h4><p>On normal data \(\text{IQR} = 1.349\,\sigma\), so \(\text{IQR}/1.349\) is a robust stand-in for SD.</p></div>
+  <div class="tile"><h4>Use it for</h4><p>Box plots, outlier fences, describing latency and token counts, and robust scaling of features. It pairs naturally with the median, the same way SD pairs with the mean.</p></div>
+  <div class="tile"><h4>Watch out</h4><p>It ignores the outer half of the data by design. If the tail is the product (p99 latency, rare catastrophic answers), IQR hides exactly what matters. Report a tail percentile alongside it.</p></div>
+</div>
+
+<h4>Median absolute deviation in depth</h4>
+<div class="eq">\[ \text{MAD} = \operatorname{median}_i\big(\lvert x_i - \operatorname{median}(x)\rvert\big) \qquad \hat\sigma_{\text{MAD}} = 1.4826\cdot\text{MAD} \qquad M_i = \frac{0.6745\,(x_i-\tilde x)}{\text{MAD}} \]<span class="eqcap">The middle of the distances from the middle. The constant \(1.4826 = 1/\Phi^{-1}(0.75)\) rescales MAD so it estimates \(\sigma\) on normal data. \(M_i\) is the robust (modified) z-score; \(\lvert M_i\rvert &gt; 3.5\) is a common outlier flag.</span></div>
+<div class="four">
+  <div class="tile"><h4>By hand</h4><p>Median of the data is 4.5. Distances 2.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2.5, 4.5; their median is 0.5. So MAD \(=0.5\), scaled \(=0.74\). Five of the eight values sit within half a unit of the median, and MAD reports exactly that.</p></div>
+  <div class="tile"><h4>Breakdown point</h4><p>Up to half the data can be replaced by garbage before MAD can be pushed anywhere. Add the 60: MAD moves from 0.5 to 1.0. SD moved from 2.14 to 18.4.</p></div>
+  <div class="tile"><h4>Use it for</h4><p>Anomaly detection and alert thresholds, cleaning before fitting, flagging flaky eval tasks, and any dashboard where one bad day should not redefine "normal".</p></div>
+  <div class="tile"><h4>Watch out</h4><p>It is less precise than SD when data really is normal (about 37% efficiency), and it can be zero when more than half the values are identical, as with pass/fail scores. Use it on continuous metrics.</p></div>
+</div>
+
+<h4>The four side by side</h4>
+<div class="tw"><table>
+<thead><tr><th>Property</th><th>Variance</th><th>Standard deviation</th><th>IQR</th><th>MAD</th></tr></thead>
+<tbody>
+<tr><td>Units</td><td>Squared</td><td>Original</td><td>Original</td><td>Original</td></tr>
+<tr><td>Built from</td><td>Squared distances from the mean</td><td>Same, square-rooted</td><td>Ranks (quartiles)</td><td>Ranks (median of distances)</td></tr>
+<tr><td>Breakdown point (share of bad data it survives)</td><td class="n">0%</td><td class="n">0%</td><td class="n">25%</td><td class="n">50%</td></tr>
+<tr><td>On normal data equals</td><td>\(\sigma^2\)</td><td>\(\sigma\)</td><td>\(1.349\,\sigma\)</td><td>\(0.6745\,\sigma\)</td></tr>
+<tr><td>Efficiency on normal data</td><td class="n">100%</td><td class="n">100%</td><td class="n">≈37%</td><td class="n">≈37%</td></tr>
+<tr><td>Adds across independent parts</td><td>Yes</td><td>No (add variances, then root)</td><td>No</td><td>No</td></tr>
+<tr><td>Natural partner</td><td>Mean</td><td>Mean</td><td>Median</td><td>Median</td></tr>
+</tbody></table></div>
+
+<h4>Where each one shows up in the rest of the guide</h4>
+<div class="tw"><table>
+<thead><tr><th>Measure</th><th>Where you will meet it</th></tr></thead>
+<tbody>
+<tr><td>Variance</td><td>Standard errors and confidence intervals (<a href="#bigideas">chapter 3</a>), paired tests and power (<a href="#evalstats">eval statistics</a>), the design effect for clustered agent traces (<a href="#intervals">intervals</a>), Adam's per-parameter running variance of gradients (<a href="#optimization">optimisation</a>), advantage normalisation in PPO and GRPO (<a href="#rlhf">RLHF</a>, <a href="#grpo">GRPO</a>), the bias–variance view of overfitting (<a href="#sft">SFT</a>)</td></tr>
+<tr><td>Standard deviation</td><td>Seed-to-seed noise and how many seeds you need (<a href="#leading">leading</a>), z-scores and effect sizes, GRPO's division by the group SD and why Dr. GRPO removes it (<a href="#grpo">GRPO</a>), flaky-task quarantine thresholds (<a href="#harness">harness</a>)</td></tr>
+<tr><td>IQR</td><td>Box plots and outlier fences (<a href="#tails">long tails</a>), latency and token-count reporting (<a href="#lookup">shape to method</a>), robust comparisons when data is skewed</td></tr>
+<tr><td>MAD</td><td>Robust outlier detection (<a href="#tails">long tails</a>), regression alerts that survive incidents (<a href="#triage">triage</a>), cleaning noisy offline metrics before backtesting (<a href="#gap">offline to online</a>)</td></tr>
+</tbody></table></div>
+
+<div class="callout key"><span class="tag">Key idea</span><div><b>Spread of the data is not precision of an estimate.</b> Everything above describes how individual values vary. The <b>standard error</b> describes how much an <i>estimate</i>, such as the mean of those values, would vary if you repeated the whole measurement. Formally, the standard error of an estimator \(\hat\theta\) is the standard deviation of its sampling distribution, \(\operatorname{SE}(\hat\theta)=\sqrt{\operatorname{Var}(\hat\theta)}\). For the mean of \(n\) independent values it is \(\sigma/\sqrt n\). Variance stays put as you collect more data; standard error shrinks. The full definition, the derivation, and an interactive comparison are in <a href="#bigideas">chapter 3</a>.</div></div>
 
 <h3>Shape: skew and modality</h3>
 <figure><img src="figs/stats-010.png" alt="Right skewed, symmetric, left skewed, and bimodal distributions"><figcaption>Skew is named for the side the tail is on, not the side the bulk is on. This trips up almost everyone at first.</figcaption></figure>

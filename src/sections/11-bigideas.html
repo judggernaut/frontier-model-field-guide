@@ -59,7 +59,101 @@
 <tr><td><b>Use for</b></td><td>Describing variability, setting SLOs</td><td>Error bars on a mean, confidence intervals</td></tr>
 </tbody></table></div>
 <div class="callout key"><span class="tag">Key idea</span><div>Because standard error shrinks as one over the square root of n, <b>quadrupling your sample halves your error bar</b>. Not doubling, quadrupling. That single fact explains why every sample size answer feels so unsatisfying and why chasing small effects gets expensive so fast.</div></div>
-<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The square-root law, in code</span></div>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Scattered arrows, wobbling averages</span></div>
+  <p>An archer shoots a volley of 20 arrows. The arrows land all over the target: that scatter is the <b>standard deviation</b>, and practising more volleys will not make a single arrow land closer to the others.</p>
+  <p>Now mark the average landing spot of each volley. Shoot another volley and the average lands somewhere slightly different. How much that average wobbles from volley to volley is the <b>standard error</b>. Shoot 80 arrows per volley instead of 20 and the average wobbles half as much, even though each arrow is just as scattered as before.</p>
+  <p><b>Variance</b> is the standard deviation squared. It describes the arrows. The standard error describes your <i>estimate</i> built from the arrows.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Reading error bars correctly</span></div>
+  <ul>
+    <li><b>Ask which one the bars are.</b> SD bars show how varied the users or tasks are and never shrink. SE bars (or a confidence interval, about ±2 SE) show how sure we are of the average and shrink with more data. Decks swap them constantly.</li>
+    <li><b>Precision is bought with the square root.</b> Halving an error bar costs four times the data. That is why small effects get expensive and why reducing variance (paired designs, cleaner tasks) is often cheaper than collecting more.</li>
+    <li><b>Standard errors assume independent items.</b> Multi-turn conversations, several calls per agent session, or many tasks from one repository are correlated. The honest SE is larger, sometimes several times larger.</li>
+  </ul>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>Are those SD or SE bars? What is n, and are the items independent? If we doubled the eval set, how much would the interval shrink, and is that cheaper than a paired design?</div></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Standard error, formally, and the square-root law in code</span></div>
+  <p><b>Definition.</b> An estimator \(\hat\theta\) (a mean, a pass rate, a median, a difference between two models) is computed from a random sample, so it is itself a random variable with its own distribution across hypothetical repeats of the study: its <i>sampling distribution</i>. The <b>standard error</b> is the standard deviation of that sampling distribution:</p>
+  <div class="eq">\[ \operatorname{SE}(\hat\theta) \;=\; \sqrt{\operatorname{Var}(\hat\theta)} \;=\; \sqrt{\mathbb{E}\Big[\big(\hat\theta - \mathbb{E}[\hat\theta]\big)^2\Big]} \]<span class="eqcap">Same formula as a standard deviation, applied to the estimate instead of to individual observations. In practice it is unknown and estimated from the data, written \(\widehat{\operatorname{SE}}\).</span></div>
+  <p><b>Derivation for the mean.</b> Let \(X_1,\dots,X_n\) be independent with variance \(\sigma^2\). Two variance rules from <a href="#basics">chapter 2</a> do all the work: variances of independent terms add, and scaling by \(a\) multiplies variance by \(a^2\).</p>
+  <div class="eq">\[ \operatorname{Var}(\bar X) = \operatorname{Var}\Big(\tfrac{1}{n}\sum_{i=1}^n X_i\Big) = \tfrac{1}{n^2}\sum_{i=1}^n \operatorname{Var}(X_i) = \tfrac{1}{n^2}\cdot n\sigma^2 = \frac{\sigma^2}{n} \qquad\Longrightarrow\qquad \operatorname{SE}(\bar X)=\frac{\sigma}{\sqrt n},\quad \widehat{\operatorname{SE}}=\frac{s}{\sqrt n} \]<span class="eqcap">The \(1/n^2\) from averaging beats the \(n\) from adding, leaving \(1/n\) for the variance and \(1/\sqrt n\) for the standard error. Independence is used in the second step; drop it and covariance terms appear.</span></div>
+  <h4>Four quantities that get confused</h4>
+  <div class="tw"><table>
+  <thead><tr><th>Quantity</th><th>Symbol</th><th>Describes</th><th>Units</th><th>As n grows</th></tr></thead>
+  <tbody>
+  <tr><td>Population variance</td><td>\(\sigma^2\)</td><td>How much individual values vary in the process</td><td>Squared</td><td>Fixed: a property of the world</td></tr>
+  <tr><td>Sample variance</td><td>\(s^2\)</td><td>Your estimate of \(\sigma^2\)</td><td>Squared</td><td>Settles toward \(\sigma^2\)</td></tr>
+  <tr><td>Variance of the mean</td><td>\(\sigma^2/n\)</td><td>How much the average would vary across repeats</td><td>Squared</td><td>Shrinks like \(1/n\)</td></tr>
+  <tr><td>Standard error of the mean</td><td>\(\sigma/\sqrt n\)</td><td>The same, in original units</td><td>Original</td><td>Shrinks like \(1/\sqrt n\)</td></tr>
+  </tbody></table></div>
+  <p>So the difference between variance and standard error is not just a square root. Variance (and SD) describe the <i>data</i>; standard error describes an <i>estimate</i>, and it depends on three things the data's variance does not: the sample size, the estimator, and the dependence between observations.</p>
+  <h4>Standard errors you will actually use</h4>
+  <div class="tw"><table>
+  <thead><tr><th>Estimate</th><th>Standard error</th><th>Note</th></tr></thead>
+  <tbody>
+  <tr><td>Mean</td><td>\(s/\sqrt n\)</td><td>The workhorse</td></tr>
+  <tr><td>Pass rate \(\hat p\)</td><td>\(\sqrt{\hat p(1-\hat p)/n}\)</td><td>124 of 200 passing: 0.0343, so about ±6.7 points at 95%. Use Wilson near 0 or 1 (<a href="#evalstats">eval statistics</a>)</td></tr>
+  <tr><td>Difference, independent samples</td><td>\(\sqrt{s_1^2/n_1 + s_2^2/n_2}\)</td><td>Variances add, so the difference is noisier than either part</td></tr>
+  <tr><td>Difference, paired on the same items</td><td>\(s_d/\sqrt n\), with \(s_d\) the SD of per-item differences</td><td>Usually far smaller, because shared item difficulty cancels</td></tr>
+  <tr><td>Median (normal data, large n)</td><td>\(\approx 1.2533\,\sigma/\sqrt n\)</td><td>The price of robustness: 25% wider than the mean's</td></tr>
+  <tr><td>Mean of clustered data</td><td>\(\frac{s}{\sqrt n}\sqrt{1+(m-1)\rho}\)</td><td>\(m\) items per cluster, intra-cluster correlation \(\rho\) (<a href="#intervals">clustering</a>)</td></tr>
+  <tr><td>Anything else</td><td>SD of bootstrap replicates</td><td>When no formula exists (<a href="#intervals">bootstrap</a>)</td></tr>
+  </tbody></table></div>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
+
+def se_mean(sd, n):
+    return sd / math.sqrt(n)
+
+def se_proportion(p, n):
+    return math.sqrt(p * (1 - p) / n)
+
+def se_diff_independent(s1, n1, s2, n2):
+    # variances add for independent estimates; standard errors do not
+    return math.sqrt(s1 ** 2 / n1 + s2 ** 2 / n2)
+
+def se_clustered(se_naive, m, icc):
+    # design effect: m items per cluster, intra-cluster correlation icc
+    return se_naive * math.sqrt(1 + (m - 1) * icc)
+
+print(round(se_mean(12.0, 400), 3))                          # 0.6 seconds
+print(round(se_proportion(124 / 200, 200), 4))               # 0.0343 -> about +/- 6.7 points at 95%
+print(round(se_diff_independent(0.49, 200, 0.48, 200), 4))   # 0.0485 two models on different task sets
+print(round(se_clustered(0.0343, 12, 0.6), 4))               # 0.0946 same pass rate, 12 calls per session</code></pre>
+<pre class="code" data-lang="rust"><code>fn se_mean(sd: f64, n: f64) -&gt; f64 {
+    sd / n.sqrt()
+}
+
+fn se_proportion(p: f64, n: f64) -&gt; f64 {
+    (p * (1.0 - p) / n).sqrt()
+}
+
+fn se_diff_independent(s1: f64, n1: f64, s2: f64, n2: f64) -&gt; f64 {
+    // variances add for independent estimates; standard errors do not
+    (s1.powi(2) / n1 + s2.powi(2) / n2).sqrt()
+}
+
+fn se_clustered(se_naive: f64, m: f64, icc: f64) -&gt; f64 {
+    // design effect: m items per cluster, intra-cluster correlation icc
+    se_naive * (1.0 + (m - 1.0) * icc).sqrt()
+}
+
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let f = 10f64.powi(digits);
+    (x * f).round() / f
+}
+
+fn main() {
+    println!("{}", round(se_mean(12.0, 400.0), 3));                       // 0.6 seconds
+    println!("{}", round(se_proportion(124.0 / 200.0, 200.0), 4));        // 0.0343 -&gt; about +/- 6.7 points at 95%
+    println!("{}", round(se_diff_independent(0.49, 200.0, 0.48, 200.0), 4)); // 0.0485 two models on different task sets
+    println!("{}", round(se_clustered(0.0343, 12.0, 0.6), 4));            // 0.0946 same pass rate, 12 calls per session
+}</code></pre>
+</div>
+  <h4>The square-root law, simulated</h4>
+
   <div class="eq">\[ \text{SE} = \frac{s}{\sqrt{n}} \qquad\qquad \text{SE} \propto n^{-1/2} \;\Rightarrow\; 4n \text{ gives half the error bar} \]</div>
   <div class="codetabs">
 <pre class="code" data-lang="python"><code>import numpy as np
@@ -146,6 +240,24 @@ fn main() {
     // The se column halves every time n quadruples. That is the whole story.
 }</code></pre>
 </div>
+</div>
+
+
+<div class="widget" id="w-se-compare">
+  <div class="wtitle">Standard deviation vs standard error</div>
+  <div class="wsub">Top: one sample of n values. Their spread is the SD. Bottom: the averages of 200 repeated samples of the same size. Their spread is the SE. Raise n and watch only the bottom row tighten.</div>
+  <div class="controls">
+    <div class="ctl"><label for="se-n">Sample size n <output id="se-n-o"></output></label><input type="range" id="se-n" min="0" max="8" step="1" value="2"></div>
+    <div class="ctl"><label for="se-sd">Population SD σ <output id="se-sd-o"></output></label><input type="range" id="se-sd" min="4" max="20" step="1" value="12"></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">SD of the sample</div><div class="v" data-k="sd"></div></div>
+    <div class="mc"><div class="l">SE by formula σ/√n</div><div class="v" data-k="se"></div></div>
+    <div class="mc"><div class="l">SD of the 200 averages</div><div class="v" data-k="obs"></div></div>
+    <div class="mc"><div class="l">Variance of the mean σ²/n</div><div class="v" data-k="vm"></div></div>
+  </div>
+  <div class="readout" data-out></div>
 </div>
 
 <h3>What a confidence interval actually means</h3>
