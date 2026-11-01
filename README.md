@@ -2,6 +2,8 @@
 
 Statistics, evaluation, and training for large language models, each topic layered from plain words to principal-level depth.
 
+**Read it online:** https://judggernaut.github.io/frontier-model-field-guide/ · [PDF](https://judggernaut.github.io/frontier-model-field-guide/frontier-model-field-guide.pdf)
+
 - **Part I, Statistical foundations**: distributions, sampling, standard error, intervals, p values, reading a shape, heavy tails.
 - **Part II, Evaluating models**: pass-rate intervals, paired comparisons, power, multiple comparisons, classification metrics through ROC and PR AUC, LLM judges, the offline to online gap, contamination, harness engineering, regression triage, choosing a metric.
 - **Part III, Training models**: the pipeline, pretraining, optimisation, scaling laws, SFT, LoRA and PEFT, distillation and synthetic data, reward models, RLHF and PPO, DPO and its relatives, GRPO and RL with verifiable rewards, inference and test-time compute, safety training.
@@ -16,6 +18,7 @@ Every chapter has three layers (Plain words, For leaders, Under the hood) and mo
 | `dist/standalone.html` | The whole guide as one self-contained HTML file. Open it in any browser, offline. |
 | `dist/index.html` | The same page without the document wrapper, used for publishing as an artifact. |
 | `dist/frontier-model-field-guide.pdf` | Print version. Widgets appear at their default settings. |
+| `docs/` | GitHub Pages copy of the standalone page and PDF. After a rebuild, copy `dist/standalone.html` to `docs/index.html`. |
 
 ## Build
 
