@@ -1,0 +1,42 @@
+[
+ {
+  "term": "Subscript (x_i)",
+  "def": "A small index below a symbol giving a position: x_3 is the third value. It is a seat number, not multiplication.",
+  "see": "notation"
+ },
+ {
+  "term": "x-bar (x̄)",
+  "def": "The average of the values x_1 to x_n.",
+  "see": "notation"
+ },
+ {
+  "term": "Hat (θ̂, p̂)",
+  "def": "Marks an estimate computed from data, as opposed to the true unknown value.",
+  "see": "notation"
+ },
+ {
+  "term": "Summation (Σ)",
+  "def": "Capital sigma: add up the terms that follow, with the index running from the value below to the value above.",
+  "see": "notation"
+ },
+ {
+  "term": "Product (Π)",
+  "def": "Capital pi: multiply the terms that follow.",
+  "see": "notation"
+ },
+ {
+  "term": "Arg max",
+  "def": "The position (or input) at which a quantity is largest, rather than the largest value itself.",
+  "see": "notation"
+ },
+ {
+  "term": "Expected value (E[X])",
+  "def": "The long-run average of a random quantity; in practice estimated by averaging a sample.",
+  "see": "notation"
+ },
+ {
+  "term": "Conditional probability P(A | B)",
+  "def": "The probability of A given that B is known to have happened. The vertical bar reads 'given'.",
+  "see": "notation"
+ }
+]

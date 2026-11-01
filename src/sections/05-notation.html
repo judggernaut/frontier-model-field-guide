@@ -1,0 +1,275 @@
+<section id="notation" data-title="Reading the math">
+<h2>Reading the math: symbols, subscripts, and sums</h2>
+<p>Every formula in this guide is built from a small set of symbols. Once you can read them aloud, a formula stops being a picture and becomes a sentence. This chapter is the decoder ring. Come back to it whenever a symbol looks unfamiliar; the <span class="kbd">⌘K</span> search also finds every symbol by name.</p>
+
+<div class="story" id="st-notation-mean">
+  <div class="story-head"><div class="story-title">Decoding one formula: the average</div><p class="story-sub">Five commutes, one formula, read piece by piece.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The sample mean formula with its parts labelled">
+      <text x="200" y="130" font-size="44" font-style="italic" fill="var(--fg)">x</text>
+      <line x1="200" y1="96" x2="224" y2="96" stroke="var(--fg)" stroke-width="3"/>
+      <text x="236" y="130" font-size="40" fill="var(--fg)">=</text>
+      <text x="282" y="112" font-size="26" fill="var(--fg)">1</text>
+      <line x1="276" y1="120" x2="304" y2="120" stroke="var(--fg)" stroke-width="2"/>
+      <text x="281" y="146" font-size="26" font-style="italic" fill="var(--fg)">n</text>
+      <text x="318" y="140" font-size="56" fill="var(--fg)">Σ</text>
+      <text x="330" y="168" font-size="15" font-style="italic" fill="var(--fg)">i=1</text>
+      <text x="336" y="82" font-size="15" font-style="italic" fill="var(--fg)">n</text>
+      <text x="374" y="130" font-size="44" font-style="italic" fill="var(--fg)">x</text>
+      <text x="398" y="140" font-size="22" font-style="italic" fill="var(--fg)">i</text>
+      <g class="a" style="--d:1"><path d="M212 160 L190 205" stroke="var(--eli5)" stroke-width="1.5"/><text x="140" y="225" font-size="13" fill="var(--eli5)">"x-bar": the average</text></g>
+      <g class="a" style="--d:2"><path d="M290 160 L270 205" stroke="var(--lead)" stroke-width="1.5"/><text x="232" y="242" font-size="13" fill="var(--lead)">divide by how many</text></g>
+      <g class="a" style="--d:3"><path d="M345 172 L360 205" stroke="var(--deep)" stroke-width="1.5"/><text x="330" y="225" font-size="13" fill="var(--deep)">add up, from i = 1 to n</text></g>
+      <g class="a" style="--d:4"><path d="M392 100 L440 60" stroke="var(--tp)" stroke-width="1.5"/><text x="446" y="56" font-size="13" fill="var(--tp)">the i-th value</text></g>
+    </svg>
+    <p>Read it aloud: "x-bar equals one over n times the sum, from i equals 1 to n, of x sub i." In plain words: add up all the values and divide by how many there are. Four symbols, one familiar idea.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Five commute times labelled x1 to x5">
+      <text x="320" y="40" text-anchor="middle" font-size="15" fill="var(--muted)">Five commutes, in minutes. The subscript is just a seat number.</text>
+      <g class="a" style="--d:0"><rect x="60" y="80" width="90" height="70" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="105" y="125" text-anchor="middle" font-size="26" fill="var(--fg)">22</text><text x="105" y="180" text-anchor="middle" font-size="18" font-style="italic" fill="var(--tp)">x₁</text></g>
+      <g class="a" style="--d:1"><rect x="165" y="80" width="90" height="70" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="210" y="125" text-anchor="middle" font-size="26" fill="var(--fg)">25</text><text x="210" y="180" text-anchor="middle" font-size="18" font-style="italic" fill="var(--tp)">x₂</text></g>
+      <g class="a" style="--d:2"><rect x="270" y="80" width="90" height="70" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="315" y="125" text-anchor="middle" font-size="26" fill="var(--fg)">31</text><text x="315" y="180" text-anchor="middle" font-size="18" font-style="italic" fill="var(--tp)">x₃</text></g>
+      <g class="a" style="--d:3"><rect x="375" y="80" width="90" height="70" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="420" y="125" text-anchor="middle" font-size="26" fill="var(--fg)">24</text><text x="420" y="180" text-anchor="middle" font-size="18" font-style="italic" fill="var(--tp)">x₄</text></g>
+      <g class="a" style="--d:4"><rect x="480" y="80" width="90" height="70" rx="10" fill="var(--surface)" stroke="var(--line-strong)"/><text x="525" y="125" text-anchor="middle" font-size="26" fill="var(--fg)">28</text><text x="525" y="180" text-anchor="middle" font-size="18" font-style="italic" fill="var(--tp)">x₅</text></g>
+      <text class="a" style="--d:5" x="320" y="230" text-anchor="middle" font-size="15" fill="var(--fg)">n = 5 values.  x₃ = 31.  "x sub i" means "whichever one we are looking at".</text>
+    </svg>
+    <p>\(x_i\) (say "x sub i") is the value in position \(i\). Here \(x_1 = 22\) and \(x_3 = 31\). The letter \(n\) is how many values there are, so \(n = 5\). Code calls this <code>x[i]</code>, except most code starts counting at 0 and most math starts at 1.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The sum adds the five values to 130">
+      <text x="70" y="60" font-size="44" fill="var(--deep)">Σ</text>
+      <text x="120" y="56" font-size="15" fill="var(--muted)">"add up everything that follows"</text>
+      <g class="a" style="--d:0"><text x="70" y="140" font-size="26" fill="var(--fg)">22</text></g>
+      <g class="a" style="--d:1"><text x="112" y="140" font-size="26" fill="var(--muted)">+</text><text x="142" y="140" font-size="26" fill="var(--fg)">25</text></g>
+      <g class="a" style="--d:2"><text x="184" y="140" font-size="26" fill="var(--muted)">+</text><text x="214" y="140" font-size="26" fill="var(--fg)">31</text></g>
+      <g class="a" style="--d:3"><text x="256" y="140" font-size="26" fill="var(--muted)">+</text><text x="286" y="140" font-size="26" fill="var(--fg)">24</text></g>
+      <g class="a" style="--d:4"><text x="328" y="140" font-size="26" fill="var(--muted)">+</text><text x="358" y="140" font-size="26" fill="var(--fg)">28</text></g>
+      <g class="a" style="--d:5"><text x="404" y="140" font-size="26" fill="var(--muted)">=</text><rect x="436" y="108" width="80" height="44" rx="8" fill="var(--deep-soft)" stroke="var(--deep)"/><text x="476" y="140" text-anchor="middle" font-size="26" font-weight="600" fill="var(--deep)">130</text></g>
+      <text class="a" style="--d:6" x="70" y="210" font-size="14" fill="var(--fg)">The bottom of Σ says where to start (i = 1); the top says where to stop (n = 5).</text>
+      <text class="a" style="--d:6" x="70" y="234" font-size="14" fill="var(--muted)">In code: sum(x), or a for-loop with a running total.</text>
+    </svg>
+    <p>\(\sum_{i=1}^{n} x_i\) is a for-loop written on one line: start with \(i = 1\), add \(x_i\), move to the next \(i\), stop after \(i = n\). Here that is \(22 + 25 + 31 + 24 + 28 = 130\).</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Dividing 130 by 5 gives the average 26">
+      <g class="a" style="--d:0"><rect x="110" y="80" width="100" height="60" rx="10" fill="var(--deep-soft)" stroke="var(--deep)"/><text x="160" y="119" text-anchor="middle" font-size="26" font-weight="600" fill="var(--deep)">130</text><text x="160" y="170" text-anchor="middle" font-size="13" fill="var(--muted)">the sum</text></g>
+      <g class="a" style="--d:1"><text x="250" y="120" font-size="30" fill="var(--muted)">÷</text><rect x="290" y="80" width="80" height="60" rx="10" fill="var(--lead-soft)" stroke="var(--lead)"/><text x="330" y="119" text-anchor="middle" font-size="26" font-weight="600" fill="var(--lead)">5</text><text x="330" y="170" text-anchor="middle" font-size="13" fill="var(--muted)">n</text></g>
+      <g class="a" style="--d:2"><text x="400" y="120" font-size="30" fill="var(--muted)">=</text><rect x="440" y="80" width="90" height="60" rx="10" fill="var(--eli5-soft)" stroke="var(--eli5)"/><text x="485" y="119" text-anchor="middle" font-size="26" font-weight="600" fill="var(--eli5)">26</text><text x="485" y="170" text-anchor="middle" font-size="13" fill="var(--muted)">x-bar, the average</text></g>
+      <text class="a" style="--d:3" x="320" y="225" text-anchor="middle" font-size="15" fill="var(--fg)">Multiplying by 1/n is the same as dividing by n.</text>
+    </svg>
+    <p>The \(\frac{1}{n}\) out front divides the total by the count: \(130 / 5 = 26\). So \(\bar{x} = 26\) minutes. A bar over a letter almost always means "the average of these values".</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A scoop from a big jar: x-bar estimates mu">
+      <g class="a" style="--d:0"><rect x="70" y="60" width="180" height="150" rx="16" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <g fill="var(--tn)"><circle cx="100" cy="100" r="6"/><circle cx="130" cy="140" r="6"/><circle cx="160" cy="95" r="6"/><circle cx="190" cy="160" r="6"/><circle cx="220" cy="110" r="6"/><circle cx="110" cy="180" r="6"/><circle cx="150" cy="185" r="6"/><circle cx="200" cy="80" r="6"/><circle cx="230" cy="185" r="6"/><circle cx="125" cy="75" r="6"/></g>
+        <text x="160" y="238" text-anchor="middle" font-size="14" fill="var(--fg)">every commute ever: average μ</text></g>
+      <g class="a" style="--d:2"><path d="M262 135 L360 135" stroke="var(--faint)" stroke-width="2" marker-end="url(#ntarr)"/><defs><marker id="ntarr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--faint)"/></marker></defs><text x="310" y="122" text-anchor="middle" font-size="13" fill="var(--muted)">scoop n = 5</text></g>
+      <g class="a" style="--d:3"><rect x="380" y="95" width="180" height="80" rx="12" fill="var(--eli5-soft)" stroke="var(--eli5)"/><g fill="var(--eli5)"><circle cx="410" cy="135" r="6"/><circle cx="440" cy="135" r="6"/><circle cx="470" cy="135" r="6"/><circle cx="500" cy="135" r="6"/><circle cx="530" cy="135" r="6"/></g><text x="470" y="200" text-anchor="middle" font-size="14" fill="var(--fg)">your sample: average x-bar = 26</text></g>
+      <text class="a" style="--d:4" x="320" y="30" text-anchor="middle" font-size="15" fill="var(--fg)">Greek letters (μ, σ) describe the whole jar. Latin letters (x-bar, s) describe your scoop.</text>
+    </svg>
+    <p>One more convention that runs through the whole guide: Greek letters usually name the true, unknown quantity (\(\mu\), "mu", the true average), and Latin letters or hats name what you computed from a sample (\(\bar x\), or \(\hat\mu\), "mu-hat"). Statistics is mostly about how close \(\bar x\) is likely to be to \(\mu\).</p>
+  </div>
+</div>
+
+<h3>The symbols, one table at a time</h3>
+<p>Each row gives the symbol, how to say it, what it means, and a tiny example. Everything here is used somewhere later in the guide.</p>
+
+<h4>Values, positions, and counts</h4>
+<div class="tw"><table>
+<thead><tr><th>Symbol</th><th>Say it</th><th>Meaning</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td>\(x\)</td><td>"x"</td><td>A value, or a whole list of values</td><td>commute times</td></tr>
+<tr><td>\(x_i\)</td><td>"x sub i"</td><td>The value in position \(i\). The subscript is a seat number, not multiplication</td><td>\(x_3 = 31\)</td></tr>
+<tr><td>\(i,\ j,\ k,\ t\)</td><td>"i", "j"…</td><td>Index variables: counters that run over positions. \(t\) is often a time step or token position</td><td>\(i = 1, \dots, n\)</td></tr>
+<tr><td>\(n,\ N\)</td><td>"n"</td><td>How many values. \(N\) is also used for model parameter count in scaling laws</td><td>\(n = 5\)</td></tr>
+<tr><td>\(x_{ij}\)</td><td>"x sub i j"</td><td>Two indices: row \(i\), column \(j\) (a table or matrix)</td><td>score of model \(i\) on task \(j\)</td></tr>
+<tr><td>\(x_{&lt;t}\)</td><td>"x before t"</td><td>Everything up to, but not including, position \(t\)</td><td>the tokens before token \(t\)</td></tr>
+<tr><td>\(x^2\)</td><td>"x squared"</td><td>A superscript usually means a power</td><td>\(5^2 = 25\)</td></tr>
+<tr><td>\(x^{(k)}\)</td><td>"x superscript k"</td><td>Parentheses mean a label, not a power: the \(k\)-th version or sample</td><td>bootstrap replicate \(k\)</td></tr>
+<tr><td>\(\mathbf{x},\ \mathbf{W}\)</td><td>"bold x"</td><td>Bold lowercase is a vector (a list); bold uppercase is a matrix (a grid)</td><td>\(\mathbf{W}\) a weight matrix</td></tr>
+<tr><td>\(\mathbf{W}^\top\)</td><td>"W transpose"</td><td>Flip a matrix so rows become columns</td><td>used in LoRA and attention</td></tr>
+</tbody></table></div>
+
+<h4>Accents: bars, hats, tildes, stars</h4>
+<div class="tw"><table>
+<thead><tr><th>Symbol</th><th>Say it</th><th>Meaning</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td>\(\bar{x}\)</td><td>"x-bar"</td><td>The average (mean) of the values</td><td>\(\bar x = 26\)</td></tr>
+<tr><td>\(\hat{\theta},\ \hat p\)</td><td>"theta-hat", "p-hat"</td><td>An estimate computed from data, of the true \(\theta\) or \(p\)</td><td>\(\hat p = 124/200 = 0.62\) pass rate</td></tr>
+<tr><td>\(\tilde{x}\)</td><td>"x-tilde"</td><td>Often the median, or a modified version of \(x\)</td><td>\(\tilde x = 25\)</td></tr>
+<tr><td>\(x^*,\ \pi^*\)</td><td>"x-star"</td><td>The best or optimal value</td><td>\(\pi^*\) the optimal policy (DPO)</td></tr>
+<tr><td>\(x'\)</td><td>"x-prime"</td><td>Another value of the same kind, or a changed version</td><td>a perturbed eval item</td></tr>
+</tbody></table></div>
+
+<h4>Greek letters and what they usually mean here</h4>
+<div class="tw"><table>
+<thead><tr><th>Letter</th><th>Name</th><th>Usual meaning in this guide</th></tr></thead>
+<tbody>
+<tr><td>\(\mu\)</td><td>mu</td><td>True mean of a population</td></tr>
+<tr><td>\(\sigma,\ \sigma^2\)</td><td>sigma, sigma squared</td><td>True standard deviation and variance (lowercase sigma)</td></tr>
+<tr><td>\(\Sigma\)</td><td>capital sigma</td><td>Sum (as an operator). Also a covariance matrix in some papers</td></tr>
+<tr><td>\(\Pi,\ \prod\)</td><td>capital pi</td><td>Product: multiply everything that follows</td></tr>
+<tr><td>\(\pi\)</td><td>pi</td><td>3.14159…, or in reinforcement learning a <b>policy</b> (the model): \(\pi_\theta(y\mid x)\)</td></tr>
+<tr><td>\(\theta\)</td><td>theta</td><td>The model's parameters (its weights), or any unknown quantity being estimated</td></tr>
+<tr><td>\(\alpha\)</td><td>alpha</td><td>Significance level (0.05), a scaling constant (LoRA), or a learning rate</td></tr>
+<tr><td>\(\beta\)</td><td>beta</td><td>Type II error rate, the KL strength in DPO and RLHF, or Adam's decay rates</td></tr>
+<tr><td>\(\eta\)</td><td>eta</td><td>Learning rate</td></tr>
+<tr><td>\(\epsilon,\ \varepsilon\)</td><td>epsilon</td><td>A small number: noise, an error term, or PPO's clip range</td></tr>
+<tr><td>\(\lambda\)</td><td>lambda</td><td>A rate (Poisson), a penalty weight, or GAE's mixing factor</td></tr>
+<tr><td>\(\rho\)</td><td>rho</td><td>Correlation, such as the intra-cluster correlation</td></tr>
+<tr><td>\(\gamma\)</td><td>gamma</td><td>Discount factor in RL</td></tr>
+<tr><td>\(\delta,\ \Delta\)</td><td>delta</td><td>A difference or change: \(\Delta\) = "change in"</td></tr>
+<tr><td>\(\nabla\)</td><td>nabla, "grad"</td><td>Gradient: the direction of steepest increase (optimisation)</td></tr>
+<tr><td>\(\Phi,\ \phi\)</td><td>phi</td><td>Standard normal CDF and density</td></tr>
+<tr><td>\(\chi^2\)</td><td>chi squared</td><td>A distribution used in tests of counts</td></tr>
+</tbody></table></div>
+
+<h4>Operators and relations</h4>
+<div class="tw"><table>
+<thead><tr><th>Symbol</th><th>Say it</th><th>Meaning</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td>\(\sum_{i=1}^{n} x_i\)</td><td>"sum of x sub i, i from 1 to n"</td><td>Add \(x_1\) through \(x_n\)</td><td>130</td></tr>
+<tr><td>\(\prod_{i=1}^{n} p_i\)</td><td>"product of p sub i"</td><td>Multiply \(p_1\) through \(p_n\)</td><td>\(0.9 \times 0.5 \times 0.25 = 0.1125\)</td></tr>
+<tr><td>\(\sqrt{x}\)</td><td>"square root"</td><td>The number that squared gives \(x\)</td><td>\(\sqrt{12.5} = 3.54\)</td></tr>
+<tr><td>\(\lvert x\rvert\)</td><td>"absolute value"</td><td>Distance from zero, always non-negative</td><td>\(\lvert -4\rvert = 4\)</td></tr>
+<tr><td>\(\lVert \mathbf{x}\rVert\)</td><td>"norm of x"</td><td>Length of a vector</td><td>gradient clipping by norm</td></tr>
+<tr><td>\(\log x,\ \ln x\)</td><td>"log", "natural log"</td><td>The inverse of \(e^x\). In ML papers \(\log\) almost always means natural log</td><td>\(\ln 0.1125 = -2.18\)</td></tr>
+<tr><td>\(e^x,\ \exp(x)\)</td><td>"e to the x"</td><td>Exponential, \(e \approx 2.718\)</td><td>perplexity \(= e^{\text{loss}}\)</td></tr>
+<tr><td>\(\max,\ \min\)</td><td>"max", "min"</td><td>Largest or smallest value</td><td>\(\max x_i = 31\)</td></tr>
+<tr><td>\(\arg\max_i x_i\)</td><td>"arg max"</td><td>The <i>position</i> of the largest value, not the value</td><td>\(\arg\max = 3\) (the third commute)</td></tr>
+<tr><td>\(=,\ \approx,\ \equiv,\ :=\)</td><td>equals, approximately, identical, defined as</td><td>\(:=\) introduces a new name</td><td>\(\text{SE} := s/\sqrt n\)</td></tr>
+<tr><td>\(\propto\)</td><td>"proportional to"</td><td>Equal up to a constant multiplier</td><td>\(\text{SE} \propto 1/\sqrt n\)</td></tr>
+<tr><td>\(\in,\ \notin\)</td><td>"in", "not in"</td><td>Membership in a set</td><td>\(p \in [0, 1]\)</td></tr>
+<tr><td>\(\{\dots\},\ [a, b],\ (a, b)\)</td><td>set, closed and open interval</td><td>Square brackets include the ends, round ones exclude them</td><td>a 95% CI \([0.55, 0.68]\)</td></tr>
+<tr><td>\(\mathbb{R}\)</td><td>"the reals"</td><td>All real numbers; \(\mathbb{R}^{d}\) is a list of \(d\) of them</td><td>\(\mathbf{x} \in \mathbb{R}^{4096}\)</td></tr>
+<tr><td>\(\to,\ \Rightarrow\)</td><td>"tends to", "implies"</td><td>Approaches a limit; one statement leads to another</td><td>as \(n \to \infty\)</td></tr>
+<tr><td>\(n!\ ,\ \binom{n}{k}\)</td><td>"n factorial", "n choose k"</td><td>\(1\times2\times\dots\times n\); number of ways to pick \(k\) of \(n\)</td><td>\(\binom{5}{2} = 10\)</td></tr>
+</tbody></table></div>
+
+<h4>Probability and expectation</h4>
+<div class="tw"><table>
+<thead><tr><th>Symbol</th><th>Say it</th><th>Meaning</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td>\(P(A)\)</td><td>"probability of A"</td><td>A number from 0 to 1</td><td>\(P(\text{pass}) = 0.62\)</td></tr>
+<tr><td>\(P(A \mid B)\)</td><td>"probability of A given B"</td><td>Probability of A when you already know B happened. The bar is "given"</td><td>\(P(\text{spam} \mid \text{flagged})\) = precision</td></tr>
+<tr><td>\(p_\theta(x_t \mid x_{&lt;t})\)</td><td>"p theta of x t given x before t"</td><td>The model's probability for the next token, given the previous ones</td><td>the language model</td></tr>
+<tr><td>\(X \sim \mathcal{N}(\mu, \sigma^2)\)</td><td>"X is distributed normal"</td><td>\(X\) is a random quantity with that distribution</td><td>\(\sim\) means "is drawn from"</td></tr>
+<tr><td>\(\mathbb{E}[X]\)</td><td>"expected value of X"</td><td>The long-run average of a random quantity</td><td>\(\mathbb{E}[\text{die}] = 3.5\)</td></tr>
+<tr><td>\(\mathbb{E}_{x \sim D}[f(x)]\)</td><td>"expectation over x drawn from D"</td><td>Average \(f\) over inputs drawn from \(D\). In practice: sample and average</td><td>training losses</td></tr>
+<tr><td>\(\operatorname{Var}(X),\ \operatorname{Cov}(X,Y)\)</td><td>variance, covariance</td><td>Spread of one quantity; how two move together</td><td>see <a href="#basics">Distributions</a></td></tr>
+<tr><td>\(\mathrm{KL}(p \,\Vert\, q)\)</td><td>"KL divergence of p from q"</td><td>How different two distributions are (not symmetric)</td><td>RLHF's leash to the reference model</td></tr>
+</tbody></table></div>
+
+<h3>Build a sum yourself</h3>
+<div class="widget" id="w-nt-sum">
+  <div class="wtitle">Sum builder</div>
+  <div class="wsub">Type some numbers, pick an expression, and see every term written out. Each expression is one you will meet in the guide.</div>
+  <div class="controls">
+    <div class="ctl"><label for="nt-x">Values x₁, x₂, …, xₙ, comma separated</label><input id="nt-x" type="text" value="22, 25, 31, 24, 28" style="width:100%;font:inherit;height:36px;padding:0 10px;border-radius:calc(var(--radius) - 2px);border:1px solid var(--input);background:var(--background);color:var(--foreground)"></div>
+    <div class="ctl"><label for="nt-e">Expression</label><select id="nt-e">
+      <option value="sum">Sum: Σ x_i</option>
+      <option value="mean">Mean: x-bar = (1/n) Σ x_i</option>
+      <option value="ss">Squared deviations: Σ (x_i − x-bar)²</option>
+      <option value="var">Sample variance: s² = Σ (x_i − x-bar)² / (n − 1)</option>
+      <option value="prod">Product: Π x_i</option>
+      <option value="logsum">Log of a product: ln Π x_i = Σ ln x_i</option>
+      <option value="argmax">Max and arg max</option>
+    </select></div>
+  </div>
+  <div class="nt-f" data-opt="sum">\[ \sum_{i=1}^{n} x_i \]</div>
+  <div class="nt-f" data-opt="mean" hidden>\[ \bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i \]</div>
+  <div class="nt-f" data-opt="ss" hidden>\[ \sum_{i=1}^{n} (x_i - \bar{x})^2 \]</div>
+  <div class="nt-f" data-opt="var" hidden>\[ s^2 = \frac{1}{n-1}\sum_{i=1}^{n} (x_i - \bar{x})^2 \]</div>
+  <div class="nt-f" data-opt="prod" hidden>\[ \prod_{i=1}^{n} x_i \]</div>
+  <div class="nt-f" data-opt="logsum" hidden>\[ \ln \prod_{i=1}^{n} x_i = \sum_{i=1}^{n} \ln x_i \]</div>
+  <div class="nt-f" data-opt="argmax" hidden>\[ \max_i x_i \qquad \arg\max_i x_i \]</div>
+  <div class="nt-terms" data-terms></div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Three habits that make any formula readable</span></div>
+  <ol class="steps">
+    <li><div><b>Find the big operator first.</b> A Σ means "add up", a Π means "multiply", an \(\mathbb{E}\) means "average over". That tells you what kind of answer comes out.</div></li>
+    <li><div><b>Find the index.</b> The letter under the operator (usually \(i\) or \(t\)) is what changes from term to term. Everything with that letter in it changes; everything without it stays fixed.</div></li>
+    <li><div><b>Plug in tiny numbers.</b> Write out two or three terms with real values, as the sum builder does. Most formulas become obvious after one worked line.</div></li>
+  </ol>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Reading a formula in a paper or a review</span></div>
+  <p>You do not need to derive every equation to evaluate a result. Four questions get most of the value:</p>
+  <ul>
+    <li><b>What is summed or averaged over?</b> Tokens, sequences, prompts, users? A loss averaged per token weights long answers differently from one averaged per sequence, which is the whole argument in the Dr. GRPO paper (<a href="#grpo">GRPO</a>).</li>
+    <li><b>What has a hat?</b> Hatted quantities are estimates and carry uncertainty. If a decision rests on one, ask for its standard error.</li>
+    <li><b>What is held fixed?</b> Subscripts like \(\pi_{\text{ref}}\) or \(\theta_{\text{old}}\) mark frozen copies. Knowing which model is frozen tells you what the method is anchoring to.</li>
+    <li><b>Which constants were tuned?</b> Greek letters such as \(\beta\), \(\epsilon\), \(\lambda\), \(\eta\) are usually knobs. Ask how sensitive the result is to each.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Sum rules, and the symbols as code</span></div>
+  <p>A handful of rules let you rearrange any sum. Each is just arithmetic on the written-out terms.</p>
+  <div class="eq">\[ \sum_{i=1}^{n} c\,x_i = c\sum_{i=1}^{n} x_i \qquad \sum_{i=1}^{n} (x_i + y_i) = \sum_{i=1}^{n} x_i + \sum_{i=1}^{n} y_i \qquad \sum_{i=1}^{n} c = n\,c \qquad \sum_{i=1}^{n} (x_i - \bar x) = 0 \]<span class="eqcap">Constants pull out; sums split; adding a constant \(n\) times gives \(nc\); and deviations from the mean always cancel, which is why variance squares them.</span></div>
+  <div class="eq">\[ \ln \prod_{i} p_i = \sum_{i} \ln p_i \qquad\qquad \mathbb{E}[X] = \sum_{x} x\,P(X = x) \qquad\qquad \sum_{i=1}^{m}\sum_{j=1}^{n} x_{ij} = \text{add every cell of the table} \]<span class="eqcap">Logs turn products into sums, which is why likelihoods are computed as log-likelihoods. Expectation is a probability-weighted sum. Two sums in a row are nested loops.</span></div>
+  <p>The log rule connects straight to training. The probability a model assigns to a sentence is the product of its token probabilities, and the loss is the negative log of that, averaged per token:</p>
+  <div class="eq">\[ 0.9 \times 0.5 \times 0.25 = 0.1125, \qquad -\tfrac{1}{3}\big(\ln 0.9 + \ln 0.5 + \ln 0.25\big) = -\tfrac{1}{3}\ln 0.1125 = 0.728 \]<span class="eqcap">That 0.728 is the cross-entropy loss computed in the <a href="#welcome">introduction</a>.</span></div>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
+
+x = [22, 25, 31, 24, 28]
+n = len(x)
+
+total = sum(x)                                        # Σ x_i
+x_bar = total / n                                     # <span class="ovl">x</span> = (1/n) Σ x_i
+ss = sum((xi - x_bar) ** 2 for xi in x)               # Σ (x_i − <span class="ovl">x</span>)²
+s2 = ss / (n - 1)                                     # s²
+i_max = max(range(n), key=lambda i: x[i]) + 1         # arg max, counting from 1 like the math
+
+p = [0.9, 0.5, 0.25]
+prod = math.prod(p)                                   # Π p_i
+log_sum = sum(math.log(pi) for pi in p)               # Σ ln p_i = ln Π p_i
+
+print(total, x_bar, ss, s2)                           # 130 26.0 50.0 12.5
+print(max(x), i_max)                                  # 31 3
+print(round(prod, 4), round(log_sum, 4), round(-log_sum / len(p), 3))  # 0.1125 -2.1848 0.728</code></pre>
+<pre class="code" data-lang="rust"><code>fn main() {
+    let x = [22.0_f64, 25.0, 31.0, 24.0, 28.0];
+    let n = x.len() as f64;
+
+    let total: f64 = x.iter().sum();                                    // Σ x_i
+    let x_bar = total / n;                                              // <span class="ovl">x</span> = (1/n) Σ x_i
+    let ss: f64 = x.iter().map(|xi| (xi - x_bar).powi(2)).sum();        // Σ (x_i − <span class="ovl">x</span>)²
+    let s2 = ss / (n - 1.0);                                            // s²
+    let (i_max, max) = x.iter().enumerate()
+        .fold((0, f64::MIN), |best, (i, &amp;v)| if v &gt; best.1 { (i, v) } else { best });
+
+    let p = [0.9_f64, 0.5, 0.25];
+    let prod: f64 = p.iter().product();                                 // Π p_i
+    let log_sum: f64 = p.iter().map(|pi| pi.ln()).sum();                // Σ ln p_i = ln Π p_i
+
+    println!("{} {} {} {}", total, x_bar, ss, s2);                      // 130 26 50 12.5
+    println!("{} {}", max, i_max + 1);                                  // 31 3 (arg max, counting from 1)
+    println!("{:.4} {:.4} {:.3}", prod, log_sum, -log_sum / p.len() as f64); // 0.1125 -2.1848 0.728
+}</code></pre>
+</div>
+</div>
+
+<h3>Practice: read four formulas from later chapters</h3>
+<p>Open each one and try reading it aloud before looking at the translation.</p>
+<details class="qa"><summary>Cross-entropy loss (pretraining)</summary>
+  <div class="eq">\[ \mathcal{L}(\theta) = -\frac{1}{T}\sum_{t=1}^{T} \log p_\theta(x_t \mid x_{&lt;t}) \]</div>
+  <p>"The loss, as a function of the weights \(\theta\), is minus one over \(T\) times the sum over token positions \(t\) of the log of the probability the model gives the actual token \(x_t\), given the tokens before it." In plain words: the average surprise at each correct next token. Lower is better.</p>
+</details>
+<details class="qa"><summary>Sample variance (statistics)</summary>
+  <div class="eq">\[ s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i - \bar x)^2 \]</div>
+  <p>"s squared equals one over n minus one times the sum of the squared distances of each value from the average." For the commutes: distances −4, −1, 5, −2, 2; squares 16, 1, 25, 4, 4; sum 50; divided by 4 gives 12.5.</p>
+</details>
+<details class="qa"><summary>Group-relative advantage (GRPO)</summary>
+  <div class="eq">\[ \hat A_i = \frac{r_i - \operatorname{mean}(r_1,\dots,r_G)}{\operatorname{std}(r_1,\dots,r_G)} \]</div>
+  <p>"The estimated advantage of answer \(i\) is its reward minus the group's average reward, divided by the group's standard deviation." Sample \(G\) answers to one prompt; each answer is scored against its own group, like grading on a curve. The hat says it is an estimate.</p>
+</details>
+<details class="qa"><summary>Expected value (everywhere)</summary>
+  <div class="eq">\[ \mathbb{E}_{x \sim D}\big[f(x)\big] \approx \frac{1}{n}\sum_{i=1}^{n} f(x_i) \]</div>
+  <p>"The expected value of \(f\) over inputs drawn from \(D\) is approximately the average of \(f\) over \(n\) sampled inputs." Every training loss and every eval score is this: a true expectation you can never compute exactly, estimated by averaging a sample. That is why Part I exists.</p>
+</details>
+</section>

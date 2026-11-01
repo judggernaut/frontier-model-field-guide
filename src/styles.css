@@ -223,6 +223,17 @@ pre.code code{font-family:inherit;white-space:pre;background:none;padding:0;font
 .codetabs>pre.code.on{animation:fadein .18s cubic-bezier(.4,0,.2,1)}
 .codetabs>pre.code .copy{top:8px}
 
+/* ---------- notation chapter: sum builder chips ---------- */
+.nt-f{margin:6px 0 10px}
+.nt-terms{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 4px;font-variant-numeric:tabular-nums}
+.nt-chip{display:inline-flex;flex-direction:column;align-items:center;gap:2px;padding:6px 10px;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);background:var(--card);box-shadow:var(--shadow-xs);animation:fadein .2s ease both}
+.nt-chip b{font-weight:600;font-size:14.5px}
+.nt-chip i{font-size:12px;color:var(--muted-foreground)}
+.nt-chip.res{border-color:var(--accent);background:var(--accent-soft)} .nt-chip.res b{color:var(--accent)}
+.nt-chip.n{border-color:var(--lead);background:var(--lead-soft)} .nt-chip.n b{color:var(--lead)}
+.nt-op{font-size:16px;color:var(--muted-foreground);padding:0 1px}
+.ovl{text-decoration:overline;text-decoration-thickness:1px;text-underline-offset:0}
+
 /* ---------- math ---------- */
 .eq,.eqn{margin:16px 0 20px;padding:14px 18px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto;text-align:center;box-shadow:var(--shadow-xs)}
 .eq .eqcap,.eqcap{display:block;font-size:13.5px;color:var(--muted-foreground);margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);text-align:left;line-height:1.6}
@@ -259,7 +270,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
 input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px color-mix(in srgb,var(--ring) 45%,transparent)}
 .ctl select,.widget select,select.sel{width:100%;font:inherit;font-size:14px;height:36px;padding:0 10px;border-radius:calc(var(--radius) - 2px);border:1px solid var(--input);background:var(--background);color:var(--foreground);box-shadow:var(--shadow-xs)}
 .widget canvas{display:block;width:100%;margin:6px 0}
-.widget svg{display:block;max-width:100%}
+.widget svg:not(mjx-container svg){display:block;max-width:100%}
 .readout{margin-top:14px;padding:12px 14px;border-radius:var(--radius);background:var(--sunk);border:1px solid var(--border);font-size:14px;line-height:1.65;font-variant-numeric:tabular-nums}
 .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
 button.b,.opt,.restart,.widget button:not(.crumb){font:inherit;font-size:14px;font-weight:500;color:var(--foreground);background:var(--background);border:1px solid var(--input);border-radius:calc(var(--radius) - 2px);padding:7px 14px;cursor:pointer;text-align:left;box-shadow:var(--shadow-xs);transition:background .12s,border-color .12s}
@@ -301,7 +312,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,su
 .story .stage{position:relative;display:grid;margin:12px 20px 0;border-radius:var(--radius);background:var(--sidebar);border:1px solid var(--border);overflow:hidden}
 .story .step{grid-area:1 / 1;padding:10px;opacity:0;visibility:hidden;transition:opacity .32s cubic-bezier(.4,0,.2,1),visibility 0s linear .32s}
 .story .step.on{opacity:1;visibility:visible;transition:opacity .32s cubic-bezier(.4,0,.2,1),visibility 0s}
-.story .step svg{display:block;width:100%;height:auto;max-height:420px;font-family:var(--font-body)}
+.story .step svg:not(mjx-container svg){display:block;width:100%;height:auto;max-height:420px;font-family:var(--font-body)}
 .story .step>p,.story .cap{font-size:15px;line-height:1.65;margin:0;padding:12px 20px 0;max-width:none}
 .story .capbox{min-height:64px;padding:0 0 4px}
 .story .nav{display:flex;align-items:center;gap:8px;padding:12px 20px 16px;flex-wrap:wrap}
@@ -396,7 +407,7 @@ footer.site{margin-top:40px;padding:24px 0 0;border-top:1px solid var(--border);
   .ltabs>.tl button{padding:0 9px;font-size:13px}
   .story .stage{margin:10px 12px 0}
   .story .step{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .story .step svg{min-width:520px}
+  .story .step svg:not(mjx-container svg){min-width:520px}
   .story>.story-head,.story .nav{padding-left:14px;padding-right:14px}
   .story .step>p,.story .cap{padding-left:14px;padding-right:14px}
 }
