@@ -111,11 +111,21 @@
   <div class="eq">\[ \mathrm{Precision}(\pi')=\frac{\mathrm{TPR}\,\pi'}{\mathrm{TPR}\,\pi'+\mathrm{FPR}\,(1-\pi')} \]<span class="eqcap">A filter with TPR 0.90 and FPR 0.05 has precision 0.95 at \(\pi=0.5\), but only 0.15 at \(\pi'=0.01\).</span></div>
   <p><b>The cost-optimal threshold.</b> With calibrated scores, flag when the expected cost of not flagging exceeds the expected cost of flagging:</p>
   <div class="eq">\[ p\,c_{FN} &gt; (1-p)\,c_{FP}\iff p &gt; \frac{c_{FP}}{c_{FP}+c_{FN}} \]<span class="eqcap">If the scores are not calibrated, sweep thresholds on a validation split, pick the minimum-cost one, and report its cost on a separate test split.</span></div>
-  <pre class="code" data-lang="python"><code>def precision_at(tpr, fpr, prevalence):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def precision_at(tpr, fpr, prevalence):
     return tpr * prevalence / (tpr * prevalence + fpr * (1 - prevalence))
 
 print(round(precision_at(0.90, 0.05, 0.50), 2))  # 0.95
 print(round(precision_at(0.90, 0.05, 0.01), 2))  # 0.15</code></pre>
+<pre class="code" data-lang="rust"><code>fn precision_at(tpr: f64, fpr: f64, prevalence: f64) -&gt; f64 {
+    tpr * prevalence / (tpr * prevalence + fpr * (1.0 - prevalence))
+}
+
+fn main() {
+    println!("{:.2}", precision_at(0.90, 0.05, 0.50)); // 0.95
+    println!("{:.2}", precision_at(0.90, 0.05, 0.01)); // 0.15
+}</code></pre>
+</div>
 </div>
 <div class="callout eval"><span class="tag">Eval lens</span><div>The most common failure is not the wrong metric. It is a metric whose definition, threshold, or test set quietly changed between the baseline and the candidate. Pin all three, and the choice of metric becomes much less contentious.</div></div>
 </section>

@@ -117,3 +117,16 @@ The guide's main visual device. A story is a short sequence of SVG pictures, eac
 ```
 
 Rules: viewBox 640 wide (height 220–300). Colours only through CSS variables in attributes (`fill="var(--accent)"`, `stroke="var(--line-strong)"`), using the palette tokens (`fg muted faint line line-strong surface sunk accent accent-soft tp fp fn tn eli5 eli5-soft lead lead-soft deep deep-soft good good-soft warn warn-soft`). Text at least 12px, never touching shapes, inside the viewBox. Each step adds one idea; the last step lands the takeaway. Use real-feeling numbers. No external images.
+
+## Python and Rust side by side
+
+Every Python snippet has a Rust twin, shown as tabs. The reader's language choice applies to the whole page.
+
+```html
+<div class="codetabs">
+<pre class="code" data-lang="python"><code>…</code></pre>
+<pre class="code" data-lang="rust"><code>…</code></pre>
+</div>
+```
+
+Rust rules: standard library only (no crates), edition 2021, so `rustc main.rs` runs it. Same function names and the same why-comments as the Python. If the Python prints, the Rust has `fn main` printing the same values with the same trailing comments. Random draws use a small inline PRNG, so random results differ from numpy; say so in a comment and quote the Rust output. PyTorch snippets become plain Rust over slices computing the same math on the same small example, with a first comment saying so. Escape `&`, `<`, `>` as HTML entities. Check with `python3 tools/rustcheck.py NN`.

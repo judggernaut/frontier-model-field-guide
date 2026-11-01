@@ -54,7 +54,8 @@
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The Wilson score interval</span></div>
   <p>With \(k\) passes out of \(n\), \(\hat p = k/n\), and \(z = 1.96\) for 95%:</p>
   <div class="eq">\[ \frac{\hat p + \frac{z^2}{2n}}{1+\frac{z^2}{n}} \;\pm\; \frac{z}{1+\frac{z^2}{n}}\sqrt{\frac{\hat p(1-\hat p)}{n}+\frac{z^2}{4n^2}} \]<span class="eqcap">The centre is pulled toward 0.5 by \(z^2/2n\), and the width gets a small-sample correction \(z^2/4n^2\). Wilson comes from inverting the score test, so the interval is asymmetric in the right direction near a boundary.</span></div>
-  <pre class="code" data-lang="python"><code>import math
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
 
 def wilson(k: int, n: int, z: float = 1.96) -&gt; tuple[float, float]:
     """Wilson score interval for a binomial proportion."""
@@ -85,6 +86,40 @@ def normal_approx(k: int, n: int, z: float = 1.96) -&gt; tuple[float, float]:
 
 print(wilson(49, 50))         # (0.8950, 0.9965)  stays inside [0, 1]
 print(normal_approx(49, 50))  # (0.9412, 1.0188)  claims a rate above 100%</code></pre>
+<pre class="code" data-lang="rust"><code>/// Wilson score interval for a binomial proportion.
+fn wilson(k: u64, n: u64, z: f64) -&gt; (f64, f64) {
+    // With no data every proportion is possible; avoids dividing by zero below.
+    if n == 0 {
+        return (0.0, 1.0);
+    }
+    let (kf, nf) = (k as f64, n as f64);
+
+    let p = kf / nf;                     // observed pass rate, the point estimate
+    let denom = 1.0 + z * z / nf;        // shrink factor; tends to 1 as n grows
+
+    // The CENTRE is not p. Wilson pulls it toward 0.5 by z^2/(2n), which is what
+    // stops the interval running past 0 or 1 at extreme rates.
+    let center = (p + z * z / (2.0 * nf)) / denom;
+
+    // Half width: binomial variance p(1-p)/n plus the small-sample term z^2/(4n^2).
+    let margin = z * (p * (1.0 - p) / nf + z * z / (4.0 * nf * nf)).sqrt() / denom;
+
+    // Clamp against floating point nudging a bound past a boundary.
+    ((center - margin).max(0.0), (center + margin).min(1.0))
+}
+
+/// The default most people reach for. Shown so you can see why it fails.
+fn normal_approx(k: u64, n: u64, z: f64) -&gt; (f64, f64) {
+    let p = k as f64 / n as f64;
+    let margin = z * (p * (1.0 - p) / n as f64).sqrt();  // symmetric, no correction
+    (p - margin, p + margin)                             // no clamping: can exceed 1
+}
+
+fn main() {
+    println!("{:?}", wilson(49, 50, 1.96));         // (0.8950, 0.9965)  stays inside [0, 1]
+    println!("{:?}", normal_approx(49, 50, 1.96));  // (0.9412, 1.0188)  claims a rate above 100%
+}</code></pre>
+</div>
   <p>The normal approximation fails because it assumes the sampling distribution of \(\hat p\) is symmetric around \(\hat p\). Near a boundary it is not. Exact coverage at a true rate of 0.95 with \(n=30\): Wilson 0.94, normal approximation 0.78. At \(n=50\): 0.96 versus 0.92.</p>
 </div>
 
@@ -111,7 +146,8 @@ print(normal_approx(49, 50))  # (0.9412, 1.0188)  claims a rate above 100%</code
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Paired bootstrap and exact McNemar</span></div>
   <p>Let \(b\) be the tasks A passed and B failed, and \(c\) the reverse. Under the null hypothesis that the models are equally good, each discordant task is a fair coin flip, so \(b \sim \text{Binomial}(b+c, \tfrac12)\). The exact two-sided p value is</p>
   <div class="eq">\[ p = \min\!\left(1,\; 2\sum_{i=0}^{\min(b,c)} \binom{n_d}{i} 2^{-n_d}\right), \qquad n_d = b + c \]<span class="eqcap">Tasks both models passed or both failed never enter the formula. That is why the test has power on small suites. Use the exact version rather than the chi-squared approximation when \(n_d\) is small.</span></div>
-  <pre class="code" data-lang="python"><code>from math import comb
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>from math import comb
 
 def mcnemar_exact(a: list[int], b: list[int]) -&gt; dict:
     """Exact McNemar test on paired binary outcomes."""
@@ -129,8 +165,60 @@ def mcnemar_exact(a: list[int], b: list[int]) -&gt; dict:
 print(mcnemar_exact([1]*9 + [0]*3 + [1]*94 + [0]*94,
                     [0]*9 + [1]*3 + [1]*94 + [0]*94))
 # {'b': 9, 'c': 3, 'n_discordant': 12, 'p': 0.146}   nine to three is not enough</code></pre>
+<pre class="code" data-lang="rust"><code>struct McNemar {
+    b: usize,
+    c: usize,
+    n_discordant: usize,
+    p: f64,
+}
+
+/// P(X &lt;= k) for X ~ Binomial(n, 1/2): sum of C(n, i) over 2^n.
+fn binom_half_cdf(n: usize, k: usize) -&gt; f64 {
+    if n &lt;= 120 {
+        // Exact integers, like Python's math.comb; u128 holds C(120, 60) * 61.
+        let (mut c, mut total) = (1u128, 1u128);
+        for i in 1..=k {
+            c = c * (n - i + 1) as u128 / i as u128;
+            total += c;
+        }
+        total as f64 / 2f64.powi(n as i32)
+    } else {
+        // Large n: add the terms in log space so nothing overflows.
+        let mut log_term = -(n as f64) * std::f64::consts::LN_2;
+        let mut total = log_term.exp();
+        for i in 1..=k {
+            log_term += ((n - i + 1) as f64 / i as f64).ln();
+            total += log_term.exp();
+        }
+        total
+    }
+}
+
+/// Exact McNemar test on paired binary outcomes.
+fn mcnemar_exact(a: &amp;[u8], b: &amp;[u8]) -&gt; McNemar {
+    let b_count = a.iter().zip(b).filter(|&amp;(&amp;x, &amp;y)| x == 1 &amp;&amp; y == 0).count(); // A won, B lost
+    let c_count = a.iter().zip(b).filter(|&amp;(&amp;x, &amp;y)| x == 0 &amp;&amp; y == 1).count(); // B won, A lost
+    let n = b_count + c_count;           // discordant pairs: the effective sample
+    if n == 0 {
+        return McNemar { b: 0, c: 0, n_discordant: 0, p: 1.0 };
+    }
+    let k = b_count.min(c_count);
+    let tail = binom_half_cdf(n, k);
+    McNemar { b: b_count, c: c_count, n_discordant: n, p: (2.0 * tail).min(1.0) }
+}
+
+fn main() {
+    // 200 tasks, the models agree on 188. A wins 9 of the 12 disagreements.
+    let a: Vec&lt;u8&gt; = [vec![1; 9], vec![0; 3], vec![1; 94], vec![0; 94]].concat();
+    let b: Vec&lt;u8&gt; = [vec![0; 9], vec![1; 3], vec![1; 94], vec![0; 94]].concat();
+    let r = mcnemar_exact(&amp;a, &amp;b);
+    println!("{{'b': {}, 'c': {}, 'n_discordant': {}, 'p': {:?}}}", r.b, r.c, r.n_discordant, r.p);
+    // {'b': 9, 'c': 3, 'n_discordant': 12, 'p': 0.146}   nine to three is not enough
+}</code></pre>
+</div>
   <p>The paired bootstrap gives an interval on the difference itself. The one line that matters is resampling <i>task indices</i> and reading both models at each index.</p>
-  <pre class="code" data-lang="python"><code>import random
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import random
 
 def paired_bootstrap(a: list[int], b: list[int], iters: int = 10_000, seed: int = 0) -&gt; dict:
     """CI for the difference in pass rate between two models on the SAME tasks."""
@@ -149,13 +237,62 @@ def paired_bootstrap(a: list[int], b: list[int], iters: int = 10_000, seed: int 
     lo, hi = diffs[int(0.025 * iters)], diffs[int(0.975 * iters)]
     p_val = 2 * min(sum(d &lt;= 0 for d in diffs), sum(d &gt;= 0 for d in diffs)) / iters
     return {"observed": observed, "ci95": (lo, hi), "p": min(1.0, p_val)}</code></pre>
+<pre class="code" data-lang="rust"><code>// Small inline PRNG (SplitMix64); its draws differ from Python's random module.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn randrange(&amp;mut self, n: usize) -&gt; usize {
+        ((self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64 * n as f64) as usize
+    }
+}
+
+struct PairedBootstrap {
+    observed: f64,
+    ci95: (f64, f64),
+    p: f64,
+}
+
+/// CI for the difference in pass rate between two models on the SAME tasks.
+fn paired_bootstrap(a: &amp;[u8], b: &amp;[u8], iters: usize, seed: u64) -&gt; PairedBootstrap {
+    assert_eq!(a.len(), b.len());        // misaligned lists silently produce garbage
+    let n = a.len();
+    let nf = n as f64;
+    let mut rng = Rng(seed);
+    let rate = |x: &amp;[u8]| x.iter().map(|&amp;v| v as f64).sum::&lt;f64&gt;() / nf;
+    let observed = rate(a) - rate(b);
+
+    let mut diffs = Vec::with_capacity(iters);
+    for _ in 0..iters {
+        // Resample TASK INDICES, then read BOTH models at each index.
+        // Sampling a[] and b[] independently would destroy the pairing.
+        let sample: Vec&lt;usize&gt; = (0..n).map(|_| rng.randrange(n)).collect();
+        let sa: f64 = sample.iter().map(|&amp;i| a[i] as f64).sum();
+        let sb: f64 = sample.iter().map(|&amp;i| b[i] as f64).sum();
+        diffs.push(sa / nf - sb / nf);
+    }
+    diffs.sort_by(f64::total_cmp);
+    let (lo, hi) = (diffs[(0.025 * iters as f64) as usize], diffs[(0.975 * iters as f64) as usize]);
+    let below = diffs.iter().filter(|&amp;&amp;d| d &lt;= 0.0).count();
+    let above = diffs.iter().filter(|&amp;&amp;d| d &gt;= 0.0).count();
+    let p_val = 2.0 * below.min(above) as f64 / iters as f64;
+    PairedBootstrap { observed, ci95: (lo, hi), p: p_val.min(1.0) }
+}</code></pre>
+</div>
 </div>
 
 <div class="callout example"><span class="tag">Worked problem</span><div>
   <p><b>Two models, 200 shared tasks. Ship or not?</b> Model A passed 124 of 200. Model B passed 130 of 200. Product wants to ship B.</p>
   <p>Wilson intervals: A is 0.551 to 0.684, B is 0.582 to 0.713. They overlap heavily, and the instinct is "no significant difference". That instinct uses the wrong method. The tasks were shared, so treating the models as independent throws away most of the power.</p>
   <p>The right analysis looks at the discordant pairs. Suppose the models agreed on 170 tasks and split the other 30.</p>
-  <pre class="code" data-lang="python"><code>from math import comb
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>from math import comb
 
 def mcnemar_exact(b, c):
     """b = tasks B won and A lost. c = the reverse."""
@@ -168,6 +305,28 @@ def mcnemar_exact(b, c):
 
 print(mcnemar_exact(18, 12))   # 0.3616  not significant
 print(mcnemar_exact(6, 0))     # 0.0312  significant</code></pre>
+<pre class="code" data-lang="rust"><code>/// b = tasks B won and A lost. c = the reverse.
+fn mcnemar_exact(b: u32, c: u32) -&gt; f64 {
+    let n = b + c;
+    if n == 0 {
+        return 1.0;
+    }
+    let k = b.min(c);
+    // sum of C(n, i) for i in 0..=k, in exact integers (fine up to n = 120)
+    let (mut comb, mut sum) = (1u128, 1u128);
+    for i in 1..=k {
+        comb = comb * (n - i + 1) as u128 / i as u128;
+        sum += comb;
+    }
+    let tail = sum as f64 / 2f64.powi(n as i32);
+    (2.0 * tail).min(1.0)
+}
+
+fn main() {
+    println!("{:?}", mcnemar_exact(18, 12));   // 0.3616  not significant
+    println!("{:?}", mcnemar_exact(6, 0));     // 0.0312  significant
+}</code></pre>
+</div>
   <p>Now suppose instead the models disagreed on only 6 tasks and B won all 6. B still beats A by 6 tasks, so the headline is the same 124 versus 130, but now p = 0.03. Same 3-point headline, opposite conclusions: 18 to 12 is noise, 6 to 0 is real. The pass rates alone cannot tell you which world you are in.</p>
 </div></div>
 
@@ -214,7 +373,8 @@ print(mcnemar_exact(6, 0))     # 0.0312  significant</code></pre>
 
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Power by simulation</span></div>
   <p>Simulation is the most defensible way to answer "how many tasks?", because the only assumptions are the ones you write into the simulator: base rate, effect, and how correlated the two models are per task.</p>
-  <pre class="code" data-lang="python"><code>import random
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import random
 
 def mde_by_simulation(base_rate: float, n_tasks: int, correlation: float = 0.8,
                       alpha: float = 0.05, power_target: float = 0.8,
@@ -251,6 +411,84 @@ def mde_by_simulation(base_rate: float, n_tasks: int, correlation: float = 0.8,
         else:
             lo = mid
     return hi</code></pre>
+<pre class="code" data-lang="rust"><code>// Small inline PRNG (SplitMix64); its draws differ from Python's random module,
+// so the effect this finds can differ from the Python version in the third digit.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn random(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64
+    }
+}
+
+// The exact McNemar p value from the paired-test snippet above, repeated so
+// this one compiles on its own (summed in log space, so any n works).
+fn mcnemar_exact_p(a: &amp;[u8], b: &amp;[u8]) -&gt; f64 {
+    let b_count = a.iter().zip(b).filter(|&amp;(&amp;x, &amp;y)| x == 1 &amp;&amp; y == 0).count();
+    let c_count = a.iter().zip(b).filter(|&amp;(&amp;x, &amp;y)| x == 0 &amp;&amp; y == 1).count();
+    let n = b_count + c_count;
+    if n == 0 {
+        return 1.0;
+    }
+    // tail = P(X &lt;= min(b, c)) for X ~ Binomial(n, 1/2), summed in log space
+    let mut log_term = -(n as f64) * std::f64::consts::LN_2;
+    let mut tail = log_term.exp();
+    for i in 1..=b_count.min(c_count) {
+        log_term += ((n - i + 1) as f64 / i as f64).ln();
+        tail += log_term.exp();
+    }
+    (2.0 * tail).min(1.0)
+}
+
+/// Smallest true effect detectable at 80% power on n_tasks paired examples.
+///
+/// correlation approximates how much the two models agree per task. Higher
+/// correlation gives a tighter paired comparison and a smaller detectable effect.
+fn mde_by_simulation(base_rate: f64, n_tasks: usize, correlation: f64,
+                     alpha: f64, power_target: f64, trials: usize, seed: u64) -&gt; f64 {
+    let mut rng = Rng(seed);
+
+    let mut power_at = |effect: f64| -&gt; f64 {
+        let mut hits = 0;
+        for _ in 0..trials {
+            let (mut a, mut b) = (Vec::with_capacity(n_tasks), Vec::with_capacity(n_tasks));
+            for _ in 0..n_tasks {
+                let pa = base_rate + effect;
+                if rng.random() &lt; correlation {          // shared difficulty draw
+                    let u = rng.random();
+                    a.push((u &lt; pa) as u8);
+                    b.push((u &lt; base_rate) as u8);
+                } else {                                 // independent draws
+                    a.push((rng.random() &lt; pa) as u8);
+                    b.push((rng.random() &lt; base_rate) as u8);
+                }
+            }
+            if mcnemar_exact_p(&amp;a, &amp;b) &lt; alpha {
+                hits += 1;
+            }
+        }
+        hits as f64 / trials as f64
+    };
+
+    let (mut lo, mut hi) = (0.0, 0.30);
+    for _ in 0..12 {                        // binary search on the effect size
+        let mid = (lo + hi) / 2.0;
+        if power_at(mid) &gt;= power_target {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    hi
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-power"><div class="wtitle">Power and sample size</div><div class="wsub">How many tasks do you actually need. Model agreement is the slider people forget: the more two models agree, the fewer discordant pairs carry information, and the more tasks you need to separate them. Drag it up and watch the curve collapse.</div><div class="controls"><div class="ctl"><label data-lb>base rate</label><input type="range" data-b min="0.1" max="0.9" step="0.05" value="0.5"></div><div class="ctl"><label data-le>true effect</label><input type="range" data-e min="0.005" max="0.15" step="0.005" value="0.03"></div><div class="ctl"><label data-lr>model agreement</label><input type="range" data-r min="0.0" max="0.95" step="0.05" value="0.8"></div></div><canvas></canvas><div class="readout" data-out></div></div>
@@ -267,7 +505,8 @@ def mde_by_simulation(base_rate: float, n_tasks: int, correlation: float = 0.8,
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Closed-form sample size for a paired binary comparison</span></div>
   <p>Let \(p_d\) be the fraction of tasks where the models disagree and \(\pi\) the share of those disagreements the better model wins. Testing \(\pi = \tfrac12\) on the discordant pairs needs</p>
   <div class="eq">\[ n_d = \frac{\left(z_{1-\alpha/2}\cdot\tfrac12 + z_{1-\beta}\sqrt{\pi(1-\pi)}\right)^2}{\left(\pi-\tfrac12\right)^2}, \qquad n = \frac{n_d}{p_d} \]<span class="eqcap">The difference in pass rates is \(p_d(2\pi-1)\). For 95% confidence and 80% power, \(z_{1-\alpha/2} = 1.96\) and \(z_{1-\beta} = 0.84\).</span></div>
-  <pre class="code" data-lang="python"><code>import math
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
 from statistics import NormalDist
 
 def paired_sample_size(p_discordant: float, win_share: float = 0.7,
@@ -288,6 +527,67 @@ def paired_sample_size(p_discordant: float, win_share: float = 0.7,
 
 print(paired_sample_size(0.12, 0.70))   # 389   models disagree on 12% of tasks
 print(paired_sample_size(0.04, 0.70))   # 1166  same models after they converge</code></pre>
+<pre class="code" data-lang="rust"><code>// Horner evaluation, highest coefficient first.
+fn poly(coeffs: &amp;[f64], r: f64) -&gt; f64 {
+    coeffs.iter().fold(0.0, |acc, &amp;c| acc * r + c)
+}
+
+// Inverse standard normal CDF: Wichura's AS241, the algorithm behind
+// Python's NormalDist().inv_cdf, so the results agree to the last bit.
+fn inv_cdf(p: f64) -&gt; f64 {
+    let q = p - 0.5;
+    if q.abs() &lt;= 0.425 {
+        let r = 0.180625 - q * q;
+        let num = poly(&amp;[2.5090809287301226727e+3, 3.3430575583588128105e+4, 6.7265770927008700853e+4,
+                         4.5921953931549871457e+4, 1.3731693765509461125e+4, 1.9715909503065514427e+3,
+                         1.3314166789178437745e+2, 3.3871328727963666080e+0], r) * q;
+        let den = poly(&amp;[5.2264952788528545610e+3, 2.8729085735721942674e+4, 3.9307895800092710610e+4,
+                         2.1213794301586595867e+4, 5.3941960214247511077e+3, 6.8718700749205790830e+2,
+                         4.2313330701600911252e+1, 1.0], r);
+        return num / den;
+    }
+    let r = if q &lt;= 0.0 { p } else { 1.0 - p };
+    let r = (-r.ln()).sqrt();
+    let (num, den) = if r &lt;= 5.0 {
+        let r = r - 1.6;
+        (poly(&amp;[7.7454501427834140764e-4, 2.2723844989269184583e-2, 2.4178072517745061177e-1,
+                1.2704582524523683826e+0, 3.6478483247632046050e+0, 5.7694972214606914055e+0,
+                4.6303378461565452959e+0, 1.4234371107496835773e+0], r),
+         poly(&amp;[1.0507500716444168432e-9, 5.4759380849953449460e-4, 1.5198666563616457197e-2,
+                1.4810397642748007459e-1, 6.8976733498510000455e-1, 1.6763848301838038494e+0,
+                2.0531916266377588219e+0, 1.0], r))
+    } else {
+        let r = r - 5.0;
+        (poly(&amp;[2.0103343992922881327e-7, 2.7115555687434875782e-5, 1.2426609473880784386e-3,
+                2.6532189526576123093e-2, 2.9656057182850489123e-1, 1.7848265399172913358e+0,
+                5.4637849111641143699e+0, 6.6579046435011037772e+0], r),
+         poly(&amp;[2.0442631033899397856e-15, 1.4215117583164458887e-7, 1.8463183175100546818e-5,
+                7.8686913114561325910e-4, 1.4875361290850614853e-2, 1.3692988092273580531e-1,
+                5.9983220655588793769e-1, 1.0], r))
+    };
+    if q &lt; 0.0 { -num / den } else { num / den }
+}
+
+/// Tasks needed for a paired binary comparison.
+///
+/// p_discordant: fraction of tasks where the two models disagree.
+/// win_share:    of those disagreements, the fraction the better model wins.
+fn paired_sample_size(p_discordant: f64, win_share: f64, alpha: f64, power: f64) -&gt; u64 {
+    let z_a = inv_cdf(1.0 - alpha / 2.0);
+    let z_b = inv_cdf(power);
+    let d = win_share - 0.5;
+    if d &lt;= 0.0 {
+        return 1_000_000_000;
+    }
+    let n_discordant = (0.5 * z_a + z_b * (win_share * (1.0 - win_share)).sqrt()).powi(2) / d.powi(2);
+    (n_discordant / p_discordant).ceil() as u64
+}
+
+fn main() {
+    println!("{}", paired_sample_size(0.12, 0.70, 0.05, 0.8));   // 389   models disagree on 12% of tasks
+    println!("{}", paired_sample_size(0.04, 0.70, 0.05, 0.8));   // 1166  same models after they converge
+}</code></pre>
+</div>
 </div>
 
 <div class="callout example"><span class="tag">Worked problem</span><div>
@@ -347,7 +647,8 @@ print(paired_sample_size(0.04, 0.70))   # 1166  same models after they converge<
   <p><b>Bonferroni</b> controls the chance of any false positive (the family-wise error rate) by testing each of \(m\) hypotheses at \(\alpha/m\). It is simple and very conservative on large suites.</p>
   <p><b>Benjamini–Hochberg</b> controls the false discovery rate, the expected share of discoveries that are false. Sort the p values \(p_{(1)} \le \dots \le p_{(m)}\) and find</p>
   <div class="eq">\[ k^\ast = \max\left\{ k : p_{(k)} \le \frac{k}{m}\, q \right\} \]<span class="eqcap">Reject the hypotheses with the \(k^\ast\) smallest p values, including any below \(k^\ast\) that individually failed the check. The threshold loosens as rank grows, which keeps power on a large suite.</span></div>
-  <pre class="code" data-lang="python"><code>def benjamini_hochberg(p_values: list[float], fdr: float = 0.05) -&gt; list[bool]:
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def benjamini_hochberg(p_values: list[float], fdr: float = 0.05) -&gt; list[bool]:
     """Control the false discovery rate across a suite of benchmarks."""
     m = len(p_values)
     order = sorted(range(m), key=lambda i: p_values[i])   # indices, ascending p
@@ -366,6 +667,32 @@ print(paired_sample_size(0.04, 0.70))   # 1166  same models after they converge<
         if rank &lt;= max_rank:
             keep[i] = True
     return keep</code></pre>
+<pre class="code" data-lang="rust"><code>/// Control the false discovery rate across a suite of benchmarks.
+fn benjamini_hochberg(p_values: &amp;[f64], fdr: f64) -&gt; Vec&lt;bool&gt; {
+    let m = p_values.len();
+    let mut order: Vec&lt;usize&gt; = (0..m).collect();          // indices, ascending p
+    order.sort_by(|&amp;i, &amp;j| p_values[i].total_cmp(&amp;p_values[j]));
+
+    // PASS ONE: the largest rank whose p value clears rank/m * fdr.
+    // Scan ALL ranks; a later rank can pass after an earlier one fails.
+    let mut max_rank = 0;
+    for (rank, &amp;i) in (1..).zip(&amp;order) {
+        if p_values[i] &lt;= fdr * rank as f64 / m as f64 {
+            max_rank = rank;
+        }
+    }
+
+    // PASS TWO: everything up to that rank is a discovery (the step-up rule,
+    // and the part people most often implement wrong).
+    let mut keep = vec![false; m];
+    for (rank, &amp;i) in (1..).zip(&amp;order) {
+        if rank &lt;= max_rank {
+            keep[i] = true;
+        }
+    }
+    keep
+}</code></pre>
+</div>
 </div>
 
 <div class="callout example"><span class="tag">Worked problem</span><div>
@@ -418,7 +745,8 @@ print(paired_sample_size(0.04, 0.70))   # 1166  same models after they converge<
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The unbiased pass@k estimator</span></div>
   <p>Sample \(n \ge k\) completions per task and count the \(c\) that pass. The unbiased estimator from the Codex paper (Chen et al. 2021) is the probability that a random subset of \(k\) contains at least one pass, averaged over tasks:</p>
   <div class="eq">\[ \widehat{\text{pass@}k} = \mathbb{E}_{\text{tasks}}\left[ 1 - \frac{\binom{n-c}{k}}{\binom{n}{k}} \right] \]<span class="eqcap">Sampling exactly \(k\) and checking is unbiased but high variance; sampling \(n\) and plugging \(c/n\) into \(1-(1-c/n)^k\) is biased. The combinatorial form uses all \(n\) samples without bias.</span></div>
-  <pre class="code" data-lang="python"><code>import numpy as np
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import numpy as np
 
 def pass_at_k(n: int, c: int, k: int) -&gt; float:
     """Unbiased estimate of pass@k given n samples of which c passed."""
@@ -433,6 +761,24 @@ def suite_pass_at_k(results: dict[str, tuple[int, int]], k: int) -&gt; float:
     """results maps task_id -&gt; (n_samples, n_passed). Average PER TASK,
     so one heavily sampled task cannot dominate the number."""
     return sum(pass_at_k(n, c, k) for n, c in results.values()) / len(results)</code></pre>
+<pre class="code" data-lang="rust"><code>use std::collections::HashMap;
+
+/// Unbiased estimate of pass@k given n samples of which c passed.
+fn pass_at_k(n: u64, c: u64, k: u64) -&gt; f64 {
+    // Fewer than k failures: any k samples include a pass.
+    if n - c &lt; k {
+        return 1.0;
+    }
+    // 1 - C(n-c, k)/C(n, k), computed as a product so large n does not overflow.
+    1.0 - (n - c + 1..=n).map(|i| 1.0 - k as f64 / i as f64).product::&lt;f64&gt;()
+}
+
+/// results maps task_id -&gt; (n_samples, n_passed). Average PER TASK,
+/// so one heavily sampled task cannot dominate the number.
+fn suite_pass_at_k(results: &amp;HashMap&lt;String, (u64, u64)&gt;, k: u64) -&gt; f64 {
+    results.values().map(|&amp;(n, c)| pass_at_k(n, c, k)).sum::&lt;f64&gt;() / results.len() as f64
+}</code></pre>
+</div>
 </div>
 
 <!-- ============ 7. more than two models ============ -->
@@ -460,7 +806,8 @@ def suite_pass_at_k(results: dict[str, tuple[int, int]], k: int) -&gt; float:
   <h4>Cochran's Q</h4>
   <p>With \(k\) models, \(G_j\) the passes for model \(j\), and \(L_i\) the passes on task \(i\):</p>
   <div class="eq">\[ Q = (k-1)\,\frac{k\sum_j G_j^2 - \left(\sum_j G_j\right)^2}{k\sum_i L_i - \sum_i L_i^2} \;\sim\; \chi^2_{k-1} \text{ under } H_0 \]<span class="eqcap">Tasks every model passed (\(L_i = k\)) or failed (\(L_i = 0\)) contribute nothing to the denominator: the same "only disagreement counts" logic as McNemar.</span></div>
-  <pre class="code" data-lang="python"><code>import random
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import random
 
 def cochran_q(X: list[list[int]]) -&gt; float:
     """X[i][j] = 1 if model j passed task i. Paired across k models."""
@@ -486,11 +833,65 @@ def permutation_p(X, stat_fn, iters: int = 5000, seed: int = 0) -&gt; tuple[floa
         if stat_fn(shuffled) &gt;= observed:
             hits += 1
     return observed, (hits + 1) / (iters + 1)   # +1 avoids ever reporting p = 0</code></pre>
+<pre class="code" data-lang="rust"><code>// Small inline PRNG (SplitMix64); its draws differ from Python's random module.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn randrange(&amp;mut self, n: usize) -&gt; usize {
+        ((self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64 * n as f64) as usize
+    }
+    // Fisher–Yates, walking down from the end like random.shuffle
+    fn shuffle&lt;T&gt;(&amp;mut self, v: &amp;mut [T]) {
+        for i in (1..v.len()).rev() {
+            v.swap(i, self.randrange(i + 1));
+        }
+    }
+}
+
+/// X[i][j] = 1 if model j passed task i. Paired across k models.
+fn cochran_q(x: &amp;[Vec&lt;u8&gt;]) -&gt; f64 {
+    let (n, k) = (x.len(), x[0].len() as i64);
+    let g: Vec&lt;i64&gt; = (0..x[0].len()).map(|j| (0..n).map(|i| x[i][j] as i64).sum()).collect(); // per model totals
+    let l: Vec&lt;i64&gt; = x.iter().map(|row| row.iter().map(|&amp;v| v as i64).sum()).collect();       // per task totals
+    let g_sum: i64 = g.iter().sum();
+    let num = (k - 1) * (k * g.iter().map(|v| v * v).sum::&lt;i64&gt;() - g_sum * g_sum);
+    let den = k * l.iter().sum::&lt;i64&gt;() - l.iter().map(|v| v * v).sum::&lt;i64&gt;();
+    if den != 0 { num as f64 / den as f64 } else { 0.0 }   // den == 0 when every task is unanimous
+}
+
+/// p value with no distribution assumptions.
+fn permutation_p(x: &amp;[Vec&lt;u8&gt;], stat_fn: impl Fn(&amp;[Vec&lt;u8&gt;]) -&gt; f64,
+                 iters: usize, seed: u64) -&gt; (f64, f64) {
+    let mut rng = Rng(seed);
+    let observed = stat_fn(x);
+    let mut hits = 0;
+    for _ in 0..iters {
+        let mut shuffled = Vec::with_capacity(x.len());
+        for row in x {
+            let mut r = row.clone();
+            rng.shuffle(&amp;mut r);   // shuffle WITHIN a task: models are exchangeable
+            shuffled.push(r);      // under H0, but tasks differ in difficulty
+        }
+        if stat_fn(&amp;shuffled) &gt;= observed {
+            hits += 1;
+        }
+    }
+    (observed, (hits + 1) as f64 / (iters + 1) as f64)   // +1 avoids ever reporting p = 0
+}</code></pre>
+</div>
   <div class="callout warn"><span class="tag">Watch out</span><div>Cochran's Q answers "are these models different at all". It does not say which. Running it and then reporting the winner is the multiple comparisons mistake in a different form. Follow a significant Q with pairwise McNemar tests and Benjamini–Hochberg across the pairs.</div></div>
 
   <h4>One-way ANOVA, for continuous scores</h4>
   <div class="eq">\[ F = \frac{SS_\text{between}/(g-1)}{SS_\text{within}/(N-g)}, \qquad \eta^2 = \frac{SS_\text{between}}{SS_\text{between}+SS_\text{within}} \]<span class="eqcap">\(F\) is signal over noise. \(\eta^2\) is the effect size: the share of variance explained by group membership. Always report \(\eta^2\), because \(F\) grows with sample size and can be large for a difference nobody would notice.</span></div>
-  <pre class="code" data-lang="python"><code>def one_way_anova(groups: list[list[float]]) -&gt; dict:
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def one_way_anova(groups: list[list[float]]) -&gt; dict:
     g = len(groups)
     N = sum(len(x) for x in groups)
     grand = sum(sum(x) for x in groups) / N
@@ -500,11 +901,37 @@ def permutation_p(X, stat_fn, iters: int = 5000, seed: int = 0) -&gt; tuple[floa
     ms_b, ms_w = ss_between / df_b, ss_within / df_w
     return {"F": ms_b / ms_w if ms_w else float("inf"), "df": (df_b, df_w),
             "eta_squared": ss_between / (ss_between + ss_within)}</code></pre>
+<pre class="code" data-lang="rust"><code>struct Anova {
+    f: f64,
+    df: (usize, usize),
+    eta_squared: f64,
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+fn one_way_anova(groups: &amp;[Vec&lt;f64&gt;]) -&gt; Anova {
+    let g = groups.len();
+    let big_n: usize = groups.iter().map(|x| x.len()).sum();
+    let grand = groups.iter().map(|x| x.iter().sum::&lt;f64&gt;()).sum::&lt;f64&gt;() / big_n as f64;
+    let ss_between: f64 = groups.iter().map(|x| x.len() as f64 * (mean(x) - grand).powi(2)).sum();                // signal
+    let ss_within: f64 = groups.iter().map(|x| { let m = mean(x); x.iter().map(|v| (v - m).powi(2)).sum::&lt;f64&gt;() }).sum(); // noise
+    let (df_b, df_w) = (g - 1, big_n - g);
+    let (ms_b, ms_w) = (ss_between / df_b as f64, ss_within / df_w as f64);
+    Anova {
+        f: if ms_w != 0.0 { ms_b / ms_w } else { f64::INFINITY },
+        df: (df_b, df_w),
+        eta_squared: ss_between / (ss_between + ss_within),
+    }
+}</code></pre>
+</div>
 
   <h4>Variance components: more tasks or more samples</h4>
   <p>Run each of \(n\) tasks \(r\) times. Split the variance into a task part \(\sigma^2_\text{task}\) and a run-to-run part \(\sigma^2_\text{samp}\). The standard error of the suite mean is</p>
   <div class="eq">\[ \mathrm{SE} = \sqrt{\frac{\sigma^2_\text{task}}{n} + \frac{\sigma^2_\text{samp}}{n\,r}} \]<span class="eqcap">Adding runs only shrinks the second term. Adding tasks shrinks both. The ratio \(\sigma^2_\text{task}/(\sigma^2_\text{task}+\sigma^2_\text{samp})\) is the intraclass correlation, which reappears as the design effect in <a href="#intervals">the next chapter</a>.</span></div>
-  <pre class="code" data-lang="python"><code>from statistics import mean
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>from statistics import mean
 import math
 
 def variance_components(scores: list[list[float]]) -&gt; dict:
@@ -528,6 +955,49 @@ def variance_components(scores: list[list[float]]) -&gt; dict:
 
 # Illustrative, 60 tasks x 5 runs: var_task 0.063, var_sampling 0.188
 #   SE now 0.0409 | double the tasks 0.0290 | double the samples 0.0369</code></pre>
+<pre class="code" data-lang="rust"><code>struct VarianceComponents {
+    var_task: f64,
+    var_sampling: f64,
+    icc: f64,
+    se_current: f64,
+    se_double_tasks: f64,
+    se_double_samples: f64,
+}
+
+fn mean(x: &amp;[f64]) -&gt; f64 {
+    x.iter().sum::&lt;f64&gt;() / x.len() as f64
+}
+
+/// scores[i] = r repeated runs of task i at identical settings.
+fn variance_components(scores: &amp;[Vec&lt;f64&gt;]) -&gt; VarianceComponents {
+    let (n, r) = (scores.len(), scores[0].len());
+    let (nf, rf) = (n as f64, r as f64);
+    let task_means: Vec&lt;f64&gt; = scores.iter().map(|s| mean(s)).collect();
+    let grand = mean(&amp;task_means);
+    // Between-task mean square, on the same scale as the within term.
+    let ms_between = rf * task_means.iter().map(|m| (m - grand).powi(2)).sum::&lt;f64&gt;() / (nf - 1.0);
+    // Within-task spread: pure run-to-run noise, difficulty is held fixed.
+    let ms_within = scores.iter().zip(&amp;task_means)
+        .map(|(s, m)| s.iter().map(|x| (x - m).powi(2)).sum::&lt;f64&gt;())
+        .sum::&lt;f64&gt;() / (nf * (rf - 1.0));
+    let var_task = ((ms_between - ms_within) / rf).max(0.0);   // noise can push it negative
+    let var_sampling = ms_within;
+
+    let se = |n_tasks: f64, n_reps: f64| (var_task / n_tasks + var_sampling / (n_tasks * n_reps)).sqrt();
+
+    VarianceComponents {
+        var_task,
+        var_sampling,
+        icc: if var_task + var_sampling != 0.0 { var_task / (var_task + var_sampling) } else { 0.0 },
+        se_current: se(nf, rf),
+        se_double_tasks: se(2.0 * nf, rf),
+        se_double_samples: se(nf, 2.0 * rf),
+    }
+}
+
+// Illustrative, 60 tasks x 5 runs: var_task 0.063, var_sampling 0.188
+//   SE now 0.0409 | double the tasks 0.0290 | double the samples 0.0369</code></pre>
+</div>
 </div>
 
 <div class="callout ask"><span class="tag">Principal asks</span><div>

@@ -116,6 +116,34 @@
   document.addEventListener('input', function (e) { if (e.target.type === 'range') fill(e.target); }, true);
   document.addEventListener('click', function () { requestAnimationFrame(fillAll); }, true);
 
+  /* ---------- code tabs: one language choice applies to every snippet ---------- */
+  var LANGS = { python: 'Python', rust: 'Rust' };
+  var ctabs = [];
+  $$('.codetabs').forEach(function (box) {
+    var pres = $$(':scope > pre.code', box); if (pres.length < 2) return;
+    var bar = document.createElement('div'); bar.className = 'cbar';
+    var list = document.createElement('div'); list.className = 'clist'; list.setAttribute('role', 'tablist'); bar.appendChild(list);
+    var note = document.createElement('span'); note.className = 'cnote'; bar.appendChild(note);
+    pres.forEach(function (pre) {
+      var lang = pre.getAttribute('data-lang') || 'code', b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'tab'); b.dataset.lang = lang; b.textContent = LANGS[lang] || lang;
+      b.addEventListener('click', function () { setLang(lang); });
+      list.appendChild(b);
+    });
+    box.insertBefore(bar, pres[0]);
+    ctabs.push({ box: box, pres: pres, btns: $$('button', list), note: note });
+  });
+  function setLang(lang) {
+    ctabs.forEach(function (c) {
+      var has = c.pres.some(function (p) { return p.getAttribute('data-lang') === lang; }), l = has ? lang : c.pres[0].getAttribute('data-lang');
+      c.pres.forEach(function (p) { var on = p.getAttribute('data-lang') === l; p.hidden = !on; p.classList.toggle('on', on); });
+      c.btns.forEach(function (b) { b.setAttribute('aria-selected', b.dataset.lang === l ? 'true' : 'false'); });
+      c.note.textContent = l === 'rust' ? 'std only · rustc main.rs' : '';
+    });
+    store('guide-code', lang);
+  }
+  var savedLang = store('guide-code'); setLang(savedLang && LANGS[savedLang] ? savedLang : 'python');
+
   /* ---------- code copy ---------- */
   $$('pre.code').forEach(function (pre) {
     var b = document.createElement('button'); b.type = 'button'; b.className = 'copy noprint'; b.textContent = 'Copy';

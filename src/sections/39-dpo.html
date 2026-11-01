@@ -99,7 +99,8 @@
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A weighted push and pull</span></div>
   <div class="eq">\[ \nabla_\theta \mathcal{L}_{\text{DPO}} = -\beta\, \mathbb{E}\Big[\underbrace{\sigma\big(\hat r_\theta(x, y_l) - \hat r_\theta(x, y_w)\big)}_{\text{high when the model ranks the pair wrongly}}\Big(\nabla_\theta \log \pi_\theta(y_w\mid x) - \nabla_\theta \log \pi_\theta(y_l\mid x)\Big)\Big] \]<span class="eqcap">Raise the chosen response, lower the rejected one, weighted by how wrong the implicit reward currently is. Pairs already ranked correctly by a wide margin get small weight but never zero.</span></div>
   <p>The gradient only constrains the <b>difference</b> between the two log-likelihoods. Nothing in it says the chosen response's probability must rise. That single fact explains the most important DPO failure mode.</p>
-  <pre class="code" data-lang="python"><code>import torch.nn.functional as F
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import torch.nn.functional as F
 
 def dpo_loss(pi_logp_w, pi_logp_l, ref_logp_w, ref_logp_l, beta=0.1):
     """Each argument: summed log-prob of the full response under the policy or the frozen
@@ -111,6 +112,42 @@ def dpo_loss(pi_logp_w, pi_logp_l, ref_logp_w, ref_logp_l, beta=0.1):
 
 # two pairs: the first is ranked correctly (h = 2.0), the second wrongly (h = -2.5)
 # loss = 0.712; per-pair gradient weights sigma(-beta*h) = 0.45 and 0.562</code></pre>
+<pre class="code" data-lang="rust"><code>// Plain Rust, no ML framework: the same math on small vectors.
+
+fn softplus(x: f64) -&gt; f64 {
+    // log(1 + e^x) without overflow: max(x, 0) + log(1 + e^-|x|)
+    x.max(0.0) + (-x.abs()).exp().ln_1p()
+}
+
+fn sigmoid(x: f64) -&gt; f64 {
+    1.0 / (1.0 + (-x).exp())
+}
+
+/// Each argument: summed log-prob of the full response under the policy or the frozen
+/// reference, one per pair. Sum only over response tokens, never the prompt.
+fn dpo_loss(pi_logp_w: &amp;[f64], pi_logp_l: &amp;[f64], ref_logp_w: &amp;[f64], ref_logp_l: &amp;[f64], beta: f64) -&gt; (f64, f64) {
+    let n = pi_logp_w.len() as f64;
+    let h: Vec&lt;f64&gt; = (0..pi_logp_w.len())
+        .map(|i| (pi_logp_w[i] - ref_logp_w[i]) - (pi_logp_l[i] - ref_logp_l[i])) // log-ratio margin in nats
+        .collect();
+    let loss = h.iter().map(|&amp;x| softplus(-beta * x)).sum::&lt;f64&gt;() / n;    // == -log sigmoid(beta * h)
+    let reward_acc = h.iter().filter(|&amp;&amp;x| x &gt; 0.0).count() as f64 / n; // "implicit reward accuracy"
+    (loss, reward_acc)
+}
+
+fn round_to(x: f64, digits: usize) -&gt; f64 {
+    // like Python's round(x, n): format the exact value, then read it back
+    format!("{:.*}", digits, x).parse().unwrap()
+}
+
+fn main() {
+    // two pairs: the first is ranked correctly (h = 2.0), the second wrongly (h = -2.5)
+    let (loss, acc) = dpo_loss(&amp;[-10.0, -20.0], &amp;[-12.0, -15.0], &amp;[-11.0, -19.0], &amp;[-11.0, -16.5], 0.1);
+    println!("{:.3} {:?}", loss, acc); // 0.712 0.5
+    let weights: Vec&lt;f64&gt; = [2.0, -2.5].iter().map(|&amp;h: &amp;f64| round_to(sigmoid(-0.1 * h), 3)).collect();
+    println!("{:?}", weights); // [0.45, 0.562]  per-pair gradient weights sigma(-beta*h)
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-dp-loss">

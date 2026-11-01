@@ -45,7 +45,8 @@
   <p><b>Momentum</b> keeps a running average of past gradients, so consistent directions accelerate and oscillating ones cancel: \(v_{t+1} = \beta v_t + \nabla\mathcal{L}\), \(\theta_{t+1} = \theta_t - \eta v_{t+1}\).</p>
   <p><b>Adam</b> (Kingma and Ba, 2015) also tracks the average squared gradient per parameter and divides by its square root, so every parameter takes steps of roughly the same size regardless of its gradient scale:</p>
   <div class="eq">\[ m_t = \beta_1 m_{t-1} + (1-\beta_1) g_t,\quad v_t = \beta_2 v_{t-1} + (1-\beta_2) g_t^2,\quad \theta_{t} = \theta_{t-1} - \eta\left(\frac{\hat m_t}{\sqrt{\hat v_t} + \epsilon} + \lambda\,\theta_{t-1}\right) \]<span class="eqcap">\(\hat m, \hat v\) are bias-corrected: divide by \(1-\beta^t\). The \(\lambda\theta\) term is decoupled weight decay, the "W" in AdamW (Loshchilov and Hutter, 2019). Typical LLM settings: \(\beta_1 = 0.9\), \(\beta_2 = 0.95\), weight decay 0.1.</span></div>
-  <pre class="code" data-lang="python"><code>import numpy as np
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import numpy as np
 
 def adamw_step(theta, g, m, v, t, lr=3e-4, b1=0.9, b2=0.95, eps=1e-8, wd=0.1):
     m = b1 * m + (1 - b1) * g                 # first moment: direction
@@ -58,6 +59,40 @@ def adamw_step(theta, g, m, v, t, lr=3e-4, b1=0.9, b2=0.95, eps=1e-8, wd=0.1):
 theta, m, v = np.array([1.0, -2.0]), np.zeros(2), np.zeros(2)
 theta, m, v = adamw_step(theta, np.array([0.5, 40.0]), m, v, t=1)
 print(theta)   # both coordinates move by about lr, despite an 80x gradient difference</code></pre>
+<pre class="code" data-lang="rust"><code>/// AdamW hyperparameters; Default gives the Python's keyword defaults.
+struct AdamW {
+    lr: f64,
+    b1: f64,
+    b2: f64,
+    eps: f64,
+    wd: f64,
+}
+
+impl Default for AdamW {
+    fn default() -&gt; Self {
+        AdamW { lr: 3e-4, b1: 0.9, b2: 0.95, eps: 1e-8, wd: 0.1 }
+    }
+}
+
+/// Updates theta, m and v in place, one coordinate at a time.
+fn adamw_step(theta: &amp;mut [f64], g: &amp;[f64], m: &amp;mut [f64], v: &amp;mut [f64], t: i32, h: &amp;AdamW) {
+    for i in 0..theta.len() {
+        m[i] = h.b1 * m[i] + (1.0 - h.b1) * g[i]; // first moment: direction
+        v[i] = h.b2 * v[i] + (1.0 - h.b2) * g[i] * g[i]; // second moment: per-parameter scale
+        let m_hat = m[i] / (1.0 - h.b1.powi(t)); // bias correction for the zero init
+        let v_hat = v[i] / (1.0 - h.b2.powi(t));
+        theta[i] -= h.lr * (m_hat / (v_hat.sqrt() + h.eps) + h.wd * theta[i]); // decoupled decay
+    }
+}
+
+fn main() {
+    let (mut theta, mut m, mut v) = ([1.0, -2.0], [0.0; 2], [0.0; 2]);
+    adamw_step(&amp;mut theta, &amp;[0.5, 40.0], &amp;mut m, &amp;mut v, 1, &amp;AdamW::default());
+    // printed the way numpy prints the array
+    let shown: Vec&lt;String&gt; = theta.iter().map(|x| format!("{x:8.5}")).collect();
+    println!("[{}]", shown.join(" ")); // both coordinates move by about lr, despite an 80x gradient difference
+}</code></pre>
+</div>
   <p>Newer optimisers aim to beat AdamW per token. Muon (2024), which orthogonalises the update for matrix parameters, was used at scale in Moonshot's Kimi K2 (2025). AdamW remains the default reference.</p>
 </div>
 
@@ -154,7 +189,8 @@ print(theta)   # both coordinates move by about lr, despite an 80x gradient diff
   <div class="eq">\[ \underbrace{(2+2+K)\Psi}_{\text{stage 0}},\quad \underbrace{4\Psi + \tfrac{K\Psi}{N_d}}_{\text{stage 1}},\quad \underbrace{2\Psi + \tfrac{(2+K)\Psi}{N_d}}_{\text{stage 2}},\quad \underbrace{\tfrac{(4+K)\Psi}{N_d}}_{\text{stage 3}} \]<span class="eqcap">2 bytes each for bf16 weights and gradients. Stage 3 is what PyTorch FSDP calls full sharding.</span></div>
   <p>A dense transformer spends about \(6\Psi\) FLOPs per training token (2 forward, 4 backward), ignoring the attention term that grows with context length. So:</p>
   <div class="eq">\[ \text{MFU} = \frac{6\Psi \cdot \text{tokens per second}}{N_{\text{GPU}} \cdot \text{peak FLOP/s}} \]</div>
-  <pre class="code" data-lang="python"><code>def model_state_gb(params, n_gpu, stage, k=12):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def model_state_gb(params, n_gpu, stage, k=12):
     p = params
     per = {0: (4 + k) * p,
            1: 4 * p + k * p / n_gpu,
@@ -169,6 +205,40 @@ for s in range(4):
 def mfu(params, tok_per_s, n_gpu, peak=989e12):          # H100 dense bf16 peak
     return 6 * params * tok_per_s / (n_gpu * peak)
 print(round(mfu(405e9, 2.6e6, 16000), 2))                 # about 0.4</code></pre>
+<pre class="code" data-lang="rust"><code>/// Bytes of weights, gradients and optimizer state per GPU, in GB.
+/// k = optimizer bytes per parameter (12 in the Python's default).
+fn model_state_gb(params: f64, n_gpu: f64, stage: u8, k: f64) -&gt; f64 {
+    let p = params;
+    let per = match stage {
+        0 =&gt; (4.0 + k) * p,
+        1 =&gt; 4.0 * p + k * p / n_gpu,
+        2 =&gt; 2.0 * p + (2.0 + k) * p / n_gpu,
+        3 =&gt; (4.0 + k) * p / n_gpu,
+        _ =&gt; panic!("ZeRO stage must be 0 to 3"),
+    };
+    per / 1e9
+}
+
+/// peak defaults to 989e12 in the Python: H100 dense bf16 peak
+fn mfu(params: f64, tok_per_s: f64, n_gpu: f64, peak: f64) -&gt; f64 {
+    6.0 * params * tok_per_s / (n_gpu * peak)
+}
+
+/// Python's round(x, digits); printed with {:?} it drops trailing zeros the same way.
+fn round(x: f64, digits: i32) -&gt; f64 {
+    let scale = 10f64.powi(digits);
+    (x * scale).round() / scale
+}
+
+fn main() {
+    for s in 0..4 {
+        println!("{} {:.1} GB per GPU", s, model_state_gb(70e9, 8.0, s, 12.0));
+    }
+    // 0 1120.0   1 385.0   2 262.5   3 140.0   -&gt; even full sharding over 8 GPUs exceeds 80 GB
+
+    println!("{:?}", round(mfu(405e9, 2.6e6, 16000.0, 989e12), 2)); // about 0.4
+}</code></pre>
+</div>
 </div>
 <div class="widget" id="w-op-mem">
   <div class="wtitle">Training memory per GPU</div>

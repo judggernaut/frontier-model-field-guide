@@ -52,7 +52,8 @@
   <div class="eq">\[ L(N, D) = E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}} \]<span class="eqcap">\(E\) is the irreducible loss of the data. The other terms are the penalty for a finite model and for finite data. Their fit (approach 3): \(E = 1.69,\ A = 406.4,\ B = 410.7,\ \alpha = 0.34,\ \beta = 0.28\). A 2024 replication by Besiroglu et al. argued these constants were mis-estimated and refit them; treat exact values as approximate.</span></div>
   <p>Minimising \(L\) subject to a compute budget \(C \approx 6ND\) gives optimal allocations that scale as power laws in \(C\). Hoffmann et al. found exponents near 0.5 for both, so doubling compute should increase both \(N\) and \(D\) by about \(\sqrt{2}\). Kaplan et al. had found \(N_{\text{opt}} \propto C^{0.73}\). Hoffmann et al. attributed the gap to Kaplan's fixed learning-rate schedule, but later work (Porian et al., 2024; Pearce and Song, 2024) traced it mainly to counting only non-embedding parameters, ignoring last-layer compute, warmup length, and hyperparameters not retuned per scale. Porian et al. found careful learning-rate decay was not needed to recover the Chinchilla result.</p>
   <p>With the 20-tokens-per-parameter rule, \(C = 6 \cdot N \cdot 20N = 120N^2\), so \(N = \sqrt{C/120}\).</p>
-  <pre class="code" data-lang="python"><code>import math
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
 
 E, A, B, a, b = 1.69, 406.4, 410.7, 0.34, 0.28        # Hoffmann et al. 2022 fit
 
@@ -72,6 +73,36 @@ for r in (20, 200, 2000):
     N, D = allocate(C, r)
     print(r, f"{N/1e9:.1f}B", round(loss(N, D), 3))
 # 20 69.3B 1.937   200 21.9B 1.932   2000 6.9B 1.959</code></pre>
+<pre class="code" data-lang="rust"><code>// Hoffmann et al. 2022 fit (alpha and beta are the Python's a and b)
+const E: f64 = 1.69;
+const A: f64 = 406.4;
+const B: f64 = 410.7;
+const ALPHA: f64 = 0.34;
+const BETA: f64 = 0.28;
+
+fn loss(n: f64, d: f64) -&gt; f64 {
+    E + A / n.powf(ALPHA) + B / d.powf(BETA)
+}
+
+/// tokens_per_param is 20 by default in the Python
+fn allocate(c: f64, tokens_per_param: f64) -&gt; (f64, f64) {
+    let n = (c / (6.0 * tokens_per_param)).sqrt();
+    (n, tokens_per_param * n)
+}
+
+fn main() {
+    let c = 5.76e23; // roughly Chinchilla's own budget
+    let (n, d) = allocate(c, 20.0);
+    println!("{:.0}B params, {:.2}T tokens", n / 1e9, d / 1e12); // 69B params, 1.39T tokens
+
+    // over-train a smaller model on the same compute
+    for r in [20, 200, 2000] {
+        let (n, d) = allocate(c, r as f64);
+        println!("{} {:.1}B {:.3}", r, n / 1e9, loss(n, d));
+    }
+    // 20 69.3B 1.937   200 21.9B 1.932   2000 6.9B 1.959
+}</code></pre>
+</div>
   <p>Two things stand out. First, under this parametric fit the loss at 200 tokens per parameter is slightly <em>lower</em> than at 20: the fitted surface puts the optimum near 90 tokens per parameter at this budget, not 20. The 20:1 rule came from the paper's other two estimation methods, and the mismatch between them is one of the issues Besiroglu et al. (2024) raised. Second, the surface is very flat near the optimum. Going to 2,000 tokens per parameter makes the model ten times smaller, and roughly ten times cheaper per token to serve, for a loss increase of about 0.02 at the same training compute. That flatness is the economic case for over-training.</p>
   <p><b>Data-constrained scaling.</b> Muennighoff et al. (2023) extended the law to repeated data: each repeated epoch is worth less than fresh data, with about four epochs nearly free and value decaying toward zero by roughly sixteen.</p>
 </div>

@@ -48,6 +48,7 @@
     <li><b>Forward KL</b>, \(\mathrm{KL}(p^T \| p^S) = \sum_i p_i^T \log \frac{p_i^T}{p_i^S}\), punishes the student for putting low probability anywhere the teacher puts mass. It is <i>mode covering</i>: a small student spreads itself thin and can produce blends of answers.</li>
     <li><b>Reverse KL</b>, \(\mathrm{KL}(p^S \| p^T)\), punishes the student for putting mass where the teacher doesn't. It is <i>mode seeking</i>: the student commits to the teacher's main modes. MiniLLM (Gu et al., 2024) argued reverse KL suits small generative students better. On-policy distillation scores the student's own samples against the teacher, most often with a per-token reverse KL (GKD, Agarwal et al. 2024, allows other divergences).</li>
   </ul>
+<div class="codetabs">
 <pre class="code" data-lang="python"><code>import torch, torch.nn.functional as F
 
 def kd_loss(student_logits, teacher_logits, labels, tau=2.0, lam=0.5):
@@ -62,6 +63,70 @@ def kd_loss(student_logits, teacher_logits, labels, tau=2.0, lam=0.5):
 
 s, t = torch.randn(4, 10), torch.randn(4, 10)
 print(kd_loss(s, t, torch.tensor([1, 2, 3, -100])).item() &gt; 0)  # True</code></pre>
+<pre class="code" data-lang="rust"><code>// Plain Rust, no ML framework: the same math on small vectors.
+// The random logits come from a small inline PRNG (SplitMix64), so they differ from torch.randn.
+
+fn log_softmax(logits: &amp;[f64], tau: f64) -&gt; Vec&lt;f64&gt; {
+    // log-sum-exp with the max subtracted, so large logits cannot overflow
+    let z: Vec&lt;f64&gt; = logits.iter().map(|l| l / tau).collect();
+    let m = z.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let lse = m + z.iter().map(|v| (v - m).exp()).sum::&lt;f64&gt;().ln();
+    z.iter().map(|v| v - lse).collect()
+}
+
+/// Hinton-style distillation for a batch of next-token predictions.
+/// logits: [batch][vocab]; labels: [batch] token ids (-100 to ignore).
+fn kd_loss(student_logits: &amp;[Vec&lt;f64&gt;], teacher_logits: &amp;[Vec&lt;f64&gt;], labels: &amp;[i64], tau: f64, lam: f64) -&gt; f64 {
+    let batch = student_logits.len() as f64;
+    // hard: cross-entropy at temperature 1, averaged over the rows that are not ignored
+    let (mut hard_sum, mut kept) = (0.0, 0);
+    for (logits, &amp;label) in student_logits.iter().zip(labels) {
+        if label != -100 {
+            hard_sum -= log_softmax(logits, 1.0)[label as usize];
+            kept += 1;
+        }
+    }
+    let hard = hard_sum / kept as f64;
+    // forward KL(teacher || student), summed over the vocab and divided by batch ("batchmean")
+    let mut soft = 0.0;
+    for (s, t) in student_logits.iter().zip(teacher_logits) {
+        let (log_ps, log_pt) = (log_softmax(s, tau), log_softmax(t, tau));
+        soft += log_pt.iter().zip(&amp;log_ps).map(|(lt, ls)| lt.exp() * (lt - ls)).sum::&lt;f64&gt;();
+    }
+    soft /= batch;
+    (1.0 - lam) * hard + lam * tau * tau * soft
+}
+
+struct SplitMix64(u64);
+
+impl SplitMix64 {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn uniform(&amp;mut self) -&gt; f64 {
+        (self.next_u64() &gt;&gt; 11) as f64 / (1u64 &lt;&lt; 53) as f64 // in [0, 1)
+    }
+    fn normal(&amp;mut self) -&gt; f64 {
+        // Box-Muller; 1 - u keeps the log argument in (0, 1]
+        let (u1, u2) = (1.0 - self.uniform(), self.uniform());
+        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+    }
+}
+
+fn randn(rng: &amp;mut SplitMix64, rows: usize, cols: usize) -&gt; Vec&lt;Vec&lt;f64&gt;&gt; {
+    (0..rows).map(|_| (0..cols).map(|_| rng.normal()).collect()).collect()
+}
+
+fn main() {
+    let mut rng = SplitMix64(0);
+    let (s, t) = (randn(&amp;mut rng, 4, 10), randn(&amp;mut rng, 4, 10));
+    println!("{}", kd_loss(&amp;s, &amp;t, &amp;[1, 2, 3, -100], 2.0, 0.5) &gt; 0.0); // true
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-ds-kd">

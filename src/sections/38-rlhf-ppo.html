@@ -147,7 +147,8 @@
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">GAE</span></div>
   <p>PPO for language models trains a <b>value model</b> (the critic), usually initialized from the reward model, to predict \(V(s_t)\) at every token. Advantages are then computed with generalized advantage estimation (Schulman et al. 2016):</p>
   <div class="eq">\[ \delta_t = r_t + \gamma V(s_{t+1}) - V(s_t), \qquad \hat{A}_t = \sum_{l=0}^{T-t} (\gamma\lambda)^l\, \delta_{t+l} \]<span class="eqcap">\(\delta_t\) is the one-step surprise. \(\lambda\) trades bias for variance: \(\lambda = 0\) trusts the critic completely, \(\lambda = 1\) uses the full Monte Carlo return. RLHF commonly uses \(\gamma = 1\) and \(\lambda\) around 0.95.</span></div>
-  <pre class="code" data-lang="python"><code>def gae(rewards, values, gamma=1.0, lam=0.95):
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def gae(rewards, values, gamma=1.0, lam=0.95):
     """rewards[t]: per-token reward (KL penalty, plus the RM score on the last token).
        values[t]:  critic estimate V(s_t). Returns advantages and value targets."""
     T = len(rewards)
@@ -162,6 +163,32 @@
 
 adv, ret = gae([-0.01, -0.02, 0.9], [0.5, 0.6, 0.7])
 print([round(a, 3) for a in adv])   # [0.346, 0.27, 0.2]</code></pre>
+<pre class="code" data-lang="rust"><code>/// rewards[t]: per-token reward (KL penalty, plus the RM score on the last token).
+/// values[t]:  critic estimate V(s_t). Returns advantages and value targets.
+fn gae(rewards: &amp;[f64], values: &amp;[f64], gamma: f64, lam: f64) -&gt; (Vec&lt;f64&gt;, Vec&lt;f64&gt;) {
+    let t_len = rewards.len();
+    let (mut adv, mut last) = (vec![0.0; t_len], 0.0);
+    for t in (0..t_len).rev() {
+        let next_v = if t + 1 &lt; t_len { values[t + 1] } else { 0.0 }; // no value after the final token
+        let delta = rewards[t] + gamma * next_v - values[t];
+        last = delta + gamma * lam * last; // discounted sum of future deltas
+        adv[t] = last;
+    }
+    let returns = adv.iter().zip(values).map(|(a, v)| a + v).collect(); // regression targets for the critic
+    (adv, returns)
+}
+
+fn round_to(x: f64, digits: usize) -&gt; f64 {
+    // like Python's round(x, n): format the exact value, then read it back
+    format!("{:.*}", digits, x).parse().unwrap()
+}
+
+fn main() {
+    let (adv, _ret) = gae(&amp;[-0.01, -0.02, 0.9], &amp;[0.5, 0.6, 0.7], 1.0, 0.95);
+    let rounded: Vec&lt;f64&gt; = adv.iter().map(|&amp;a| round_to(a, 3)).collect();
+    println!("{:?}", rounded); // [0.346, 0.27, 0.2]
+}</code></pre>
+</div>
 </div>
 
 <h3>PPO's clipped surrogate</h3>
@@ -174,7 +201,8 @@ print([round(a, 3) for a in adv])   # [0.346, 0.27, 0.2]</code></pre>
   <p>The full loss adds a value-function regression term and often an entropy bonus. The standard \(\epsilon\) is 0.2.</p>
   <div class="eq">\[ \mathcal{L} = -\mathcal{L}^{\text{CLIP}} + c_v\,\mathbb{E}\big[(V_\theta(s_t) - \hat R_t)^2\big] - c_e\,\mathbb{E}\big[\mathcal{H}(\pi_\theta(\cdot \mid s_t))\big] \]</div>
   <p>In code:</p>
-  <pre class="code" data-lang="python"><code>import torch
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import torch
 
 def ppo_loss(logp_new, logp_old, adv, values_new, returns, eps=0.2, vf_coef=0.5):
     """All tensors are per response token, already masked to exclude prompt and padding."""
@@ -189,6 +217,42 @@ def ppo_loss(logp_new, logp_old, adv, values_new, returns, eps=0.2, vf_coef=0.5)
 # one token, eps = 0.2: the objective stops rewarding moves past the clip boundary
 for r, a in [(1.5, 1.0), (0.6, -1.0), (1.1, 1.0)]:
     print(r, a, min(r * a, max(0.8, min(1.2, r)) * a))     # 1.2, -0.8, 1.1</code></pre>
+<pre class="code" data-lang="rust"><code>// Plain Rust, no ML framework: the same math on small vectors.
+
+fn mean(xs: &amp;[f64]) -&gt; f64 {
+    xs.iter().sum::&lt;f64&gt;() / xs.len() as f64
+}
+
+/// All slices are per response token, already masked to exclude prompt and padding.
+fn ppo_loss(logp_new: &amp;[f64], logp_old: &amp;[f64], adv: &amp;[f64], values_new: &amp;[f64], returns: &amp;[f64], eps: f64, vf_coef: f64) -&gt; f64 {
+    let n = adv.len() as f64;
+    // whitening is standard and stabilizes training (std with n - 1, as torch.std does)
+    let mu = mean(adv);
+    let sd = (adv.iter().map(|a| (a - mu).powi(2)).sum::&lt;f64&gt;() / (n - 1.0)).sqrt();
+    let mut policy_sum = 0.0;
+    for i in 0..adv.len() {
+        let ratio = (logp_new[i] - logp_old[i]).exp(); // pi_theta / pi_old, per token
+        let a = (adv[i] - mu) / (sd + 1e-8);
+        let unclipped = ratio * a;
+        let clipped = ratio.clamp(1.0 - eps, 1.0 + eps) * a;
+        policy_sum += unclipped.min(clipped);
+    }
+    let policy_loss = -policy_sum / n; // minus: optimizers minimize
+    let value_loss = 0.5 * values_new.iter().zip(returns).map(|(v, r)| (v - r).powi(2)).sum::&lt;f64&gt;() / n;
+    policy_loss + vf_coef * value_loss
+}
+
+fn main() {
+    // one token, eps = 0.2: the objective stops rewarding moves past the clip boundary
+    for (r, a) in [(1.5_f64, 1.0_f64), (0.6, -1.0), (1.1, 1.0)] {
+        println!("{:?} {:?} {:?}", r, a, (r * a).min(0.8_f64.max(1.2_f64.min(r)) * a)); // 1.2, -0.8, 1.1
+    }
+    // tiny worked example for ppo_loss itself: three response tokens
+    let loss = ppo_loss(&amp;[-1.0, -0.5, -2.0], &amp;[-1.1, -0.7, -1.9], &amp;[0.5, -0.2, 1.0],
+                        &amp;[0.4, 0.6, 0.2], &amp;[0.5, 0.5, 0.5], 0.2, 0.5);
+    println!("{:.4}", loss); // 0.1127
+}</code></pre>
+</div>
 </div>
 
 <div class="widget" id="w-rl-clip">

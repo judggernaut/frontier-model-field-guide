@@ -52,13 +52,47 @@
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why gains shrink when they reach the holdout</span></div>
   <p>Suppose you try \(m\) training variants and pick the one with the best development score. Even if every variant has the same true quality, the winner's observed score is biased upward by the expected maximum of \(m\) noise draws. With per-variant standard error \(\sigma\), that bias is roughly</p>
   <div class="eq">\[ \mathbb{E}\big[\max_{i\le m} \varepsilon_i\big] \approx \sigma\sqrt{2\ln m} \]<span class="eqcap">For \(m=20\) variants and \(\sigma = 1\) point, the "best" variant looks about 2.4 points better than it is. This is the winner's curse, and it is why a fresh holdout almost always shows a smaller gain than the development set.</span></div>
-  <pre class="code" data-lang="python"><code>import numpy as np
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import numpy as np
 
 rng = np.random.default_rng(0)
 m, sigma, trials = 20, 1.0, 20000
 best_dev = rng.normal(0, sigma, size=(trials, m)).max(axis=1)   # all variants truly equal
 print(round(best_dev.mean(), 2))                 # ~1.87 (the asymptotic formula overstates at small m)
 print(round(sigma * np.sqrt(2 * np.log(m)), 2))  # 2.45</code></pre>
+<pre class="code" data-lang="rust"><code>/// Small inline PRNG: SplitMix64 for uniforms, Box-Muller for normals.
+/// The draws differ from numpy's, so the simulated mean differs in the last digit or so.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn uniform(&amp;mut self) -&gt; f64 {
+        ((self.next_u64() &gt;&gt; 11) as f64 + 0.5) / (1u64 &lt;&lt; 53) as f64 // in (0, 1), never 0
+    }
+    fn normal(&amp;mut self, mean: f64, sd: f64) -&gt; f64 {
+        let (u1, u2) = (self.uniform(), self.uniform());
+        mean + sd * (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+    }
+}
+
+fn main() {
+    let mut rng = Rng(0);
+    let (m, sigma, trials) = (20, 1.0, 20000);
+    // all variants truly equal: the best dev score of m is pure noise
+    let best_dev: Vec&lt;f64&gt; = (0..trials)
+        .map(|_| (0..m).map(|_| rng.normal(0.0, sigma)).fold(f64::NEG_INFINITY, f64::max))
+        .collect();
+    let mean = best_dev.iter().sum::&lt;f64&gt;() / trials as f64;
+    println!("{:.2}", mean); // 1.87 with this PRNG (numpy also gives 1.87; draws differ); the asymptotic formula overstates at small m
+    println!("{:.2}", sigma * (2.0 * (m as f64).ln()).sqrt()); // 2.45
+}</code></pre>
+</div>
   <p>The practical fix is the same as in any selection problem: hold out a set you never select on, and report the selected model's score on it.</p>
 </div>
 

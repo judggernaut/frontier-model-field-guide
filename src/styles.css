@@ -210,6 +210,19 @@ pre.code code{font-family:inherit;white-space:pre;background:none;padding:0;font
 .copy{position:absolute;top:4px;right:6px;font:inherit;font-family:var(--font-body);font-size:12px;height:26px;padding:0 9px;border-radius:6px;border:1px solid var(--border);background:var(--background);color:var(--muted-foreground);cursor:pointer;z-index:1}
 .copy:hover{color:var(--foreground)}
 
+/* ---------- code tabs (Python | Rust) ---------- */
+.codetabs{margin:16px 0 22px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--code-bg)}
+.codetabs>.cbar{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border);background:var(--sidebar)}
+.codetabs>.cbar .clist{display:inline-flex;padding:2px;gap:2px;background:var(--muted-bg);border-radius:calc(var(--radius) - 2px)}
+.codetabs>.cbar button{font:inherit;font-size:12.5px;font-weight:500;height:26px;padding:0 10px;border:0;border-radius:calc(var(--radius) - 4px);background:transparent;color:var(--muted-foreground);cursor:pointer;transition:background .15s,color .15s}
+.codetabs>.cbar button[aria-selected="true"]{background:var(--background);color:var(--foreground);box-shadow:var(--shadow-xs)}
+.codetabs>.cbar .cnote{margin-left:auto;font-size:12px;color:var(--muted-foreground)}
+.codetabs>pre.code{margin:0;border:0;border-radius:0;padding-top:16px}
+.codetabs>pre.code::before{display:none}
+.codetabs>pre.code[hidden]{display:none}
+.codetabs>pre.code.on{animation:fadein .18s cubic-bezier(.4,0,.2,1)}
+.codetabs>pre.code .copy{top:8px}
+
 /* ---------- math ---------- */
 .eq,.eqn{margin:16px 0 20px;padding:14px 18px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto;text-align:center;box-shadow:var(--shadow-xs)}
 .eq .eqcap,.eqcap{display:block;font-size:13.5px;color:var(--muted-foreground);margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);text-align:left;line-height:1.6}
@@ -413,6 +426,9 @@ footer.site{margin-top:40px;padding:24px 0 0;border-top:1px solid var(--border);
   .story .step .a{opacity:1!important;animation:none!important}
   .story .step .grow-x{transform:none!important;animation:none!important}
   .story .capbox{display:none}
+  .codetabs>.cbar{display:none}
+  .codetabs>pre.code{display:block!important;padding-top:30px}
+  .codetabs>pre.code::before{display:block}
   pre.code{font-size:8pt;line-height:1.45;page-break-inside:auto;white-space:pre-wrap}
   pre.code code{white-space:pre-wrap}
   a{color:inherit;text-decoration:none}

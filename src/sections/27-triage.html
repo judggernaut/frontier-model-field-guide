@@ -131,7 +131,8 @@
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Slice by contribution, not by percentage change</span></div>
   <p>The total change in mean score decomposes exactly into slice contributions. With \(N\) tasks split into slices \(s\) of size \(n_s\) and per-slice mean change \(\bar d_s\):</p>
   <div class="eq">\[ \Delta_{\text{total}} = \frac{1}{N}\sum_{s} n_s\,\bar d_s \]<span class="eqcap">Each slice's contribution is \(n_s \bar d_s / N\). Rank slices by this, not by \(\bar d_s\) alone, or a tiny slice with a big swing will send you down the wrong path. This identity holds when slices partition the tasks.</span></div>
-  <pre class="code" data-lang="python"><code>def slice_deltas(before: dict[str, float], after: dict[str, float],
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def slice_deltas(before: dict[str, float], after: dict[str, float],
                  slices: dict[str, list[str]]) -> list[tuple[str, float, int]]:
     """Where did the drop actually happen. Sort by contribution to the total
     delta, not by percentage change, or a tiny slice with a big swing will
@@ -146,6 +147,34 @@
         out.append((name, d, len(ids), contribution))
     out.sort(key=lambda x: x[3])            # most negative contribution first
     return [(n, round(d, 4), k) for n, d, k, _ in out]</code></pre>
+<pre class="code" data-lang="rust"><code>use std::collections::HashMap;
+
+/// Where did the drop actually happen. Sort by contribution to the total
+/// delta, not by percentage change, or a tiny slice with a big swing will
+/// send you down the wrong path.
+/// `slices` is a list of (name, task ids) pairs, so ties keep the order given,
+/// as they do with Python's insertion-ordered dict and stable sort.
+pub fn slice_deltas(
+    before: &amp;HashMap&lt;String, f64&gt;,
+    after: &amp;HashMap&lt;String, f64&gt;,
+    slices: &amp;[(String, Vec&lt;String&gt;)],
+) -&gt; Vec&lt;(String, f64, usize)&gt; {
+    let mut out = Vec::new();
+    for (name, task_ids) in slices {
+        let ids: Vec&lt;&amp;String&gt; = task_ids.iter().filter(|t| before.contains_key(*t) &amp;&amp; after.contains_key(*t)).collect();
+        if ids.is_empty() {
+            continue;
+        }
+        let d = ids.iter().map(|t| after[*t] - before[*t]).sum::&lt;f64&gt;() / ids.len() as f64;
+        let contribution = d * ids.len() as f64;
+        out.push((name.clone(), d, ids.len(), contribution));
+    }
+    out.sort_by(|x, y| x.3.total_cmp(&amp;y.3)); // most negative contribution first
+    out.into_iter()
+        .map(|(n, d, k, _)| (n, (d * 1e4).round() / 1e4, k)) // round(d, 4)
+        .collect()
+}</code></pre>
+</div>
   <div class="callout warn"><span class="tag">Watch out</span><div>Slicing is a multiple comparison. With twenty slices, one will look significant by chance at the 5% level. Treat the slice view as a way to decide where to read outputs, not as a finding in itself, or apply a correction such as Benjamini–Hochberg (see <a href="#evalstats">multiple comparisons</a>).</div></div>
   <h4>Replay as a two-by-two</h4>
   <p>The replay step is cleanest as a small factorial: old and new model crossed with old and new harness. If the drop appears only in the new-harness column, the harness is the cause. If it appears only in the new-model row, it is the model. If it appears in only one cell, look for an interaction, such as a new prompt template that only the new model handles badly.</p>
