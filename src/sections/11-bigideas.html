@@ -49,8 +49,96 @@
 </div>
 <div class="callout drill"><span class="tag">Try it</span><div>Set the starting shape to Pareto and push n to 200. It becomes a bell far more slowly than the others. That is what a genuinely heavy tail does: the central limit theorem still applies, but it needs much more data before you can lean on it.</div></div>
 
-<h3>Standard deviation is not standard error</h3>
-<p>This is the single most common confusion in applied statistics, and the two get swapped in dashboards constantly.</p>
+<h3>Standard error vs variance (and standard deviation)</h3>
+<p>This is the single most common confusion in applied statistics, and the two get swapped in dashboards constantly. They answer two different questions.</p>
+
+<div class="split">
+  <div class="tile" style="border-top:3px solid var(--accent)">
+    <h4 style="margin-top:0">Variance \(s^2\) (and SD \(s\))</h4>
+    <p style="color:var(--foreground)"><b>Question:</b> how much do individual values differ from each other?</p>
+    <div class="eq" style="margin:10px 0">\[ s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i-\bar x)^2, \qquad s = \sqrt{s^2} \]</div>
+    <p><b>Describes</b> the data: users, tasks, latencies.<br><b>Units</b> squared (variance) or original (SD).<br><b>Depends on</b> the data only.<br><b>With more data</b> it settles to its true value \(\sigma^2\). It does not shrink.</p>
+  </div>
+  <div class="tile" style="border-top:3px solid var(--tp)">
+    <h4 style="margin-top:0">Standard error \(\operatorname{SE}\)</h4>
+    <p style="color:var(--foreground)"><b>Question:</b> how much would my <i>estimate</i> change if I repeated the whole study?</p>
+    <div class="eq" style="margin:10px 0">\[ \operatorname{SE}(\hat\theta) = \sqrt{\operatorname{Var}(\hat\theta)}, \qquad \operatorname{SE}(\bar x) = \frac{s}{\sqrt n} \]</div>
+    <p><b>Describes</b> an estimate: a mean, a pass rate, a difference.<br><b>Units</b> original.<br><b>Depends on</b> the data's variance, the sample size \(n\), the estimator, and whether items are independent.<br><b>With more data</b> it shrinks like \(1/\sqrt n\).</p>
+  </div>
+</div>
+
+<div class="callout key"><span class="tag">Formal definition</span><div>The <b>standard error</b> of an estimator \(\hat\theta\) is the standard deviation of its <b>sampling distribution</b>: the spread of the values \(\hat\theta\) would take across many repeats of the same study. Variance is a property of the data; standard error is a property of a number you computed from the data. For the mean of \(n\) independent values, \(\operatorname{Var}(\bar x) = \sigma^2/n\), so \(\operatorname{SE} = \sigma/\sqrt n\). The derivation is in the <b>Under the hood</b> tab below.</div></div>
+
+<h4>The same five commutes, both numbers</h4>
+<div class="tw"><table>
+<thead><tr><th>Quantity</th><th>Formula</th><th>Value for 22, 25, 31, 24, 28 (n = 5)</th><th>If n were 20, same spread</th></tr></thead>
+<tbody>
+<tr><td>Sample variance</td><td>\(s^2\)</td><td class="n">12.5 min²</td><td class="n">≈ 12.5 min²</td></tr>
+<tr><td>Standard deviation</td><td>\(s\)</td><td class="n">3.54 min</td><td class="n">≈ 3.54 min</td></tr>
+<tr><td>Variance of the mean</td><td>\(s^2/n\)</td><td class="n">2.5 min²</td><td class="n">0.625 min²</td></tr>
+<tr><td>Standard error of the mean</td><td>\(s/\sqrt n\)</td><td class="n">1.58 min</td><td class="n">0.79 min</td></tr>
+<tr><td>95% interval for the true average</td><td>\(\bar x \pm 1.96\,\operatorname{SE}\)</td><td class="n">26 ± 3.1 min</td><td class="n">26 ± 1.5 min</td></tr>
+</tbody></table></div>
+<p>Four times the data left the variance and SD where they were and cut the standard error in half. (With only five values a t-based interval is a little wider than ±1.96 SE; see <a href="#intervals">intervals</a>.)</p>
+
+<div class="story" id="st-bigideas-sevar">
+  <div class="story-head"><div class="story-title">Repeat the week: variance stays, standard error shrinks</div><p class="story-sub">Same commute, measured week after week. Numbers are illustrative but consistent with σ ≈ 3.5 minutes.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="One week of five commutes spread around 26 minutes">
+      <line x1="60" y1="170" x2="580" y2="170" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="60" y="190">18</text><text x="190" y="190">22</text><text x="320" y="190">26</text><text x="450" y="190">30</text><text x="580" y="190">34</text></g>
+      <text x="320" y="210" font-size="12" text-anchor="middle" fill="var(--muted)">minutes</text>
+      <rect class="a" style="--d:1" x="205" y="120" width="230" height="40" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <g class="a" style="--d:0" fill="var(--tn)"><circle cx="190" cy="140" r="8"/><circle cx="287" cy="140" r="8"/><circle cx="482" cy="140" r="8"/><circle cx="255" cy="140" r="8"/><circle cx="385" cy="140" r="8"/></g>
+      <text class="a" style="--d:1" x="320" y="105" text-anchor="middle" font-size="14" fill="var(--accent)">±1 SD = ±3.5 min: how much single days differ</text>
+      <text x="320" y="40" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Week 1: five commutes, average 26</text>
+    </svg>
+    <p>One week, five commutes. They spread about 3.5 minutes either side of their average. That spread is the standard deviation, and its square (12.5) is the variance. It describes <b>days</b>.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Five weekly averages scattered around 26 with spread about 1.6">
+      <line x1="60" y1="170" x2="580" y2="170" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="60" y="190">18</text><text x="190" y="190">22</text><text x="320" y="190">26</text><text x="450" y="190">30</text><text x="580" y="190">34</text></g>
+      <text x="320" y="210" font-size="12" text-anchor="middle" fill="var(--muted)">minutes</text>
+      <rect class="a" style="--d:5" x="268" y="120" width="104" height="40" rx="6" fill="var(--good-soft)" stroke="var(--tp)"/>
+      <g fill="var(--tp)"><circle class="a" style="--d:0" cx="324" cy="140" r="8"/><circle class="a" style="--d:1" cx="266" cy="140" r="8"/><circle class="a" style="--d:2" cx="393" cy="140" r="8"/><circle class="a" style="--d:3" cx="290" cy="140" r="8"/><circle class="a" style="--d:4" cx="365" cy="140" r="8"/></g>
+      <text class="a" style="--d:5" x="320" y="105" text-anchor="middle" font-size="14" fill="var(--tp)">±1 SE ≈ ±1.6 min: how much the weekly average wobbles</text>
+      <text x="320" y="40" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Five weeks: one average per week (n = 5 each)</text>
+    </svg>
+    <p>Repeat the week five times and plot only each week's <b>average</b>: 26.0, 24.2, 28.1, 25.0, 27.3. The averages wobble about 1.6 minutes, close to \(3.54/\sqrt5 = 1.58\). That wobble is the standard error. It describes the <b>estimate</b>, not the days.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="With 20 commutes per week the averages cluster within about 0.8 minutes">
+      <line x1="60" y1="170" x2="580" y2="170" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="60" y="190">18</text><text x="190" y="190">22</text><text x="320" y="190">26</text><text x="450" y="190">30</text><text x="580" y="190">34</text></g>
+      <text x="320" y="210" font-size="12" text-anchor="middle" fill="var(--muted)">minutes</text>
+      <rect class="a" style="--d:5" x="294" y="120" width="52" height="40" rx="6" fill="var(--good-soft)" stroke="var(--tp)"/>
+      <g fill="var(--tp)"><circle class="a" style="--d:0" cx="317" cy="140" r="8"/><circle class="a" style="--d:1" cx="352" cy="140" r="8"/><circle class="a" style="--d:2" cx="293" cy="140" r="8"/><circle class="a" style="--d:3" cx="333" cy="140" r="8"/><circle class="a" style="--d:4" cx="301" cy="140" r="8"/></g>
+      <text class="a" style="--d:5" x="320" y="105" text-anchor="middle" font-size="14" fill="var(--tp)">±1 SE ≈ ±0.8 min: four times the data, half the wobble</text>
+      <text x="320" y="40" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Twenty commutes per week (n = 20)</text>
+    </svg>
+    <p>Log twenty commutes a week instead of five. Single days are exactly as varied as before (SD still about 3.5), but the weekly averages now land within about 0.8 minutes of each other, close to \(3.54/\sqrt{20} = 0.79\).</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 250" role="img" aria-label="Summary: variance describes days, standard error describes the average">
+      <g class="a" style="--d:0"><rect x="50" y="50" width="250" height="150" rx="12" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="175" y="85" text-anchor="middle" font-size="16" font-weight="600" fill="var(--accent)">Variance / SD</text><text x="175" y="115" text-anchor="middle" font-size="13" fill="var(--fg)">about the days</text><text x="175" y="140" text-anchor="middle" font-size="13" fill="var(--fg)">12.5 min² / 3.5 min</text><text x="175" y="165" text-anchor="middle" font-size="13" fill="var(--muted)">same at n = 5 or 20</text></g>
+      <g class="a" style="--d:1"><rect x="340" y="50" width="250" height="150" rx="12" fill="var(--good-soft)" stroke="var(--tp)"/><text x="465" y="85" text-anchor="middle" font-size="16" font-weight="600" fill="var(--tp)">Standard error</text><text x="465" y="115" text-anchor="middle" font-size="13" fill="var(--fg)">about the average</text><text x="465" y="140" text-anchor="middle" font-size="13" fill="var(--fg)">1.58 → 0.79 min</text><text x="465" y="165" text-anchor="middle" font-size="13" fill="var(--muted)">halves when n quadruples</text></g>
+      <text class="a" style="--d:2" x="320" y="232" text-anchor="middle" font-size="14" fill="var(--fg)">Use SD to describe variability. Use SE for error bars on an average.</text>
+    </svg>
+    <p>Variance and SD describe how varied the things you measured are. Standard error describes how precisely you have pinned down an average of them. An eval report needs both, labelled.</p>
+  </div>
+</div>
+
+<h4>Four quantities that get confused</h4>
+  <div class="tw"><table>
+  <thead><tr><th>Quantity</th><th>Symbol</th><th>Describes</th><th>Units</th><th>As n grows</th></tr></thead>
+  <tbody>
+  <tr><td>Population variance</td><td>\(\sigma^2\)</td><td>How much individual values vary in the process</td><td>Squared</td><td>Fixed: a property of the world</td></tr>
+  <tr><td>Sample variance</td><td>\(s^2\)</td><td>Your estimate of \(\sigma^2\)</td><td>Squared</td><td>Settles toward \(\sigma^2\)</td></tr>
+  <tr><td>Variance of the mean</td><td>\(\sigma^2/n\)</td><td>How much the average would vary across repeats</td><td>Squared</td><td>Shrinks like \(1/n\)</td></tr>
+  <tr><td>Standard error of the mean</td><td>\(\sigma/\sqrt n\)</td><td>The same, in original units</td><td>Original</td><td>Shrinks like \(1/\sqrt n\)</td></tr>
+  </tbody></table></div>
+  <p>So the difference between variance and standard error is not just a square root. Variance (and SD) describe the <i>data</i>; standard error describes an <i>estimate</i>, and it depends on three things the data's variance does not: the sample size, the estimator, and the dependence between observations.</p>
 <figure><img src="figs/stats-018.png" alt="Standard deviation stays flat as n grows while standard error falls"><figcaption>The standard deviation of your data does not shrink as you collect more. The standard error of the mean does, as one over the square root of n.</figcaption></figure>
 <div class="tw"><table><thead><tr><th></th><th>Standard deviation</th><th>Standard error</th></tr></thead><tbody>
 <tr><td><b>Describes</b></td><td>How spread out the individual measurements are</td><td>How precisely you know the average</td></tr>
@@ -79,16 +167,6 @@
   <div class="eq">\[ \operatorname{SE}(\hat\theta) \;=\; \sqrt{\operatorname{Var}(\hat\theta)} \;=\; \sqrt{\mathbb{E}\Big[\big(\hat\theta - \mathbb{E}[\hat\theta]\big)^2\Big]} \]<span class="eqcap">Same formula as a standard deviation, applied to the estimate instead of to individual observations. In practice it is unknown and estimated from the data, written \(\widehat{\operatorname{SE}}\).</span></div>
   <p><b>Derivation for the mean.</b> Let \(X_1,\dots,X_n\) be independent with variance \(\sigma^2\). Two variance rules from <a href="#basics">the distributions chapter</a> do all the work: variances of independent terms add, and scaling by \(a\) multiplies variance by \(a^2\).</p>
   <div class="eq">\[ \operatorname{Var}(\bar X) = \operatorname{Var}\Big(\tfrac{1}{n}\sum_{i=1}^n X_i\Big) = \tfrac{1}{n^2}\sum_{i=1}^n \operatorname{Var}(X_i) = \tfrac{1}{n^2}\cdot n\sigma^2 = \frac{\sigma^2}{n} \qquad\Longrightarrow\qquad \operatorname{SE}(\bar X)=\frac{\sigma}{\sqrt n},\quad \widehat{\operatorname{SE}}=\frac{s}{\sqrt n} \]<span class="eqcap">The \(1/n^2\) from averaging beats the \(n\) from adding, leaving \(1/n\) for the variance and \(1/\sqrt n\) for the standard error. Independence is used in the second step; drop it and covariance terms appear.</span></div>
-  <h4>Four quantities that get confused</h4>
-  <div class="tw"><table>
-  <thead><tr><th>Quantity</th><th>Symbol</th><th>Describes</th><th>Units</th><th>As n grows</th></tr></thead>
-  <tbody>
-  <tr><td>Population variance</td><td>\(\sigma^2\)</td><td>How much individual values vary in the process</td><td>Squared</td><td>Fixed: a property of the world</td></tr>
-  <tr><td>Sample variance</td><td>\(s^2\)</td><td>Your estimate of \(\sigma^2\)</td><td>Squared</td><td>Settles toward \(\sigma^2\)</td></tr>
-  <tr><td>Variance of the mean</td><td>\(\sigma^2/n\)</td><td>How much the average would vary across repeats</td><td>Squared</td><td>Shrinks like \(1/n\)</td></tr>
-  <tr><td>Standard error of the mean</td><td>\(\sigma/\sqrt n\)</td><td>The same, in original units</td><td>Original</td><td>Shrinks like \(1/\sqrt n\)</td></tr>
-  </tbody></table></div>
-  <p>So the difference between variance and standard error is not just a square root. Variance (and SD) describe the <i>data</i>; standard error describes an <i>estimate</i>, and it depends on three things the data's variance does not: the sample size, the estimator, and the dependence between observations.</p>
   <h4>Standard errors you will actually use</h4>
   <div class="tw"><table>
   <thead><tr><th>Estimate</th><th>Standard error</th><th>Note</th></tr></thead>
