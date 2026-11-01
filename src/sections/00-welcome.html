@@ -76,14 +76,25 @@
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">How the math and code are shown</span></div>
   <p>Formulas are typeset, for example the cross-entropy loss that almost every chapter in Part III builds on:</p>
   <div class="eq">\[ \mathcal{L}(\theta) = -\frac{1}{T}\sum_{t=1}^{T} \log p_\theta(x_t \mid x_{&lt;t}) \]<span class="eqcap">The average negative log probability the model assigns to each correct next token \(x_t\), given everything before it.</span></div>
-  <pre class="code" data-lang="python"><code>import math
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
 
 def cross_entropy(probs_of_correct_token):
     # average surprise, in nats, at the token that actually came next
     return -sum(math.log(p) for p in probs_of_correct_token) / len(probs_of_correct_token)
 
-print(round(cross_entropy([0.9, 0.5, 0.25]), 3))  # 0.732
-print(round(math.exp(0.732), 2))                  # perplexity 2.08</code></pre>
+print(round(cross_entropy([0.9, 0.5, 0.25]), 3))  # 0.728
+print(round(math.exp(0.728), 2))                  # perplexity 2.07</code></pre>
+<pre class="code" data-lang="rust"><code>fn cross_entropy(probs_of_correct_token: &amp;[f64]) -&gt; f64 {
+    // average surprise, in nats, at the token that actually came next
+    -probs_of_correct_token.iter().map(|p| p.ln()).sum::&lt;f64&gt;() / probs_of_correct_token.len() as f64
+}
+
+fn main() {
+    println!("{:.3}", cross_entropy(&amp;[0.9, 0.5, 0.25])); // 0.728
+    println!("{:.2}", 0.728_f64.exp());                  // perplexity 2.07
+}</code></pre>
+</div>
 </div>
 
 <h3>Map of the guide</h3>
