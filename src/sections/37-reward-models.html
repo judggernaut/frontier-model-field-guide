@@ -107,6 +107,10 @@
   <p>Chess ratings work like this: every player has a hidden strength number. When two players meet, the bigger the gap in their numbers, the more likely the stronger one wins, but upsets still happen. You never see the strengths directly, only who won. After enough games you can work backward to good estimates of everyone's number.</p>
   <p>A reward model does the same with answers. Each answer gets a hidden score. The bigger the score gap between two answers, the more confident the model is that people prefer the higher one. Only the <b>gap</b> means anything. Adding 100 to every score changes nothing.</p>
 </div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What the score does and does not mean</span></div>
+  <p>A reward score is a <b>relative</b> preference estimate within one prompt. It is not a quality grade, not a probability of correctness, and not comparable between reward model versions. If a dashboard shows "average reward went from 1.3 to 1.9", ask what it was normalized against, because a retrained reward model can shift every score without the policy changing at all.</p>
+  <p>Annotator noise is the hidden lever in the widget below. Doubling noise does not just make labels messier; it shrinks the learned scale, so the reward model becomes less confident everywhere, and downstream RL pushes less hard. That can look like "RLHF stopped working" when the real cause is a labeling vendor change.</p>
+</div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The model and its loss</span></div>
   <p>Bradley–Terry (1952) says the probability that \(y_w\) beats \(y_l\) depends only on the difference of their scores, passed through a logistic function:</p>
   <div class="eq">\[ P(y_w \succ y_l \mid x) = \sigma\big(r(x, y_w) - r(x, y_l)\big) = \frac{1}{1 + e^{-(r_w - r_l)}} \]<span class="eqcap">\(r(x,y)\) is the scalar score, \(\sigma\) is the logistic sigmoid. A gap of 0 means a coin flip; a gap of 2 means about 88 percent; a gap of 4 means about 98 percent.</span></div>
@@ -128,11 +132,6 @@ r_w = torch.tensor([1.2, 0.3, 2.0])
 r_l = torch.tensor([0.2, 0.9, -1.0])
 print(round(bradley_terry_loss(r_w, r_l).item(), 3))                  # 0.466
 print(round(((r_w - r_l) &gt; 0).float().mean().item(), 3))             # pairwise accuracy 0.667</code></pre>
-</div>
-
-<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What the score does and does not mean</span></div>
-  <p>A reward score is a <b>relative</b> preference estimate within one prompt. It is not a quality grade, not a probability of correctness, and not comparable between reward model versions. If a dashboard shows "average reward went from 1.3 to 1.9", ask what it was normalized against, because a retrained reward model can shift every score without the policy changing at all.</p>
-  <p>Annotator noise is the hidden lever in the widget below. Doubling noise does not just make labels messier; it shrinks the learned scale, so the reward model becomes less confident everywhere, and downstream RL pushes less hard. That can look like "RLHF stopped working" when the real cause is a labeling vendor change.</p>
 </div>
 
 <div class="widget" id="w-rm-bt">
@@ -272,16 +271,15 @@ class RewardModel(nn.Module):
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Teaching to the test</span></div>
   <p>If you reward students only for test scores, they first learn the material, then they learn the test. Past some point, scores keep climbing while real understanding stops improving or even gets worse. A reward model is a test. Push a language model hard enough against it and the model finds the reward model's quirks: longer answers, more confident tone, flattering phrasing. The reward model's score keeps rising. What people actually want peaks and then falls.</p>
 </div>
-<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The scaling law</span></div>
-  <p>Gao, Schulman and Hilton (2022) made this measurable. They used a large "gold" reward model as a stand-in for humans, trained smaller proxy reward models on its labels, optimized policies against the proxies, and tracked gold reward as a function of how far the policy moved from its starting point, measured by \(d = \sqrt{\mathrm{KL}(\pi \,\|\, \pi_{\text{ref}})}\). Gold reward followed simple functional forms:</p>
-  <div class="eq">\[ R_{\text{bon}}(d) = d\,(\alpha_{\text{bon}} - \beta_{\text{bon}}\, d), \qquad R_{\text{RL}}(d) = d\,(\alpha_{\text{RL}} - \beta_{\text{RL}} \log d) \]<span class="eqcap">Best-of-N sampling (left) and RL (right). Both rise, peak, and fall. Larger proxy reward models had smaller \(\beta\) (for RL, \(\alpha\) stayed roughly constant across reward-model sizes), so gold reward declines more slowly: a later, higher peak. More proxy training data helped in the same direction.</span></div>
-  <p>Two practical lessons follow. The KL distance at which gold reward peaks is a budget, and it grows with reward model quality. And the proxy score is useless for finding that peak, because it keeps rising straight through it. You need an independent signal: fresh human ratings, a different reward model, or task-specific checks.</p>
-</div>
-
 <div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Operating against a proxy</span></div>
   <p>Every RL run against a learned reward is a bet on where the gold curve peaks. The controls are the KL penalty (how hard you hold the policy near its reference), early stopping on an independent eval, reward model ensembles (optimize the minimum or the mean minus the spread, so the policy cannot exploit one model's quirk), and refreshing the reward model on the policy's current outputs.</p>
   <div class="callout warn"><span class="tag">Watch out</span><div>The signature of overoptimization is a training curve where reward rises smoothly while response length climbs, hedging disappears, and human or held-out-judge win rates flatten. If the only chart in a review is the training reward, you cannot tell a great run from a hacked one.</div></div>
   <div class="callout ask"><span class="tag">Principal asks</span><div>What independent signal told you when to stop? How did KL from the reference evolve, and where did the held-out win rate peak against it? Did response length change, and what is the length-controlled result? Was the reward model refreshed on samples from this policy?</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The scaling law</span></div>
+  <p>Gao, Schulman and Hilton (2022) made this measurable. They used a large "gold" reward model as a stand-in for humans, trained smaller proxy reward models on its labels, optimized policies against the proxies, and tracked gold reward as a function of how far the policy moved from its starting point, measured by \(d = \sqrt{\mathrm{KL}(\pi \,\|\, \pi_{\text{ref}})}\). Gold reward followed simple functional forms:</p>
+  <div class="eq">\[ R_{\text{bon}}(d) = d\,(\alpha_{\text{bon}} - \beta_{\text{bon}}\, d), \qquad R_{\text{RL}}(d) = d\,(\alpha_{\text{RL}} - \beta_{\text{RL}} \log d) \]<span class="eqcap">Best-of-N sampling (left) and RL (right). Both rise, peak, and fall. Larger proxy reward models had smaller \(\beta\) (for RL, \(\alpha\) stayed roughly constant across reward-model sizes), so gold reward declines more slowly: a later, higher peak. More proxy training data helped in the same direction.</span></div>
+  <p>Two practical lessons follow. The KL distance at which gold reward peaks is a budget, and it grows with reward model quality. And the proxy score is useless for finding that peak, because it keeps rising straight through it. You need an independent signal: fresh human ratings, a different reward model, or task-specific checks.</p>
 </div>
 
 <div class="widget" id="w-rm-oo">

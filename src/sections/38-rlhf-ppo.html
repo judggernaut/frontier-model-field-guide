@@ -104,16 +104,15 @@
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A leash</span></div>
   <p>Left alone, a model chasing treats will find strange tricks the reward model happens to like. So training adds a leash: every time the model drifts away from how it used to write, it pays a small penalty. It can move toward better answers, but not so far that it stops sounding like itself.</p>
 </div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">β is a risk dial</span></div>
+  <p>The KL coefficient is the single most consequential knob in RLHF. Set it too high and the run is expensive and changes nothing. Set it too low and the policy finds the reward model's blind spots: the widget below shows true quality rising at first and then falling as the length-biased answer takes over. Set the length bias to zero and the problem disappears, which is the point: the damage comes from the gap between the reward model and what you actually want, and β controls how hard the optimizer can exploit that gap.</p>
+</div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The objective and its exact solution</span></div>
   <div class="eq">\[ \max_{\theta}\; \mathbb{E}_{x \sim \mathcal{D},\, y \sim \pi_\theta(\cdot\mid x)}\big[r_\phi(x, y)\big] \;-\; \beta\, \mathbb{D}_{\mathrm{KL}}\big(\pi_\theta(\cdot\mid x)\,\|\,\pi_{\text{ref}}(\cdot\mid x)\big) \]<span class="eqcap">\(r_\phi\) is the reward model, \(\beta\) sets the leash length. Small \(\beta\): the policy may move far. Large \(\beta\): it stays near the reference.</span></div>
   <p>In practice the KL term is applied per token, folded into the reward the RL algorithm sees:</p>
   <div class="eq">\[ r_t = -\beta \log \frac{\pi_\theta(y_t \mid s_t)}{\pi_{\text{ref}}(y_t \mid s_t)} \;+\; \mathbb{1}[t = T]\; r_\phi(x, y) \]<span class="eqcap">Every token pays for how much more likely the policy made it than the reference did. Summed over the response, the penalty is a single-sample estimate of the sequence KL.</span></div>
   <p>This objective has a closed-form optimum, which matters for the next chapter:</p>
   <div class="eq">\[ \pi^*(y \mid x) = \frac{1}{Z(x)}\, \pi_{\text{ref}}(y \mid x)\, \exp\!\Big(\tfrac{1}{\beta}\, r_\phi(x, y)\Big), \qquad Z(x) = \sum_{y} \pi_{\text{ref}}(y \mid x)\, e^{r_\phi(x,y)/\beta} \]<span class="eqcap">Reweight the reference policy by exponentiated reward. You cannot compute this directly for a language model because the sum over all responses is intractable, which is why we need RL (or DPO's trick).</span></div>
-</div>
-
-<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">β is a risk dial</span></div>
-  <p>The KL coefficient is the single most consequential knob in RLHF. Set it too high and the run is expensive and changes nothing. Set it too low and the policy finds the reward model's blind spots: the widget below shows true quality rising at first and then falling as the length-biased answer takes over. Set the length bias to zero and the problem disappears, which is the point: the damage comes from the gap between the reward model and what you actually want, and β controls how hard the optimizer can exploit that gap.</p>
 </div>
 
 <div class="widget" id="w-rl-bandit">
