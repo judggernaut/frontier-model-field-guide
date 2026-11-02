@@ -61,8 +61,15 @@ G.widget('w-gd-ball', function (root) {
     if (i < path.length - 1 && !settled) return { short: 'Rolling', text: 'Still moving. Each step moves the ball by learning rate × slope' + (parseFloat(sMom.value) > 0 ? ', plus momentum carried over from earlier steps.' : '.') };
     var where = b.global ? 'the global minimum' : 'a local minimum at θ = ' + G.fmt(b.x, 2);
     var tail = b.global ? ' This is the lowest point on the whole curve.' : ' The global minimum is at θ = ' + G.fmt(CRIT.filter(function (c) { return c.global; })[0].x, 2) + ', but every nearby step goes uphill, so plain descent stays put. Try another start, momentum, or noise.';
-    if (!settled) return { short: b.global ? 'Near global min' : 'Near local min', text: 'After ' + (path.length - 1) + ' steps the ball is still bouncing around ' + where + '.' + (b.global ? '' : tail) };
-    return { short: b.global ? 'Global min' : 'Local min', text: '<b>Settled in ' + where + '</b> after ' + i + ' steps, loss ' + G.fmt(p.l, 3) + '.' + tail };
+    if (!settled) {
+      var eta = Math.pow(10, parseFloat(sLr.value)), why = '';
+      if (eta >= 0.3) why = ' The step is too big for this valley: each update overshoots the floor and lands on the far wall. Lower the learning rate to settle.';
+      else if (parseFloat(sMom.value) > 0) why = ' Momentum keeps it swinging past the bottom; it would settle with more steps.';
+      else if (cNoise.checked) why = ' The leftover noise keeps it jiggling.';
+      return { short: b.global ? 'Near global min' : 'Near local min', text: 'After ' + (path.length - 1) + ' steps the ball is still bouncing around ' + where + '.' + why };
+    }
+    var j = i; while (j > 0 && Math.abs(path[j - 1].t - p.t) < 0.005) j--;
+    return { short: b.global ? 'Global min' : 'Local min', text: '<b>Settled in ' + where + '</b> after about ' + j + ' steps, loss ' + G.fmt(p.l, 3) + '.' + tail };
   }
   function draw() {
     var P = G.pal(), eta = Math.pow(10, parseFloat(sLr.value));
@@ -101,7 +108,7 @@ G.widget('w-gd-ball', function (root) {
   }
   function reset(showAll) { stop(); simulate(); k = showAll ? path.length - 1 : 0; draw(); }
   function tick(now) {
-    if (now - last >= 70) { last = now; k++; draw(); }
+    if (now - last >= 50) { last = now; k++; draw(); }
     if (k >= path.length - 1) { stop(); draw(); return; }
     timer = requestAnimationFrame(tick);
   }

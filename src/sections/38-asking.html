@@ -1,0 +1,336 @@
+<section id="asking" data-title="Asking for a decision: how framing changes the answer">
+<h2>Asking for a decision: how framing changes the answer</h2>
+<p>Almost everything becomes an LLM judge the moment you ask a model for a decision. Grading an answer, routing a ticket, flagging a policy violation, choosing a tool, picking the better of two drafts: each is a measurement made by a model, and the way you phrase the request is part of the measuring instrument. The format you ask for, the words you use for the labels, the order you list the options, the examples you show, and whether the model reasons before or after committing all move the result, sometimes by more than switching to a better model. This chapter collects the levers with the evidence behind each, then turns them into a checklist.</p>
+
+<div class="story" id="st-ak-survey">
+  <div class="story-head"><div class="story-title">Forbid, or not allow?</div><p class="story-sub">A famous survey experiment, and what it means for every prompt that asks a model to decide.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Two ballots with the same question worded two ways">
+      <text x="320" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">1941: half the sample gets each wording</text>
+      <g class="a" style="--d:0"><rect x="30" y="50" width="280" height="140" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="50" y="76" font-size="12.5" font-weight="600" fill="var(--muted)">BALLOT A</text><text x="50" y="104" font-size="14" fill="var(--fg)">Should the United States</text><text x="50" y="126" font-size="14" font-weight="700" fill="var(--warn)">forbid</text><text x="104" y="126" font-size="14" fill="var(--fg)">public speeches</text><text x="50" y="148" font-size="14" fill="var(--fg)">against democracy?</text></g>
+      <g class="a" style="--d:1"><rect x="330" y="50" width="280" height="140" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="350" y="76" font-size="12.5" font-weight="600" fill="var(--muted)">BALLOT B</text><text x="350" y="104" font-size="14" fill="var(--fg)">Should the United States</text><text x="350" y="126" font-size="14" font-weight="700" fill="var(--eli5)">allow</text><text x="396" y="126" font-size="14" fill="var(--fg)">public speeches</text><text x="350" y="148" font-size="14" fill="var(--fg)">against democracy?</text></g>
+      <g class="a" style="--d:2"><text x="320" y="230" text-anchor="middle" font-size="14" fill="var(--fg)">Forbidding and not allowing are the same policy.</text></g>
+    </svg>
+    <p>In a 1941 split-ballot experiment, Donald Rugg asked two random halves of a sample about the same policy. One half was asked whether speeches against democracy should be forbidden; the other, whether they should be allowed.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="75 percent would not allow but only 54 percent would forbid">
+      <text x="320" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Same policy, 21 points apart</text>
+      <g class="a" style="--d:0"><text x="40" y="92" font-size="14" fill="var(--fg)">would <tspan font-weight="700" fill="var(--warn)">forbid</tspan></text></g>
+      <rect class="grow-x" style="--d:1" x="200" y="74" width="216" height="28" rx="3" fill="var(--warn)"/>
+      <g class="a" style="--d:2"><text x="428" y="94" font-size="15" font-weight="700" fill="var(--fg)">54%</text></g>
+      <g class="a" style="--d:3"><text x="40" y="152" font-size="14" fill="var(--fg)">would <tspan font-weight="700" fill="var(--eli5)">not allow</tspan></text></g>
+      <rect class="grow-x" style="--d:4" x="200" y="134" width="300" height="28" rx="3" fill="var(--eli5)"/>
+      <g class="a" style="--d:5"><text x="512" y="154" font-size="15" font-weight="700" fill="var(--fg)">75%</text></g>
+      <g class="a" style="--d:6"><text x="320" y="210" text-anchor="middle" font-size="14" fill="var(--fg)">"Forbid" sounds harsh, so fewer people say yes to it.</text><text x="320" y="236" text-anchor="middle" font-size="12" fill="var(--muted)">Rugg (1941), Public Opinion Quarterly; repeated by Schuman and Presser in the 1970s.</text></g>
+    </svg>
+    <p>75% would "not allow" the speeches, but only 54% would "forbid" them. The opinion did not change between the two halves; the words did. Survey researchers learned to treat the question wording as part of the measurement.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A judge asked two ways gives different pass rates">
+      <text x="320" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">An LLM judge is a survey respondent too</text>
+      <g class="a" style="--d:0"><rect x="30" y="52" width="270" height="56" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="165" y="86" text-anchor="middle" font-size="14" fill="var(--fg)">"Is this reply acceptable?"</text></g>
+      <rect class="grow-x" style="--d:1" x="330" y="66" width="230" height="28" rx="3" fill="var(--good)"/>
+      <g class="a" style="--d:1"><text x="570" y="86" font-size="14" font-weight="700" fill="var(--fg)">82%</text></g>
+      <g class="a" style="--d:2"><rect x="30" y="128" width="270" height="56" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="165" y="162" text-anchor="middle" font-size="14" fill="var(--fg)">"Does this reply have a problem?"</text></g>
+      <rect class="grow-x" style="--d:3" x="330" y="142" width="190" height="28" rx="3" fill="var(--good)"/>
+      <g class="a" style="--d:3"><text x="530" y="162" font-size="14" font-weight="700" fill="var(--fg)">68%</text></g>
+      <g class="a" style="--d:4"><text x="445" y="208" text-anchor="middle" font-size="12.5" fill="var(--muted)">share judged fine (illustrative)</text><text x="320" y="240" text-anchor="middle" font-size="14" fill="var(--fg)">Same replies, same model. Only the question changed.</text></g>
+    </svg>
+    <p>Ask a model whether replies are acceptable, then ask whether they contain a problem, and the pass rate moves even though the replies and the model are identical (numbers illustrative). Leniency in one framing and strictness in the other are properties of the prompt, not of the replies.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Swapping the order of two answers flips the judge's choice">
+      <text x="320" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Order matters as much as wording</text>
+      <g class="a" style="--d:0"><text x="40" y="78" font-size="13" font-weight="600" fill="var(--muted)">Run 1</text><rect x="110" y="58" width="110" height="32" rx="7" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="165" y="79" text-anchor="middle" font-size="13" fill="var(--fg)">first: reply X</text><rect x="232" y="58" width="110" height="32" rx="7" fill="var(--surface)" stroke="var(--line-strong)"/><text x="287" y="79" text-anchor="middle" font-size="13" fill="var(--fg)">second: reply Y</text><text x="360" y="79" font-size="13" fill="var(--fg)">judge picks <tspan font-weight="700">X</tspan></text></g>
+      <g class="a" style="--d:1"><text x="40" y="132" font-size="13" font-weight="600" fill="var(--muted)">Run 2</text><rect x="110" y="112" width="110" height="32" rx="7" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="165" y="133" text-anchor="middle" font-size="13" fill="var(--fg)">first: reply Y</text><rect x="232" y="112" width="110" height="32" rx="7" fill="var(--surface)" stroke="var(--line-strong)"/><text x="287" y="133" text-anchor="middle" font-size="13" fill="var(--fg)">second: reply X</text><text x="360" y="133" font-size="13" fill="var(--fg)">judge picks <tspan font-weight="700">Y</tspan></text></g>
+      <g class="a" style="--d:2"><rect x="470" y="60" width="150" height="84" rx="10" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="545" y="88" text-anchor="middle" font-size="13" font-weight="600" fill="var(--warn)">it prefers</text><text x="545" y="108" text-anchor="middle" font-size="13" font-weight="600" fill="var(--warn)">whatever</text><text x="545" y="128" text-anchor="middle" font-size="13" font-weight="600" fill="var(--warn)">comes first</text></g>
+      <g class="a" style="--d:3"><text x="320" y="196" text-anchor="middle" font-size="13.5" fill="var(--fg)">Wang et al. (2023): with ChatGPT as judge, reordering alone let Vicuna-13B</text><text x="320" y="218" text-anchor="middle" font-size="13.5" fill="var(--fg)">beat ChatGPT on 66 of 80 questions.</text></g>
+    </svg>
+    <p>Show the same two replies in the opposite order and many judges change their pick. Wang et al. (2023) found that, with ChatGPT judging, simply reordering the answers let Vicuna-13B beat ChatGPT on 66 of 80 queries. Position is a framing choice you make whether you mean to or not.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Four habits that make a decision prompt a reliable instrument">
+      <text x="320" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Treat the prompt as part of the instrument</text>
+      <g class="a" style="--d:0"><rect x="30" y="52" width="280" height="62" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="170" y="78" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Fix the wording</text><text x="170" y="100" text-anchor="middle" font-size="12.5" fill="var(--fg)">observable criteria, neutral labels</text></g>
+      <g class="a" style="--d:1"><rect x="330" y="52" width="280" height="62" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="470" y="78" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Swap the order</text><text x="470" y="100" text-anchor="middle" font-size="12.5" fill="var(--fg)">ask both ways, average</text></g>
+      <g class="a" style="--d:2"><rect x="30" y="128" width="280" height="62" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="170" y="154" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Read probabilities</text><text x="170" y="176" text-anchor="middle" font-size="12.5" fill="var(--fg)">a score you can threshold</text></g>
+      <g class="a" style="--d:3"><rect x="330" y="128" width="280" height="62" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="470" y="154" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Check against people</text><text x="470" y="176" text-anchor="middle" font-size="12.5" fill="var(--fg)">agreement on labelled items</text></g>
+      <g class="a" style="--d:4"><text x="320" y="230" text-anchor="middle" font-size="14" fill="var(--fg)">Pollsters pre-test questions. Do the same with every decision prompt.</text></g>
+    </svg>
+    <p>The takeaway: a decision prompt is a survey question put to a model. Pollsters fix the wording, rotate the order, and pre-test on people before trusting the numbers. The rest of this chapter is the model version of that discipline.</p>
+  </div>
+</div>
+
+<h3>Every decision prompt is a measuring instrument</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The question shapes the answer</span></div>
+  <p>A bathroom scale that reads two kilos heavy is still useful if you know it does. A scale that reads differently depending on which foot you step on first is not. A decision prompt is a scale. Some of its quirks are steady (it is a bit lenient), and some depend on details that should not matter (which answer came first, whether you wrote "acceptable" or "problem"). The goal is to remove the quirks you can, and measure the rest.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why this deserves engineering time</span></div>
+  <p>Teams spend weeks choosing a judge model and an afternoon writing the judge prompt. The evidence below suggests the prompt deserves at least as much care, because framing effects are often as large as the differences being measured. Three consequences follow:</p>
+  <ul>
+    <li><b>Version the prompt like code.</b> A wording change is a change of instrument. Results before and after are not comparable until you re-validate.</li>
+    <li><b>Ask for robustness numbers.</b> Agreement with humans, plus how often the verdict flips when only the order or the label words change.</li>
+    <li><b>Prefer formats that give a score.</b> A probability can be thresholded, calibrated and plotted as an ROC curve; a single word cannot (see <a href="#judges">LLM as judge</a>).</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A simple model of a framed verdict</span></div>
+  <div class="eq">\[ v = \mathbb{1}\big[\, q(x) + \beta_{\text{frame}} + \beta_{\text{order}}\,o + \sigma\,\varepsilon \;&gt;\; 0 \,\big] \]<span class="eqcap">\(q(x)\) is the signal you want (how good the item really is), \(\beta_{\text{frame}}\) a leniency shift set by the wording and label words, \(\beta_{\text{order}}\) a position effect with \(o = \pm 1\) for the two orders, and \(\sigma\varepsilon\) judge noise. Good prompting shrinks \(\beta\) and \(\sigma\), and good harnessing cancels what is left.</span></div>
+  <p>Two measurable quantities follow. The <b>flip rate</b>, \(\Pr[v(o{=}{+}1) \ne v(o{=}{-}1)]\), estimates how much of the verdict is position. The <b>pass-rate gap</b> against human labels estimates \(\beta_{\text{frame}}\). Neither shows up in raw agreement, which is why a judge can agree with humans 80% of the time and still be badly biased.</p>
+</div>
+
+<h3>Output format: yes/no, scale, pairwise, or probability</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Four ways to ask</span></div>
+  <p>You can ask "is it good, yes or no?", "rate it from 1 to 5", "which of these two is better?", or "how likely is it that this is good, from 0 to 100%?". Each gives a different kind of answer. Comparing two things side by side is usually easier than rating one on its own, just as you can tell which of two cups of coffee is stronger more easily than you can rate one cup on a scale.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What each format buys</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Format</th><th>You get</th><th>Strength</th><th>Main failure</th></tr></thead>
+    <tbody>
+      <tr><td>Yes/no</td><td>One label</td><td>Simple, easy to aggregate</td><td>One fixed operating point; leniency set by wording</td></tr>
+      <tr><td>Likert scale (1–5, 1–10)</td><td>An ordinal score</td><td>Some resolution</td><td>Score compression: everything lands on 4 of 5 or 7 to 8 of 10</td></tr>
+      <tr><td>Pairwise (A vs B)</td><td>A preference</td><td>Easier, more consistent judgments</td><td>Position bias; needs pairs, not single items</td></tr>
+      <tr><td>Probability</td><td>A number in [0, 1]</td><td>Thresholds, ROC curves, calibration checks</td><td>Stated numbers can be miscalibrated; read logprobs or use a decision API</td></tr>
+    </tbody>
+  </table></div>
+  <p>The evidence: Zheng et al. (2023), the MT-Bench and Chatbot Arena paper, found strong judges such as GPT-4 reaching over 80% agreement with human preferences, the same level as human-to-human agreement, while documenting position, verbosity and self-enhancement biases. Liusie et al. (2024) found that for moderate-sized open models (FlanT5, Llama 2 chat), pairwise comparison beat asking for an absolute score, and that pairwise judging showed strong positional bias that needed debiasing. Comparison is easier, and it brings its own bias to manage.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Turning any format into a score</span></div>
+  <p>For a scale, read the probability of each score token and take the expectation, as G-Eval (Liu et al., 2023) does: "we use the probability-weighted summation of the output scores as the final score".</p>
+  <div class="eq">\[ \text{score} = \sum_{s=1}^{5} s \cdot p(s \mid \text{prompt}), \qquad p_{\text{yes}} = \frac{p(\texttt{yes})}{p(\texttt{yes}) + p(\texttt{no})} \]<span class="eqcap">Left: an expected score that breaks ties between items the model would all call "4". Right: a renormalised yes probability for a binary verdict. Both need logprob access at the verdict position.</span></div>
+  <p>Verbalised probabilities ("I am 70% sure") are a usable alternative when logprobs are unavailable. Tian et al. (2023) found that for RLHF-tuned models (ChatGPT, GPT-4, Claude), confidences written as output tokens were typically better calibrated than the model's own token probabilities, often cutting expected calibration error by a relative 50%. Either way, calibrate on your labels before treating the number as a probability.</p>
+</div>
+
+<h3>Labels, option order, and position bias</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">First in line has an edge</span></div>
+  <p>Models, like people, have favourite positions and favourite words. Some judges prefer the first answer they read, some the second. Some like picking option "A" in a multiple-choice list regardless of what it says. The fix is simple: ask twice with the order swapped, and only trust a win that survives the swap.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The evidence and the standard fix</span></div>
+  <ul>
+    <li><b>Pairwise judges.</b> Zheng et al. (2023) named position bias as a core limitation of LLM judges. Wang et al. (2023), "Large Language Models are not Fair Evaluators", showed the effect is large enough to reverse rankings, and proposed Balanced Position Calibration: score both orders and combine.</li>
+    <li><b>Multiple choice.</b> Chujie Zheng et al. (2023), "Large Language Models Are Not Robust Multiple Choice Selectors", found models prefer specific option IDs such as "A", traced it mainly to token bias on the ID itself, and proposed PriDe, which estimates that prior by permuting options on a few samples and divides it out.</li>
+    <li><b>Decision models too.</b> Laya's documentation notes that option order can change its choice answers. One-pass decision models do not escape the problem.</li>
+  </ul>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Swapping and averaging removes position bias from the result, but it hides how much there was. Always report the flip rate (the share of items whose verdict changes with order). A judge that flips on 30% of pairs is mostly measuring position on those pairs, and averaging turns them into ties, which quietly shrinks your effect sizes.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Permutation averaging</span></div>
+  <p>For a pairwise judge returning \(p_1 = P(\text{first wins})\) with \(x\) first and \(p_2\) with \(y\) first,</p>
+  <div class="eq">\[ \hat P(x \succ y) = \tfrac12\big(p_1 + (1 - p_2)\big), \qquad \hat b = \tfrac12\big(p_1 + p_2\big) - \tfrac12 \]<span class="eqcap">\(\hat P\) cancels a constant first-position shift; \(\hat b\) estimates that shift (positive means the judge favours the first slot). For \(K\) options, average over cyclic permutations so each option appears in each slot once.</span></div>
+  <p>Label words carry bias the same way. "Yes" and "no", "A" and "B", "acceptable" and "problem" have different priors before the model reads anything. Neutral, symmetric labels help; measuring and dividing out the prior helps more. The code in the next section does both.</p>
+</div>
+
+<h3>Few-shot examples: which ones, and in what order</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The examples teach more than you meant</span></div>
+  <p>Showing a model a few labelled examples helps it understand the task. It also teaches habits you did not intend. If four of your five examples are labelled "pass", the model leans toward "pass". If the last example is a "fail", it leans toward "fail", because it remembers the most recent one best. Even shuffling the same examples can change the results a lot.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Two papers every judge designer should know</span></div>
+  <ul>
+    <li><b>Zhao et al. (2021), "Calibrate Before Use".</b> The choice of prompt format, examples, and even their order made GPT-3's few-shot accuracy swing widely. They traced it to biases toward labels that are common in the examples (majority label bias), that appear near the end of the prompt (recency bias), or that are common in pre-training data (common token bias). Their fix, contextual calibration, improved average accuracy by up to 30 points absolute.</li>
+    <li><b>Lu et al. (2022), "Fantastically Ordered Prompts".</b> The order of the same few-shot examples can make the difference between near state-of-the-art and random-guess performance. An entropy-based method for picking good orders gave a 13% relative improvement across eleven classification tasks.</li>
+  </ul>
+  <p>Practical rules: balance labels across examples, pick examples from the borderline region (easy examples teach little), fix and version the order, and measure sensitivity by re-running with two or three shuffles.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Contextual calibration and swap averaging, in code</span></div>
+  <p>Contextual calibration feeds a content-free input such as "N/A" through the same prompt, reads the label probabilities \(\hat p_{\text{cf}}\), and rescales so that input would score uniformly:</p>
+  <div class="eq">\[ \hat q = \operatorname{normalise}\big(W \hat p\big), \qquad W = \operatorname{diag}(\hat p_{\text{cf}})^{-1} \]<span class="eqcap">\(\hat p\) is the label distribution for a real input. Dividing by the content-free distribution removes the prompt's built-in lean toward some labels.</span></div>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code># Each pair (x, y) was judged twice. Run 1 showed x as "A"; run 2 showed y as "A".
+# The judge returned P("A is better") both times (from logprobs or a decision API).
+p_run1 = [0.81, 0.64, 0.58, 0.90, 0.55, 0.70]
+p_run2 = [0.35, 0.62, 0.66, 0.12, 0.60, 0.41]
+
+def p_x_better(p1, p2):
+    # run 1 says P(x) = p1; run 2 says P(x) = 1 - p2. Average so position cancels out.
+    return (p1 + (1 - p2)) / 2
+
+def consistent(p1, p2):
+    return (p1 &gt; 0.5) == ((1 - p2) &gt; 0.5)   # same winner in both orders?
+
+print([round(p_x_better(a, b), 3) for a, b in zip(p_run1, p_run2)])
+print(sum(consistent(a, b) for a, b in zip(p_run1, p_run2)), "of", len(p_run1), "consistent")
+# both runs report P(first-shown wins); above 0.5 on average means a first-position bias
+print(round(sum(p_run1 + p_run2) / (2 * len(p_run1)) - 0.5, 3))
+
+# Contextual calibration (Zhao et al. 2021): measure the bias on a content-free input such as "N/A",
+# then divide it out so that input would score 50/50.
+p_cf = [0.62, 0.38]                        # P("yes"), P("no") when the input is "N/A"
+def calibrate(p, p_cf):
+    q = [a / b for a, b in zip(p, p_cf)]
+    s = sum(q)
+    return [v / s for v in q]
+
+print([round(v, 3) for v in calibrate([0.70, 0.30], p_cf)])   # a raw 0.70 "yes" shrinks</code></pre>
+<pre class="code" data-lang="rust"><code>// Each pair (x, y) was judged twice. Run 1 showed x as "A"; run 2 showed y as "A".
+// The judge returned P("A is better") both times (from logprobs or a decision API).
+const P_RUN1: [f64; 6] = [0.81, 0.64, 0.58, 0.90, 0.55, 0.70];
+const P_RUN2: [f64; 6] = [0.35, 0.62, 0.66, 0.12, 0.60, 0.41];
+
+fn p_x_better(p1: f64, p2: f64) -&gt; f64 {
+    // run 1 says P(x) = p1; run 2 says P(x) = 1 - p2. Average so position cancels out.
+    (p1 + (1.0 - p2)) / 2.0
+}
+
+fn consistent(p1: f64, p2: f64) -&gt; bool {
+    (p1 &gt; 0.5) == ((1.0 - p2) &gt; 0.5) // same winner in both orders?
+}
+
+/// Contextual calibration (Zhao et al. 2021): measure the bias on a content-free input such as "N/A",
+/// then divide it out so that input would score 50/50.
+fn calibrate(p: &amp;[f64], p_cf: &amp;[f64]) -&gt; Vec&lt;f64&gt; {
+    let q: Vec&lt;f64&gt; = p.iter().zip(p_cf).map(|(a, b)| a / b).collect();
+    let s: f64 = q.iter().sum();
+    q.iter().map(|v| v / s).collect()
+}
+
+fn r3(x: f64) -&gt; f64 { (x * 1000.0).round() / 1000.0 }
+
+fn main() {
+    let avg: Vec&lt;f64&gt; = P_RUN1.iter().zip(P_RUN2).map(|(&amp;a, b)| r3(p_x_better(a, b))).collect();
+    println!("{:?}", avg);
+    let n_ok = P_RUN1.iter().zip(P_RUN2).filter(|(&amp;a, b)| consistent(a, *b)).count();
+    println!("{} of {} consistent", n_ok, P_RUN1.len());
+    // both runs report P(first-shown wins); above 0.5 on average means a first-position bias
+    let all: f64 = P_RUN1.iter().chain(P_RUN2.iter()).sum();
+    println!("{}", r3(all / (2.0 * P_RUN1.len() as f64) - 0.5));
+
+    let p_cf = [0.62, 0.38]; // P("yes"), P("no") when the input is "N/A"
+    let cal: Vec&lt;f64&gt; = calibrate(&amp;[0.70, 0.30], &amp;p_cf).iter().map(|&amp;v| r3(v)).collect();
+    println!("{:?}", cal); // a raw 0.70 "yes" shrinks
+}</code></pre>
+</div>
+  <p>Half of these six pairs flip with order, and the judge leans 7.8 points toward the first slot. After averaging, two pairs that run 1 called for \(x\) (at 0.58 and 0.55) fall below 0.5, and a third (0.64) drops to a coin flip at 0.51.</p>
+</div>
+
+<h3>Reasoning before or after the verdict</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Decide, then justify, or think, then decide</span></div>
+  <p>If you ask someone for a verdict first and their reasons second, the reasons tend to defend whatever they already said. If you ask them to look at the evidence first, the verdict can follow from it. Models work the same way, because they write left to right: anything written after the verdict cannot change it.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Evidence first, verdict last</span></div>
+  <ul>
+    <li>Chiang and Lee (2023) found that asking the model to explain its rating consistently improved correlation with human ratings, while the automatic chain-of-thought step used in G-Eval did not always help. Explanations help; a generic "think step by step" is not guaranteed to.</li>
+    <li>Wang et al. (2023) proposed Multiple Evidence Calibration: have the judge produce evidence before the rating.</li>
+    <li>Putting the verdict last also makes it easy to read the verdict token's logprob (see <a href="#judges">LLM as judge</a>).</li>
+  </ul>
+  <p>The cost is tokens and latency, often several times the cost of a bare verdict. Use evidence-first on hard or borderline items; a reasoning model or a decision model may be a better trade for high volume (see <a href="#reasoning">fast and slow</a> and <a href="#decisions">decision models</a>).</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why order of generation matters, and the format trap</span></div>
+  <p>The verdict token \(v\) is sampled from \(p(v \mid x, r_{&lt;})\), conditioned only on what precedes it. Reasoning written after \(v\) is a rationalisation by construction. Reasoning written before it changes the conditioning, and so the distribution over verdicts.</p>
+  <p>Strict output formats can interfere. Tam et al. (2024), "Let Me Speak Freely?", observed a significant decline in reasoning ability under format restrictions such as forced JSON. A common design that gets both: a free-text <code>evidence</code> field first, then a constrained <code>verdict</code> field, or two calls (reason freely, then extract the verdict with a schema).</p>
+</div>
+
+<h3>Decompose the rubric into separate checks</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Small questions get steadier answers</span></div>
+  <p>"Is this a good answer?" packs many questions into one: is it correct, complete, polite, on topic? Two judges can disagree because they weigh those differently. Asking each as its own yes-or-no question ("Does it state the refund deadline?") gets more consistent answers, and you combine them with a rule you wrote down.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Checklists beat holistic scores</span></div>
+  <ul>
+    <li>CheckEval (Lee et al., EMNLP 2025) replaced holistic scores with checklists of decomposed binary questions and reported improving average agreement across evaluator models by 0.45, with strong correlation to human judgments across 12 evaluator models.</li>
+    <li>FActScore (Min et al., 2023) breaks long-form output into atomic facts and scores the share supported by a knowledge source, with an automated estimator under 2% error. Same idea applied to factuality.</li>
+    <li>OpenAI's Decisions API guide gives the same advice for decision models: keep separate concerns in separate questions, write questions around observable criteria, and send dependent decisions as separate requests.</li>
+  </ul>
+  <p>Decomposition also makes disagreements debuggable. When the judge and a human disagree, you can see which check differed.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Aggregation is your decision</span></div>
+  <p>With checks \(c_1, \dots, c_m\) returning probabilities \(p_j\), the aggregation rule encodes policy. A strict conjunction assumes rough independence, \(P(\text{pass}) \approx \prod_j p_j\); a weighted score \(\sum_j w_j p_j\) trades criteria off; a gate ("any safety check below 0.2 fails the item") encodes non-negotiables. Writing the rule in code, not in the prompt, keeps it auditable and lets you change weights without changing the instrument.</p>
+</div>
+
+<h3>Give it a way out: "unsure" and "other"</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Let it say "I can't tell"</span></div>
+  <p>If you force someone to answer yes or no about something they cannot judge, they guess, and their guesses look just like real answers. Adding "unsure" (or "other" when none of the options fit) lets the model flag those cases so a person can look. You answer fewer items automatically, but the ones you do answer are more often right.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Coverage versus accuracy</span></div>
+  <p>OpenAI's Decisions API guide recommends a fallback option such as "other" when categories do not cover every input, routed to a general review queue. Laya supports a minimum-confidence setting for abstention. Both are selective prediction: trade coverage for accuracy on what is covered (see <a href="#classification">classification metrics</a>). Report both numbers. An "unsure" rate that drifts upward is an early warning that inputs have changed.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Abstention as a band around the threshold</span></div>
+  <p>With a score \(s\) and threshold \(t\), abstaining when \(|s - t| &lt; u\) removes the items nearest the boundary, where errors concentrate. Accuracy on covered items rises with \(u\) while coverage falls. Defining "unsure" in the prompt asks the model to learn this band itself; reading probabilities lets you set \(u\) from costs instead, which is more controllable.</p>
+</div>
+
+<h3>Read probabilities, not words</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">"Yes" hides how sure it was</span></div>
+  <p>When a model writes "yes", you do not know whether it was 51% or 99% sure. Many APIs can tell you the probability behind each word. Decision APIs return probabilities directly. With a number instead of a word, you can choose your own cutoff, rank items from most to least likely, and check whether "80% sure" really means right four times out of five.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Three ways to get a number</span></div>
+  <ul>
+    <li><b>Logprobs</b> on the verdict token, renormalised over the allowed labels. One call, needs API support.</li>
+    <li><b>Repeated sampling.</b> Ask five to ten times at a temperature above zero and use the vote share. Works anywhere, costs more.</li>
+    <li><b>A decision model or API</b> that returns a distribution by design (see <a href="#decisions">decision models</a>).</li>
+  </ul>
+  <p>Pair any of these with <b>structured outputs</b> (a JSON schema with an enum for the verdict) so the answer always parses, keeping a free-text evidence field before the verdict for the reasons above.</p>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>When you change any framing lever, re-measure on the same labelled set: agreement or kappa with humans, flip rate under order swap, pass-rate gap, coverage if you allow "unsure", and AUC if you read probabilities. A prompt change that raises agreement while raising the flip rate has traded one bias for another. Keep the labelled set fixed across prompt versions so the comparison is paired.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Calibrating what you read</span></div>
+  <p>Renormalised logprobs from instruction-tuned models are often overconfident. Fit temperature scaling on held-out labels, \(p' = \sigma(\operatorname{logit}(p)/\tau)\), and check a reliability diagram. Vote shares from \(k\) samples are coarse (multiples of \(1/k\)) and noisy, with standard error \(\sqrt{p(1-p)/k}\), so ten samples give about ±0.16 at \(p = 0.5\). That is enough to rank and threshold, not enough to claim precise probabilities.</p>
+</div>
+
+<div class="widget" id="w-ak-frame">
+  <div class="wtitle">Framing simulator</div>
+  <div class="wsub">600 simulated items with human labels, judged under different framings. Pick a format and toggle the fixes. Bars show agreement with humans for all four formats under the current toggles; the selected format is solid. Effect sizes are illustrative, chosen to be directionally consistent with the papers above.</div>
+  <div class="btnrow"><button class="b" data-f="yn" aria-pressed="true">Yes / no</button><button class="b" data-f="lk" aria-pressed="false">1–5 scale</button><button class="b" data-f="pw" aria-pressed="false">Pairwise A vs B</button><button class="b" data-f="pr" aria-pressed="false">Probability</button></div>
+  <div class="controls">
+    <div class="ctl"><label><span><input type="checkbox" data-o="swap"> Swap positions and average</span></label></div>
+    <div class="ctl"><label><span><input type="checkbox" data-o="reason"> Evidence before verdict</span></label></div>
+    <div class="ctl"><label><span><input type="checkbox" data-o="rubric"> Decompose the rubric</span></label></div>
+    <div class="ctl"><label><span><input type="checkbox" data-o="unsure"> Allow "unsure"</span></label></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Agreement with humans</div><div class="v" data-k="agr">—</div></div>
+    <div class="mc"><div class="l">Verdicts that flip with order</div><div class="v" data-k="flip">—</div></div>
+    <div class="mc"><div class="l">Coverage (not unsure)</div><div class="v" data-k="cov">—</div></div>
+    <div class="mc"><div class="l">Relative cost</div><div class="v" data-k="auc">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>A decision prompt checklist</h3>
+<ol class="steps">
+  <li><div><b>Write observable criteria.</b> "States the refund deadline" beats "is helpful". If two people could disagree about what a criterion means, rewrite it.</div></li>
+  <li><div><b>Split the rubric.</b> One question per concern, each yes/no or a short ordered scale with distinct, described levels. Combine with a rule in code.</div></li>
+  <li><div><b>Choose the format for the decision.</b> Pairwise for comparing systems; pointwise checks for gating single items; ask for or read a probability whenever you need a threshold.</div></li>
+  <li><div><b>Use neutral, symmetric labels.</b> Avoid loaded words ("acceptable" versus "problem"). Keep option descriptions distinct, and add "other" or "unsure" with a clear definition.</div></li>
+  <li><div><b>Control order.</b> Swap positions for pairwise and rotate options for multiple choice; average, and report the flip rate.</div></li>
+  <li><div><b>Curate examples.</b> Balanced labels, borderline cases, fixed order; check sensitivity with two or three shuffles.</div></li>
+  <li><div><b>Evidence first, verdict last,</b> in a structured output with an enum verdict field, so it parses and the verdict's logprob is readable.</div></li>
+  <li><div><b>Get a number.</b> Logprobs, vote shares, or a decision API. Calibrate on held-out labels.</div></li>
+  <li><div><b>Validate on people.</b> A fixed labelled set, human-to-human agreement as the ceiling, then judge agreement, pass-rate gap, flip rate, coverage and AUC (<a href="#judges">LLM as judge</a>).</div></li>
+  <li><div><b>Version everything.</b> Model, prompt, examples and their order, decoding settings, aggregation rule. Any change means re-validation.</div></li>
+</ol>
+
+<div class="callout example"><span class="tag">Worked problem</span><div>
+  <p><b>Before.</b> A team grades support replies with this prompt and reads the first word of the output.</p>
+<pre class="code" data-lang="text"><code>Here are two replies to a customer. Which one is better?
+
+Reply A: {reply_a}
+Reply B: {reply_b}
+
+Answer A or B, then explain why.</code></pre>
+  <p>Problems: one holistic judgment; reasons come after the verdict; reply A is always the incumbent system, so position bias favours it every time; no "unsure"; a single word with no probability; nothing tells the judge what "better" means.</p>
+  <p><b>After.</b> Pointwise checks with observable criteria, evidence first, an explicit "unsure", structured output. The harness also runs the old pairwise comparison in both orders for system-level win rates.</p>
+<pre class="code" data-lang="text"><code>You are checking one support reply against three criteria. Judge each criterion on its own.
+
+Customer message:
+&lt;message&gt;{message}&lt;/message&gt;
+
+Refund policy:
+&lt;policy&gt;{policy}&lt;/policy&gt;
+
+Reply to check:
+&lt;reply&gt;{reply}&lt;/reply&gt;
+
+Criteria:
+1. correct:  every statement about refunds matches the policy text.
+2. resolves: the reply gives the customer a concrete next step and when it will happen.
+3. tone:     the reply contains no blame, sarcasm, or promises the policy does not allow.
+
+For each criterion, first quote the sentences from the reply that matter, then give a verdict:
+"yes", "no", or "unsure" if the reply does not contain enough information to decide.
+
+Return only this JSON:
+{"correct":  {"evidence": "...", "verdict": "yes" | "no" | "unsure"},
+ "resolves": {"evidence": "...", "verdict": "yes" | "no" | "unsure"},
+ "tone":     {"evidence": "...", "verdict": "yes" | "no" | "unsure"}}</code></pre>
+  <p>In code: read the probability of each verdict token (or send the three criteria as three predicate questions to a decision API), pass an item when all three clear thresholds chosen on labelled data, send any "unsure" to review, and track agreement, flip rate and coverage per criterion.</p>
+</div></div>
+
+<div class="callout ask"><span class="tag">Principal asks</span><div>Show me the judge's agreement with humans and the human-to-human ceiling on the same items. What is the flip rate when you swap order or reword the labels? Is the verdict read as a word or a probability, and is it calibrated? Which criteria does the rubric check separately, and what rule combines them? When did the prompt last change, and was the labelled set re-scored?</div></div>
+</section>

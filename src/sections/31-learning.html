@@ -33,7 +33,7 @@
       <g class="a" style="--d:4"><circle cx="372.8" cy="132.2" r="4" fill="var(--muted)"/><text x="373" y="116" text-anchor="middle" font-size="13" fill="var(--muted)">local maximum</text><circle cx="241.2" cy="149.1" r="4" fill="var(--muted)"/><text x="241" y="134" text-anchor="middle" font-size="12" fill="var(--muted)">local max</text></g>
       <g class="a" style="--d:5"><circle cx="590" cy="36.5" r="4" fill="var(--muted)"/><text x="580" y="22" text-anchor="end" font-size="12" fill="var(--muted)">global maximum (highest point on this map)</text></g>
     </svg>
-    <p>The drop rolls into the first pond it meets and stops: every step from there goes uphill. That is a <b>local minimum</b>. The deepest lake, the <b>global minimum</b>, is elsewhere and the drop will never know. Hilltops are <b>local maxima</b>; the highest point of all is the <b>global maximum</b>. At all of them the ground is flat, so the gradient is zero.</p>
+    <p>The drop rolls into the first pond it meets and stops: every step from there goes uphill. That is a <b>local minimum</b>. The deepest lake, the <b>global minimum</b>, is elsewhere and the drop will never know. Hilltops are <b>local maxima</b>; the highest point on the map is the <b>global maximum</b> (here it sits at the edge). At every dip bottom and hilltop the ground is flat, so the gradient is zero.</p>
   </div>
   <div class="step">
     <svg viewBox="0 0 640 260" role="img" aria-label="Drops landing in different places end up in different ponds">
@@ -191,7 +191,7 @@ fn main() {
     <div class="ctl"><label for="gd-x0">Start θ: <output id="gd-x0-o">-3.4</output></label><input type="range" id="gd-x0" min="-3.8" max="3.8" step="0.1" value="-3.4"></div>
     <div class="ctl"><label for="gd-lr">Learning rate: <output id="gd-lr-o">0.10</output></label><input type="range" id="gd-lr" min="-2.3" max="0" step="0.05" value="-1"></div>
     <div class="ctl"><label for="gd-mom">Momentum: <output id="gd-mom-o">0.00</output></label><input type="range" id="gd-mom" min="0" max="0.95" step="0.05" value="0"></div>
-    <div class="ctl"><label>Gradient noise</label><label style="font-size:13px;font-weight:400"><input type="checkbox" id="gd-noise"> add noise to each slope (fades over the run)</label></div>
+    <div class="ctl"><label>Gradient noise</label><label style="font-size:13px;font-weight:400;justify-content:flex-start;align-items:center"><input type="checkbox" id="gd-noise"> add noise to each slope (fades over the run)</label></div>
   </div>
   <div class="btnrow"><button class="b" type="button" data-step>Step</button><button class="b" type="button" data-run aria-pressed="false">Run</button><button class="b" type="button" data-reset>Reset</button></div>
   <canvas data-cv="land"></canvas>
@@ -247,7 +247,7 @@ fn main() {
   <div class="wsub">Contours of \(\mathcal{L}(x, y) = x^2 + \tfrac12(y^2 - 1)^2\): two minima at \(y = \pm 1\) and a saddle at the origin, with loss 0.5. The ball starts at \(x = 1.6\), a tiny distance from the ridge \(y = 0\). Learning rate 0.05, 300 steps. Move the start closer to the ridge and watch the plateau in the loss curve grow; add noise and it vanishes.</div>
   <div class="controls">
     <div class="ctl"><label for="gd-y0">Start distance from ridge: <output id="gd-y0-o">1e-6</output></label><input type="range" id="gd-y0" min="-9" max="-1" step="0.5" value="-6"></div>
-    <div class="ctl"><label>Gradient noise</label><label style="font-size:13px;font-weight:400"><input type="checkbox" id="gd-snoise"> add noise (SGD-like)</label></div>
+    <div class="ctl"><label>Gradient noise</label><label style="font-size:13px;font-weight:400;justify-content:flex-start;align-items:center"><input type="checkbox" id="gd-snoise"> add noise (SGD-like)</label></div>
   </div>
   <canvas data-cv="sad"></canvas>
   <canvas data-cv="sadloss"></canvas>

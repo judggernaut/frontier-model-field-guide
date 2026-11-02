@@ -204,7 +204,7 @@
   <p>Stack the weight vectors of a layer's \(m\) neurons as rows of a matrix \(W \in \mathbb{R}^{m \times n}\). Then the whole layer is</p>
   <div class="eq">\[ \mathbf{h}^{(\ell)} = \phi\big(W^{(\ell)}\,\mathbf{h}^{(\ell-1)} + \mathbf{b}^{(\ell)}\big), \qquad \mathbf{h}^{(0)} = \mathbf{x} \]<span class="eqcap">\(\phi\) is applied to each element. A network of \(L\) layers is the composition \(f(\mathbf{x}) = f_L \circ \cdots \circ f_1(\mathbf{x})\). The last layer usually skips the activation (regression) or applies softmax (classification, including next-token prediction).</span></div>
   <p>This is why GPUs matter: a layer is one matrix multiply plus an element-wise function, and matrix multiplies are what GPU hardware is built for. Process a batch of inputs at once and the matrix-vector product becomes a matrix-matrix product, which uses the hardware far more efficiently.</p>
-  <p>Why depth helps, formally: some functions that a deep network represents with a modest number of units need exponentially many units in a shallow one. Telgarsky (2016) constructs such functions for ReLU networks. Depth is not just a convenience; it changes what is cheap to represent.</p>
+  <p>Why depth helps, formally: some functions that a deep network represents with a modest number of units need exponentially many units in a shallow one. Telgarsky (2016) constructs such functions for ReLU networks. Depth changes what is cheap to represent.</p>
 </div>
 
 <div class="story" id="st-nn-forward">
