@@ -35,7 +35,9 @@ G.widget('w-ab-dur', function (root) {
       ctx.fillRect(s.X(w) - bw / 2, s.Y(mv), bw, s.Y(0) - s.Y(mv)); ctx.globalAlpha = 1;
     }
     G.line(ctx, [[pad.l, s.Y(m)], [c.w - pad.r, s.Y(m)]], P.accent, 2, [6, 4]);
-    G.text(ctx, 'your target ' + G.fmt(m * 100, 1) + '%', c.w - pad.r - 4, s.Y(m) - 9, P.accent, 'right', 12);
+    var tl = 'your target ' + G.fmt(m * 100, 1) + '%'; ctx.font = '12px ' + G.css('--font-body', 'sans-serif');
+    var tw = ctx.measureText(tl).width; ctx.fillStyle = P.surface; ctx.fillRect(c.w - pad.r - tw - 8, s.Y(m) - 17, tw + 8, 16);
+    G.text(ctx, tl, c.w - pad.r - 4, s.Y(m) - 9, P.accent, 'right', 12);
     G.$(root, '[data-n]').textContent = G.big(n);
     G.$(root, '[data-d]').textContent = G.big(days);
     G.$(root, '[data-w]').textContent = weeks * 7 + ' days';

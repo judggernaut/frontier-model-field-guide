@@ -1,0 +1,378 @@
+<section id="metrics" data-title="Choosing metrics and logging enough to know why">
+<style>
+figure.svgfig{background:var(--card)}
+.mt-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.mt-chips button.b{font-size:13.5px;padding:6px 12px}
+.mt-scn{padding:12px 14px;border-radius:var(--radius);background:var(--sunk);border:1px solid var(--border);font-size:14.5px;line-height:1.6;margin-bottom:14px}
+.mt-lbl{font-family:var(--font-mono);font-size:11.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin:4px 0 8px}
+.mt-list{display:grid;gap:8px;margin-top:6px}
+.mt-row{display:grid;grid-template-columns:118px minmax(0,1fr);gap:12px;align-items:start;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card)}
+.mt-row .pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;text-align:center;border:1px solid var(--pc);color:var(--pc);background:var(--pb)}
+.mt-row .t{font-size:14.5px;font-weight:600;line-height:1.45}
+.mt-row .e{font-size:13.5px;color:var(--muted-foreground);margin-top:3px;line-height:1.5}
+.mt-row.yes{--pc:var(--good);--pb:var(--good-soft);border-color:var(--good)}
+.mt-row.no{--pc:var(--tn);--pb:var(--sunk)}
+.mt-row.unk{--pc:var(--warn);--pb:var(--warn-soft)}
+@media(max-width:560px){.mt-row{grid-template-columns:minmax(0,1fr);gap:4px}}
+</style>
+<h2>Choosing metrics and logging enough to know why</h2>
+<p>An experiment can only be as good as what it measures. Pick the wrong metric and a well-run test optimizes the wrong thing. Log too little and a surprising result becomes an argument instead of an investigation. This chapter covers how to build a metric hierarchy for an AI product, what makes an individual metric good, the traps in ratio and proxy metrics, and the instrumentation that lets you answer "why did that move?" It builds on <a href="#measurement">measurement</a> for validity and reliability and feeds directly into <a href="#abtest">A/B tests</a>.</p>
+
+<div class="story" id="st-mt-restaurant">
+  <div class="story-head"><div class="story-title">Running a restaurant by the numbers</div><p class="story-sub">The four kinds of metric, built one layer at a time.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Top tier: north star, guests back within 30 days">
+      <g class="a" style="--d:0"><rect x="200" y="18" width="240" height="46" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="320" y="37" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">North star</text><text x="320" y="55" text-anchor="middle" font-size="12.5" fill="var(--fg)">Guests back within 30 days</text></g>
+      <rect x="150" y="74" width="340" height="46" rx="8" fill="none" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <rect x="100" y="130" width="440" height="46" rx="8" fill="none" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <rect x="50" y="186" width="540" height="46" rx="8" fill="none" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <text class="a" style="--d:1" x="320" y="252" text-anchor="middle" font-size="12.5" fill="var(--muted)">True to the goal, but it takes a month to move.</text>
+    </svg>
+    <p>The owner wants one number that says whether the restaurant is doing well. She picks "guests who come back within 30 days": it captures food, service and price together. This is the <b>north star</b>, or overall evaluation criterion. Its weakness is speed: it takes a month to see a change.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Second tier: drivers such as dish ratings and wait time">
+      <rect x="200" y="18" width="240" height="46" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="320" y="37" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">North star</text><text x="320" y="55" text-anchor="middle" font-size="12.5" fill="var(--fg)">Guests back within 30 days</text>
+      <g class="a" style="--d:0"><rect x="150" y="74" width="340" height="46" rx="8" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><text x="320" y="93" text-anchor="middle" font-size="13" font-weight="700" fill="var(--eli5)">Drivers: move it, and move faster</text><text x="320" y="111" text-anchor="middle" font-size="12.5" fill="var(--fg)">Dish ratings · wait for a table · order accuracy</text></g>
+      <rect x="100" y="130" width="440" height="46" rx="8" fill="none" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <rect x="50" y="186" width="540" height="46" rx="8" fill="none" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <text class="a" style="--d:1" x="320" y="252" text-anchor="middle" font-size="12.5" fill="var(--muted)">Visible tonight, and known to predict return visits.</text>
+    </svg>
+    <p>Below it go <b>drivers</b>: numbers that respond in days, not months, and that past data shows lead to return visits. Dish ratings, the wait for a table, orders delivered correctly. A new recipe is judged on these, because they move fast enough to test.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Third tier: guardrails such as food safety and cost per plate">
+      <rect x="200" y="18" width="240" height="46" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="320" y="37" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">North star</text><text x="320" y="55" text-anchor="middle" font-size="12.5" fill="var(--fg)">Guests back within 30 days</text>
+      <rect x="150" y="74" width="340" height="46" rx="8" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><text x="320" y="93" text-anchor="middle" font-size="13" font-weight="700" fill="var(--eli5)">Drivers: move it, and move faster</text><text x="320" y="111" text-anchor="middle" font-size="12.5" fill="var(--fg)">Dish ratings · wait for a table · order accuracy</text>
+      <g class="a" style="--d:0"><rect x="100" y="130" width="440" height="46" rx="8" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="2"/><text x="320" y="149" text-anchor="middle" font-size="13" font-weight="700" fill="var(--warn)">Guardrails: must not get worse</text><text x="320" y="167" text-anchor="middle" font-size="12.5" fill="var(--fg)">Food-safety incidents · cost per plate · staff overtime</text></g>
+      <rect x="50" y="186" width="540" height="46" rx="8" fill="none" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <text class="a" style="--d:1" x="320" y="252" text-anchor="middle" font-size="12.5" fill="var(--muted)">A gain upstairs never pays for a breach here.</text>
+    </svg>
+    <p>Then <b>guardrails</b>: things that must not get worse whatever else improves. A richer recipe that raises ratings but doubles the cost per plate, or causes a food-safety incident, is not a win. Guardrails are what stop a team from hitting its target in a way the business cannot afford.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Bottom tier: diagnostics such as oven temperature and ticket time">
+      <rect x="200" y="18" width="240" height="46" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="320" y="37" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">North star</text><text x="320" y="55" text-anchor="middle" font-size="12.5" fill="var(--fg)">Guests back within 30 days</text>
+      <rect x="150" y="74" width="340" height="46" rx="8" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><text x="320" y="93" text-anchor="middle" font-size="13" font-weight="700" fill="var(--eli5)">Drivers: move it, and move faster</text><text x="320" y="111" text-anchor="middle" font-size="12.5" fill="var(--fg)">Dish ratings · wait for a table · order accuracy</text>
+      <rect x="100" y="130" width="440" height="46" rx="8" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="2"/><text x="320" y="149" text-anchor="middle" font-size="13" font-weight="700" fill="var(--warn)">Guardrails: must not get worse</text><text x="320" y="167" text-anchor="middle" font-size="12.5" fill="var(--fg)">Food-safety incidents · cost per plate · staff overtime</text>
+      <g class="a" style="--d:0"><rect x="50" y="186" width="540" height="46" rx="8" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><text x="320" y="205" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)">Diagnostics: explain why</text><text x="320" y="223" text-anchor="middle" font-size="12.5" fill="var(--muted)">Oven temperature · ticket time per station · dishes sold out</text></g>
+      <text class="a" style="--d:1" x="320" y="252" text-anchor="middle" font-size="12.5" fill="var(--muted)">Never the goal. Always the first place to look.</text>
+    </svg>
+    <p>At the base sit <b>diagnostics</b>: oven temperatures, how long each station takes per ticket, which dishes sold out. Nobody is rewarded for them, but when ratings drop on a Friday, they tell you it was the grill station falling behind.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The same four tiers filled in for an AI assistant">
+      <rect x="200" y="18" width="240" height="46" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="320" y="37" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">North star</text>
+      <text class="a" style="--d:0" x="320" y="55" text-anchor="middle" font-size="12" fill="var(--fg)">Weekly users with a successful task</text>
+      <rect x="150" y="74" width="340" height="46" rx="8" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><text x="320" y="93" text-anchor="middle" font-size="13" font-weight="700" fill="var(--eli5)">Drivers</text>
+      <text class="a" style="--d:1" x="320" y="111" text-anchor="middle" font-size="12" fill="var(--fg)">Judged task success · thumbs-up rate · retry rate</text>
+      <rect x="100" y="130" width="440" height="46" rx="8" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="2"/><text x="320" y="149" text-anchor="middle" font-size="13" font-weight="700" fill="var(--warn)">Guardrails</text>
+      <text class="a" style="--d:2" x="320" y="167" text-anchor="middle" font-size="12" fill="var(--fg)">p95 latency · cost per request · safety flags · false refusals</text>
+      <rect x="50" y="186" width="540" height="46" rx="8" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><text x="320" y="205" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)">Diagnostics</text>
+      <text class="a" style="--d:3" x="320" y="223" text-anchor="middle" font-size="12" fill="var(--muted)">Tokens per answer · tool calls per task · cache hit rate · error codes</text>
+      <text class="a" style="--d:4" x="320" y="252" text-anchor="middle" font-size="12.5" fill="var(--muted)">Same shape, new contents. Decide it before the test, not after.</text>
+    </svg>
+    <p>An AI assistant fits the same shape. The north star is how many people get real work done each week. Drivers are faster signals that predict it. Guardrails cover latency, cost, safety and over-refusal. Diagnostics such as answer length and tool calls explain any movement. The rest of this chapter is about filling each tier well.</p>
+  </div>
+</div>
+
+<h3>1. The metric hierarchy</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Goal, signals, tripwires, gauges</span></div>
+  <p>A car dashboard does not have one number. You care about arriving (the goal), you watch your speed and route (signals that tell you whether you will arrive on time), warning lights must stay off (tripwires), and the gauges like engine temperature explain trouble when it comes. Products need the same set of numbers, each with its own job, and confusion starts when one number is asked to do two jobs.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">A hierarchy for an AI assistant</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Tier</th><th>Example metric</th><th>Job in a decision</th><th>Typical trap</th></tr></thead>
+    <tbody>
+      <tr><td>North star (OEC)</td><td>Weekly active users with at least one judged-successful task</td><td>Defines winning for the product over quarters</td><td>Too slow and noisy to test against directly</td></tr>
+      <tr><td>Drivers</td><td>Judged task success rate; thumbs-up rate; retry (regenerate) rate</td><td>Primary metric of most experiments</td><td>A driver that stopped predicting the north star</td></tr>
+      <tr><td>Guardrails: product</td><td>p95 latency; cost per request; safety violation rate; benign refusal rate; error rate</td><td>Veto a launch</td><td>Underpowered, so "no harm detected" means nothing</td></tr>
+      <tr><td>Guardrails: trust</td><td>Sample ratio; logging completeness; exposure rate</td><td>Decide whether to believe the test</td><td>Checked after the results, or not at all</td></tr>
+      <tr><td>Diagnostics</td><td>Tokens per answer; tool calls per task; cache hit rate; error codes by client</td><td>Explain why something moved</td><td>Promoted to a target and then gamed</td></tr>
+    </tbody>
+  </table></div>
+  <p>Write the hierarchy once per product, review it quarterly, and require every experiment brief to pick its primary metric from the driver tier. The value is less in any one metric than in the shared agreement about what each one is for.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Validating drivers against the north star</span></div>
+  <p>A driver earns its place by predicting the north star <b>under intervention</b>, not just by correlating with it in observational data. The test: across a corpus of past experiments, regress the north-star effect on the driver effect. A good driver has treatment effects that line up with north-star effects in sign and roughly in size; a driver that moved in many experiments whose north-star effect was flat or opposite is a proxy that has drifted. This is the online version of the offline-to-online calibration in <a href="#gap">the offline–online gap</a>. Composite OECs, a weighted sum of drivers, are common; set the weights from this experiment corpus or from an explicit trade-off ("1 point of task success is worth 50 ms of p95 latency"), and write them down, because the weights are a product decision.</p>
+</div>
+
+<h3>2. What makes a good metric</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A good thermometer</span></div>
+  <p>A good thermometer moves when the temperature moves (sensitive), goes up when it gets hotter and never the other way (directional), reacts to your room and not the neighbour's oven (attributable), and cannot be fooled by breathing on it (hard to game). Product metrics need the same four qualities. Most fail at least one, and knowing which one tells you how far to trust them.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Four properties, and the tension between two of them</span></div>
+  <div class="four">
+    <div class="tile"><h4>Sensitive</h4><p>Moves detectably in a test of normal size when the change matters. Retention over 90 days rarely does.</p></div>
+    <div class="tile"><h4>Directional</h4><p>Up always means better. "Messages per session" fails: more messages can mean engagement or a model that never gets it right.</p></div>
+    <div class="tile"><h4>Attributable</h4><p>You can trace a movement to the change and the users who saw it, which needs exposure and version logging.</p></div>
+    <div class="tile"><h4>Hard to game</h4><p>A team cannot raise it without the user being better off. Answer length and thumbs-up rate are easy to inflate.</p></div>
+  </div>
+  <figure class="svgfig"><svg viewBox="0 0 640 300" role="img" aria-label="Metrics placed by sensitivity and directionality">
+    <rect x="80" y="20" width="250" height="120" fill="var(--sunk)"/><rect x="330" y="20" width="250" height="120" fill="var(--good-soft)"/><rect x="80" y="140" width="250" height="120" fill="var(--sunk)" opacity=".5"/><rect x="330" y="140" width="250" height="120" fill="var(--warn-soft)"/>
+    <line x1="80" y1="260" x2="580" y2="260" stroke="var(--line-strong)"/><line x1="80" y1="20" x2="80" y2="260" stroke="var(--line-strong)"/>
+    <text x="330" y="284" text-anchor="middle" font-size="12.5" fill="var(--muted)">sensitivity: moves in a normal-sized test →</text>
+    <text x="70" y="140" text-anchor="middle" font-size="12.5" fill="var(--muted)" transform="rotate(-90 70 140)">directionality: up means better →</text>
+    <g font-size="12" font-weight="600"><text x="90" y="38" fill="var(--muted)">true but slow: north star</text><text x="570" y="38" text-anchor="end" fill="var(--good)">aim here: drivers</text><text x="90" y="252" fill="var(--muted)">neither: drop it</text><text x="570" y="252" text-anchor="end" fill="var(--warn)">fast but ambiguous: diagnostics</text></g>
+    <g font-size="12" fill="var(--fg)">
+      <circle cx="130" cy="64" r="6" fill="var(--accent)"/><text x="142" y="68">90-day retention</text>
+      <circle cx="175" cy="100" r="6" fill="var(--accent)"/><text x="187" y="104">paid conversion</text>
+      <circle cx="430" cy="66" r="6" fill="var(--accent)"/><text x="442" y="70">judged task success</text>
+      <circle cx="390" cy="104" r="6" fill="var(--accent)"/><text x="402" y="108">retry rate (lower)</text>
+      <circle cx="350" cy="150" r="6" fill="var(--accent)"/><text x="362" y="164">thumbs-up rate</text>
+      <circle cx="500" cy="200" r="6" fill="var(--accent)"/><text x="488" y="204" text-anchor="end">messages per session</text>
+      <circle cx="540" cy="230" r="6" fill="var(--accent)"/><text x="528" y="234" text-anchor="end">answer length</text>
+    </g>
+  </svg><figcaption>Illustrative placement. Thumbs-up rate sits on the line: it moves easily and mostly means better, but it rewards flattery and covers only users who bother to rate.</figcaption></figure>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Measuring sensitivity and directionality</span></div>
+  <p><b>Sensitivity</b> has two parts: the effect a change produces and the metric's noise. For a metric with per-unit standard deviation \(\sigma\) and an effect \(\delta\), the detectable fraction scales with \(\delta/\sigma\). Estimate it empirically as the share of past experiments in which the metric moved significantly, and compare variance across candidate definitions: capping heavy users, binarising ("at least one success" instead of "count of successes"), or CUPED can cut \(\sigma\) severalfold. <b>Directionality</b> is estimated against labelled experiments, ones the team agrees were good or bad on deeper evidence, or against the north star as above. Deng and Shi (KDD 2016) describe this pair of properties, sensitivity and directionality, as the core of metric evaluation in an experimentation program. Report both for any proposed new metric before it is allowed into a scorecard.</p>
+</div>
+
+<h3>3. Ratio metrics and their pitfalls</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The batting average that rose because a player stopped batting</span></div>
+  <p>A ratio has two moving parts. "Share of answers rated thumbs-up" can rise because answers got better, or because unhappy people stopped rating at all. The top of the fraction did not change; the bottom shrank. Whenever you see a rate move, ask what happened to the top and to the bottom separately.</p>
+  <p>A second trap: one very active person contributes hundreds of ratings. If you treat each rating as a separate, independent vote, you think you have far more evidence than you do.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Ask for the numerator and denominator</span></div>
+  <ul>
+    <li><b>Always show both parts</b> next to any rate in a scorecard. A treatment that changes the denominator (who rates, who reaches a step, how many requests a user sends) can move a rate with no change in quality.</li>
+    <li><b>Say which average you mean.</b> "Ratio of sums" (all thumbs-up over all ratings) weights heavy users more; "mean of per-user ratios" weights each user equally. They answer different questions and can disagree by 10 points.</li>
+    <li><b>Check the error bars are computed per user</b>, the unit that was randomized. Per-rating standard errors are too small, which produces false wins.</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The delta method</span></div>
+  <p>When users are randomized and the metric is \(R = \sum_i A_i / \sum_i B_i\) (for example thumbs-up \(A_i\) over rated responses \(B_i\) for user \(i\)), the user totals \((A_i, B_i)\) are independent across users, but the individual ratings inside a user are not. A first-order Taylor expansion gives</p>
+  <div class="eq">\[ \operatorname{Var}(\hat R) \approx \frac{1}{n\,\mu_B^2}\Big(\sigma_A^2 - 2R\,\sigma_{AB} + R^2\sigma_B^2\Big) \]<span class="eqcap">\(n\) users; \(\mu_B\) the mean denominator per user; \(\sigma_A^2, \sigma_B^2, \sigma_{AB}\) the per-user variances and covariance. Deng, Knoblich and Lu (KDD 2018) give a practical guide to this and related cases.</span></div>
+  <p>The binomial formula \(\sqrt{R(1-R)/\sum B_i}\) treats every rating as independent and is wrong whenever users contribute unequal, correlated batches. In the example below, two heavy users make the naive standard error 2.5 times too small. A user-level bootstrap gives the same answer as the delta method and is a good cross-check; see <a href="#intervals">intervals</a>.</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def mean(v):
+    return sum(v) / len(v)
+
+def ratio_se(num, den):
+    """Delta-method standard error of sum(num) / sum(den), with users as the unit."""
+    n = len(num)
+    mn, md = mean(num), mean(den)
+    r = mn / md
+    vn = sum((a - mn) ** 2 for a in num) / (n - 1)
+    vd = sum((b - md) ** 2 for b in den) / (n - 1)
+    cnd = sum((a - mn) * (b - md) for a, b in zip(num, den)) / (n - 1)
+    # Var(R) ~ (Var(num) - 2 R Cov(num, den) + R^2 Var(den)) / (n * mean(den)^2)
+    return r, ((vn - 2 * r * cnd + r * r * vd) / (n * md * md)) ** 0.5
+
+# Per user: thumbs-up clicks and rated responses. Two heavy users dominate. Illustrative.
+ups   = [1, 0, 2, 1, 30, 1, 3, 2, 0, 4, 1, 5]
+rated = [2, 1, 3, 2, 60, 1, 4, 3, 1, 5, 2, 40]
+
+r, se_delta = ratio_se(ups, rated)
+n_rated = sum(rated)
+se_naive = (r * (1 - r) / n_rated) ** 0.5    # pretends every rating is independent
+print(f"rate {r:.3f} from {n_rated} ratings by {len(ups)} users")   # rate 0.403 from 124 ratings by 12 users
+print(f"naive se {se_naive:.3f}  delta se {se_delta:.3f}  ratio {se_delta / se_naive:.2f}")
+# naive se 0.044  delta se 0.108  ratio 2.46
+print(f"mean of per-user rates {mean([a / b for a, b in zip(ups, rated)]):.3f}")  # 0.501, a different metric</code></pre>
+<pre class="code" data-lang="rust"><code>fn mean(v: &amp;[f64]) -&gt; f64 {
+    v.iter().sum::&lt;f64&gt;() / v.len() as f64
+}
+
+/// Delta-method standard error of sum(num) / sum(den), with users as the unit.
+fn ratio_se(num: &amp;[f64], den: &amp;[f64]) -&gt; (f64, f64) {
+    let n = num.len() as f64;
+    let (mn, md) = (mean(num), mean(den));
+    let r = mn / md;
+    let vn = num.iter().map(|a| (a - mn).powi(2)).sum::&lt;f64&gt;() / (n - 1.0);
+    let vd = den.iter().map(|b| (b - md).powi(2)).sum::&lt;f64&gt;() / (n - 1.0);
+    let cnd = num.iter().zip(den).map(|(a, b)| (a - mn) * (b - md)).sum::&lt;f64&gt;() / (n - 1.0);
+    // Var(R) ~ (Var(num) - 2 R Cov(num, den) + R^2 Var(den)) / (n * mean(den)^2)
+    (r, ((vn - 2.0 * r * cnd + r * r * vd) / (n * md * md)).sqrt())
+}
+
+fn main() {
+    // Per user: thumbs-up clicks and rated responses. Two heavy users dominate. Illustrative.
+    let ups = [1.0, 0.0, 2.0, 1.0, 30.0, 1.0, 3.0, 2.0, 0.0, 4.0, 1.0, 5.0];
+    let rated = [2.0, 1.0, 3.0, 2.0, 60.0, 1.0, 4.0, 3.0, 1.0, 5.0, 2.0, 40.0];
+
+    let (r, se_delta) = ratio_se(&amp;ups, &amp;rated);
+    let n_rated: f64 = rated.iter().sum();
+    let se_naive = (r * (1.0 - r) / n_rated).sqrt(); // pretends every rating is independent
+    println!("rate {:.3} from {} ratings by {} users", r, n_rated, ups.len()); // rate 0.403 from 124 ratings by 12 users
+    println!("naive se {:.3}  delta se {:.3}  ratio {:.2}", se_naive, se_delta, se_delta / se_naive);
+    // naive se 0.044  delta se 0.108  ratio 2.46
+    let per_user: Vec&lt;f64&gt; = ups.iter().zip(&amp;rated).map(|(a, b)| a / b).collect();
+    println!("mean of per-user rates {:.3}", mean(&amp;per_user)); // 0.501, a different metric
+}</code></pre>
+</div>
+</div>
+
+<h3>4. Proxy metrics and Goodhart's law</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Paid by the line</span></div>
+  <p>Pay a writer by the line and you get long, padded articles. The line count was a reasonable hint of effort until it became the thing being paid for. That is Goodhart's law: once a number becomes a target, people (and optimizers) find ways to raise it that do not deliver what it was meant to measure. Models trained or tuned against a metric are extremely good at finding those ways.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Assume every proxy will be gamed</span></div>
+  <p>Common AI proxies and how they fail when pushed:</p>
+  <ul>
+    <li><b>Thumbs-up rate</b> rewards agreeable, flattering answers. Pushed hard, it selects for sycophancy.</li>
+    <li><b>Session length or messages per session</b> rise when the model is slow to resolve a task.</li>
+    <li><b>Judge score</b> inherits the judge's biases toward length and confident tone; see <a href="#judges">LLM as judge</a>.</li>
+    <li><b>Refusal rate on a red-team set</b> falls to zero if the model learns to refuse everything that looks risky, harming benign users.</li>
+  </ul>
+  <p>The defences: pair each proxy with a counter-metric that moves the other way when it is gamed (length with judged correctness, refusals with benign refusal rate), keep a slow, expensive measurement (human review, retention) as a periodic audit, and rotate or refresh proxies. <a href="#leading">Leading eval work</a> treats Goodhart as the default condition to plan around.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why optimization breaks proxies</span></div>
+  <p>Write the proxy as \(M = V + \varepsilon\), true value plus error. Selecting or optimizing for high \(M\) preferentially picks items with high \(\varepsilon\), so the gap between \(M\) and \(V\) grows with optimization pressure. With a heavy-tailed error, the strongest optimization eventually selects almost purely on error. That is the same mechanism as reward-model overoptimization in <a href="#reward-models">preferences and reward models</a>, and the remedy is the same: measure \(V\) independently on a sample and stop pushing when the proxy and the independent measure diverge.</p>
+</div>
+
+<h3>5. Offline and online metrics</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The driving test and the commute</span></div>
+  <p>A driving test checks skills on a set route with an examiner. The daily commute is real traffic, real hurry, real weather. Passing the test predicts safe commuting, but not perfectly. Offline evals are the driving test: fixed questions, graded the same way each time. Online metrics are the commute: what actually happens with real users. You need both, and you need to know how well one predicts the other.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Use offline to filter, online to decide</span></div>
+  <p>Offline evals are cheap, repeatable and safe, so they gate which candidates reach users. Online tests are expensive and slow, but they measure the outcome. A model change should name the offline evals it was selected on and the online metric it is expected to move, and the team should track how often offline wins turn into online wins. <a href="#gap">The offline–online gap</a> shows how to calibrate the conversion rate and what lives in the gap: distribution shift, user adaptation, latency, and the interface.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Making offline and online comparable</span></div>
+  <p>Build offline sets from logged production traffic (sampled by the same rules as the online population, privacy-filtered, and refreshed), grade them with a validated judge, and weight items by production frequency. Then each launch yields a pair (offline delta, online delta), and a regression across launches gives the calibration slope and its uncertainty. A slope near zero means the offline metric is not a useful filter for that product, whatever its face validity.</p>
+</div>
+
+<h3>6. The instrumentation layer</h3>
+
+<div class="story" id="st-mt-parcel">
+  <div class="story-head"><div class="story-title">A tracking number for every answer</div><p class="story-sub">Why a shared ID is the most valuable field in your logs.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Four depots each say the lost parcel was not their fault">
+      <g class="a" style="--d:0"><rect x="250" y="20" width="140" height="44" rx="8" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><text x="320" y="47" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fp)">Parcel never arrived</text></g>
+      <g class="a" style="--d:1" font-size="13" text-anchor="middle"><rect x="30" y="110" width="120" height="56" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="90" y="143" fill="var(--fg)">Pickup</text><rect x="180" y="110" width="120" height="56" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="240" y="143" fill="var(--fg)">Sorting</text><rect x="330" y="110" width="120" height="56" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="390" y="143" fill="var(--fg)">Hub</text><rect x="480" y="110" width="120" height="56" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="540" y="143" fill="var(--fg)">Van</text></g>
+      <g class="a" style="--d:2" font-size="12.5" fill="var(--muted)" text-anchor="middle"><text x="90" y="190">"not us"</text><text x="240" y="190">"not us"</text><text x="390" y="190">"not us"</text><text x="540" y="190">"not us"</text></g>
+      <text class="a" style="--d:3" x="320" y="232" text-anchor="middle" font-size="13.5" fill="var(--fg)">Each depot keeps its own records. None of them can be matched.</text>
+    </svg>
+    <p>A parcel goes missing. Every depot keeps a log, and every depot says it was not them. Without a way to match one depot's record to the next, there is no way to find out where it disappeared. This is what debugging feels like when an AI product's logs cannot be joined.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A tracking number scanned at each depot with a time">
+      <g class="a" style="--d:0"><rect x="262" y="16" width="116" height="40" rx="6" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="320" y="41" text-anchor="middle" font-size="14" font-weight="700" fill="var(--lead)">TRK-4821</text></g>
+      <g font-size="13" text-anchor="middle"><rect x="30" y="96" width="120" height="56" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="90" y="129" fill="var(--fg)">Pickup</text><rect x="180" y="96" width="120" height="56" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="240" y="129" fill="var(--fg)">Sorting</text><rect x="330" y="96" width="120" height="56" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="390" y="129" fill="var(--fg)">Hub</text><rect x="480" y="96" width="120" height="56" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="540" y="129" fill="var(--fg)">Van</text></g>
+      <g class="a" style="--d:1" font-size="12.5" text-anchor="middle"><text x="90" y="180" fill="var(--good)" font-weight="600">scanned</text><text x="90" y="198" fill="var(--muted)">08:15</text></g>
+      <g class="a" style="--d:2" font-size="12.5" text-anchor="middle"><text x="240" y="180" fill="var(--good)" font-weight="600">scanned</text><text x="240" y="198" fill="var(--muted)">09:02</text></g>
+      <g class="a" style="--d:3" font-size="12.5" text-anchor="middle"><text x="390" y="180" fill="var(--good)" font-weight="600">scanned</text><text x="390" y="198" fill="var(--muted)">13:40</text></g>
+      <text class="a" style="--d:4" x="320" y="240" text-anchor="middle" font-size="13.5" fill="var(--fg)">One number, printed once, scanned everywhere.</text>
+    </svg>
+    <p>Now give the parcel a tracking number. Every depot scans it and writes down the time. The number costs almost nothing, and it turns four separate logs into one story about one parcel.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The trail shows the parcel reached the hub but was never scanned onto the van">
+      <rect x="262" y="16" width="116" height="40" rx="6" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="320" y="41" text-anchor="middle" font-size="14" font-weight="700" fill="var(--lead)">TRK-4821</text>
+      <g font-size="13" text-anchor="middle"><rect x="30" y="96" width="120" height="56" rx="8" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="90" y="129" fill="var(--fg)">Pickup</text><rect x="180" y="96" width="120" height="56" rx="8" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="240" y="129" fill="var(--fg)">Sorting</text><rect x="330" y="96" width="120" height="56" rx="8" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="390" y="129" fill="var(--fg)">Hub</text><rect x="480" y="96" width="120" height="56" rx="8" fill="var(--surface)" stroke="var(--fp)" stroke-width="2" stroke-dasharray="5 4"/><text x="540" y="129" fill="var(--fg)">Van</text></g>
+      <path d="M150 124 L180 124 M300 124 L330 124" stroke="var(--good)" stroke-width="3"/>
+      <path class="a" style="--d:1" d="M450 124 L480 124" stroke="var(--fp)" stroke-width="3" stroke-dasharray="4 3"/>
+      <circle class="a pulse" style="--d:1" cx="465" cy="124" r="14" fill="none" stroke="var(--fp)" stroke-width="2"/>
+      <text class="a" style="--d:2" x="540" y="180" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--fp)">no scan</text>
+      <text class="a" style="--d:3" x="320" y="230" text-anchor="middle" font-size="13.5" fill="var(--fg)">Lost between the hub and the van. Ask the hub's loading dock.</text>
+    </svg>
+    <p>The trail shows the parcel reached the hub at 13:40 and was never scanned onto a van. The search shrinks from four depots to one loading dock. Missing events are evidence too, but only when you can tell which events belong together.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A trace ID joins assignment, exposure, model call, client error and feedback for one AI request">
+      <g class="a" style="--d:0"><rect x="452" y="12" width="160" height="32" rx="6" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="532" y="33" text-anchor="middle" font-size="13" font-weight="700" fill="var(--lead)">trace_id t-9f3c</text></g>
+      <line x1="60" y1="52" x2="60" y2="228" stroke="var(--line-strong)" stroke-width="2"/>
+      <g class="a" style="--d:1"><circle cx="60" cy="56" r="8" fill="var(--accent)"/><text x="80" y="61" font-size="13" font-weight="600" fill="var(--fg)">assigned</text><text x="200" y="61" font-size="12.5" fill="var(--muted)">experiment v7-rollout, arm B, 09:14:02 UTC</text></g>
+      <g class="a" style="--d:2"><circle cx="60" cy="98" r="8" fill="var(--accent)"/><text x="80" y="103" font-size="13" font-weight="600" fill="var(--fg)">exposed</text><text x="200" y="103" font-size="12.5" fill="var(--muted)">first v7 answer shown, Android client 5.2</text></g>
+      <g class="a" style="--d:3"><circle cx="60" cy="140" r="8" fill="var(--accent)"/><text x="80" y="145" font-size="13" font-weight="600" fill="var(--fg)">model call</text><text x="200" y="145" font-size="12.5" fill="var(--muted)">model v7, prompt p-41, 1,480 tokens, 11.8 s</text></g>
+      <g class="a" style="--d:4"><circle cx="60" cy="182" r="8" fill="var(--fp)"/><text x="80" y="187" font-size="13" font-weight="600" fill="var(--fp)">client error</text><text x="200" y="187" font-size="12.5" fill="var(--muted)">CLIENT_TIMEOUT at 10.0 s, reply truncated</text></g>
+      <g class="a" style="--d:5"><circle cx="60" cy="224" r="8" fill="var(--fp)"/><text x="80" y="229" font-size="13" font-weight="600" fill="var(--fg)">feedback</text><text x="200" y="229" font-size="12.5" fill="var(--muted)">thumbs down</text></g>
+    </svg>
+    <p>An AI request is a parcel with more depots. The trace ID is its tracking number: generated once at the start and copied onto every event, from assignment to the model call to the user's rating. Here it shows a thumbs-down that came from a client timeout on a long answer, not from a bad answer.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Without trace IDs four piles of logs; with them, one joined row per request">
+      <text x="160" y="28" text-anchor="middle" font-size="13.5" font-weight="700" fill="var(--fp)">Without trace IDs</text>
+      <text x="480" y="28" text-anchor="middle" font-size="13.5" font-weight="700" fill="var(--good)">With trace IDs</text>
+      <line x1="320" y1="16" x2="320" y2="240" stroke="var(--line)" stroke-width="1.5"/>
+      <g class="a" style="--d:0" font-size="12.5" text-anchor="middle"><rect x="40" y="50" width="110" height="40" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/><text x="95" y="75" fill="var(--fg)">assignments</text><rect x="170" y="50" width="110" height="40" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/><text x="225" y="75" fill="var(--fg)">model calls</text><rect x="40" y="130" width="110" height="40" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/><text x="95" y="155" fill="var(--fg)">client errors</text><rect x="170" y="130" width="110" height="40" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/><text x="225" y="155" fill="var(--fg)">feedback</text><text x="160" y="116" fill="var(--fp)" font-size="18" font-weight="700">?</text></g>
+      <text class="a" style="--d:1" x="160" y="212" text-anchor="middle" font-size="12.5" fill="var(--muted)">Join on user and time window: guesswork</text>
+      <g class="a" style="--d:2" font-size="12" fill="var(--fg)"><rect x="350" y="50" width="260" height="120" rx="6" fill="var(--surface)" stroke="var(--good)" stroke-width="2"/><line x1="350" y1="78" x2="610" y2="78" stroke="var(--line)"/><text x="362" y="69" font-weight="600">trace · arm · client · error · rating</text><text x="362" y="99">t-9f3c · B · 5.2 · timeout · down</text><text x="362" y="123">t-a2e1 · B · 6.0 · none · up</text><text x="362" y="147">t-77b0 · A · 5.2 · none · up</text></g>
+      <text class="a" style="--d:3" x="480" y="212" text-anchor="middle" font-size="12.5" fill="var(--muted)">One row per request: group by anything</text>
+    </svg>
+    <p>Without a shared ID, the assignment table, model logs, client errors and feedback live in separate piles, joined by guesses about users and time windows. With it, every request becomes one row you can slice by arm, client version, error code or model version. The rest of this section is about which columns that row needs.</p>
+  </div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Write down who, what, when, and which version</span></div>
+  <p>To explain any change later, your records need to answer four questions for every interaction: who was it (and which group were they in), what did they actually see, when did it happen, and which version of everything produced it. Leave one out and some questions become unanswerable forever, because you cannot go back and log the past.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The logging contract for experiments</span></div>
+  <ul>
+    <li><b>Assignment logging.</b> Every time a unit is bucketed: unit ID, experiment, arm, timestamp. This is what the SRM check counts.</li>
+    <li><b>Exposure logging.</b> When the user actually <b>saw</b> the difference, not when they were assigned. Assignment happens at login; exposure happens when the first v7 answer renders. Analysing assigned-but-unexposed users dilutes the effect, and exposure that differs by arm causes SRM.</li>
+    <li><b>Trace and request IDs</b> that join model calls, tool calls, client events and feedback.</li>
+    <li><b>Versions on every event</b>: model, prompt template, system prompt, decoding config, safety filter, client app. Without them, a regression after a deploy cannot be attributed.</li>
+    <li><b>Event schemas</b> registered and versioned, so a renamed field does not silently zero a metric.</li>
+    <li><b>Timestamps in UTC</b> with both client and server time, so day boundaries and latency are computed consistently.</li>
+  </ul>
+  <p>Budget for this as part of the feature, not as an afterthought. A launch whose logging cannot answer the questions in the experiment brief is not ready to launch.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Schemas, time, and sampling bias</span></div>
+  <p>A minimal event for an AI request might carry the fields below; everything an analysis needs to group by must be on the event or joinable through an ID.</p>
+<pre class="code" data-lang="json"><code>{
+  "event": "model_response",  "schema_version": 4,
+  "trace_id": "t-9f3c",  "request_id": "r-1187",  "user_id_hash": "u-55ad",
+  "experiment": {"id": "v7-rollout", "arm": "B", "assigned_at": "2026-10-12T09:14:02Z"},
+  "exposed": true,
+  "model": "assistant-v7",  "prompt_version": "p-41",  "decoding": {"temperature": 0.7},
+  "client": {"platform": "android", "version": "5.2"},  "region": "eu-west",
+  "ts_server": "2026-10-12T09:15:40.120Z",  "ts_client": "2026-10-12T11:15:39.870+02:00",
+  "latency_ms": 11800,  "output_tokens": 1480,  "error_code": "CLIENT_TIMEOUT"
+}</code></pre>
+  <p><b>Time.</b> Store server time in UTC as the source of truth; keep client time for latency and offline queues, but expect clock skew and late-arriving events. Define the analysis "day" explicitly (UTC, or the user's local day) and use it everywhere, or a test that starts at 17:00 Pacific will have a first "day" that is seven hours long in UTC.</p>
+  <p><b>Log sampling.</b> Full traces are expensive, so teams sample. Sampling is safe only if it is independent of the outcome and of the arm. Two classic biases: <b>tail sampling</b> that keeps all errors but 1% of successes inflates error rates unless you reweight by the inverse sampling probability; and sampling decided per request after the response returns can depend on latency. Decide sampling at the trace's start by hashing the trace ID, log the sampling rate on the event, and keep metric computation on unsampled counters where possible.</p>
+</div>
+
+<h3>7. Data-quality checks</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Weigh the scale before you weigh the flour</span></div>
+  <p>Before baking, you check the kitchen scale reads zero with nothing on it. Experiments need the same habit. Run a test where both groups get exactly the same thing and make sure the system reports no difference. Check that groups are the right size. Watch for data that suddenly goes missing. These checks are boring, and they catch the most expensive mistakes.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Checks that should run automatically</span></div>
+  <ul>
+    <li><b>A/A tests</b> on the platform: about 5% of metrics should come out significant at \(p &lt; 0.05\), and p-values should be roughly uniform. Far more means the variance computation is wrong.</li>
+    <li><b>SRM</b> on every experiment, overall and by day and platform (<a href="#abtest">A/B tests</a>).</li>
+    <li><b>Missing-data monitors</b>: event volume per source, per client version, per hour, with alerts on drops. A silent client logging failure looks exactly like users leaving.</li>
+    <li><b>Metric definitions as code</b>: one reviewed, versioned definition per metric, used by every dashboard and every experiment, with tests. Two teams computing "active user" differently is how launches get contradictory reads.</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">What a failed A/A test tells you</span></div>
+  <p>Run many A/A comparisons (re-randomize historical data into fake arms, which is cheap) and look at the distribution of p-values per metric. Too many small p-values usually means the variance ignores clustering, such as per-request metrics with user randomization, or that heavy-tailed outliers dominate; p-values piled near 1 mean the variance is overestimated. Both are bugs in the analysis, and both would otherwise distort every real experiment on that metric.</p>
+</div>
+
+<h3>8. Debugging a surprising result: a worked investigation</h3>
+<p>A worked example with illustrative numbers. Assistant v7 is in a 50/50 test against v6. After a week, thumbs-up rate in treatment is 67% against 71% in control, a statistically clear drop, while offline evals had v7 ahead by 3 points. The investigation, in the order the <a href="#triage">triage</a> chapter recommends:</p>
+<ol class="steps">
+  <li><div><b>Trust first.</b> SRM on exposed users: p = 0.41, fine. Exposure rate 97% in both arms. Feedback events joined to 99.8% of traces in both arms. The data is not broken.</div></li>
+  <li><div><b>Numerator and denominator.</b> Rating rate per exposed user is unchanged (12% versus 12%), so this is not a change in who rates.</div></li>
+  <li><div><b>Slice by pre-planned segments.</b> By region: the same small drop everywhere. By client: 92% of the drop is on Android client 5.2, which is 18% of traffic.</div></li>
+  <li><div><b>Join traces for that slice.</b> Error codes show CLIENT_TIMEOUT on 18% of v7 responses on 5.2, versus 2% for v6. v7 answers are 40% longer, and the 5.2 client has a hard 10-second timeout that truncates the reply.</div></li>
+  <li><div><b>Check the alternative explanations.</b> Judge-scored quality of completed v7 answers is up 1.2 points on every client. Prompt version unchanged. The model is better; the old client cuts it off.</div></li>
+  <li><div><b>Decide.</b> Raise the client timeout (or stream the response) on 5.2, keep v7, rerun on 5.2 users to confirm. Add "client timeout rate" as a guardrail for future model launches.</div></li>
+</ol>
+<p>Every step needed a specific field. The widget below lets you remove fields and see which explanations become unknowable.</p>
+
+<div class="widget" id="w-mt-explain">
+  <div class="wtitle">Can you explain the drop?</div>
+  <div class="wsub">Toggle which fields your logs carry. Each candidate root cause is confirmed, ruled out, or stays unknowable, depending on whether the fields it needs were logged. Start from a typical dashboard and find the smallest set that explains the drop.</div>
+  <div class="mt-scn"><b>Scenario.</b> Assistant v7 is in a 50/50 test against v6. After a week, thumbs-up rate is 67% in treatment versus 71% in control. Offline evals had v7 ahead. Leadership wants to know whether to roll back.</div>
+  <div class="mt-lbl">Presets</div>
+  <div class="btnrow"><button class="b" type="button" data-preset="bare">Bare minimum</button><button class="b" type="button" data-preset="dash" aria-pressed="true">Typical dashboard</button><button class="b" type="button" data-preset="full">Full instrumentation</button></div>
+  <div class="mt-lbl">Fields logged on each event</div>
+  <div class="mt-chips" data-fields></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Confirmed</div><div class="v" data-c-yes>—</div></div>
+    <div class="mc"><div class="l">Ruled out</div><div class="v" data-c-no>—</div></div>
+    <div class="mc"><div class="l">Unknowable</div><div class="v" data-c-unk>—</div></div>
+  </div>
+  <div class="mt-list" data-list></div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="callout eval"><span class="tag">Eval lens</span><div>An online metric is a measurement instrument, with the same questions as an offline eval: is it valid for what we care about, is it reliable run to run, and what is its noise (<a href="#measurement">measurement</a>)? The instrumentation layer plays the role of the eval harness in <a href="#harness">building a harness</a>: record every input, version and output so any number can be traced back to the items that produced it. A metric you cannot decompose to individual traces is as untrustworthy as a benchmark score you cannot decompose to individual items.</div></div>
+
+<div class="callout ask"><span class="tag">Principal asks</span><div>Which tier is this metric in, and who agreed? How do we know this driver predicts the north star under intervention, not just in correlation? What are the numerator and denominator, and did the treatment change the denominator? Is the variance computed at the randomization unit? What counter-metric catches gaming? Where is exposure logged, and does it fire identically in both arms? Can every event be joined by trace ID to model, prompt and client versions? If this metric dropped 4% tomorrow, which fields would we use to explain it, and do we log them today?</div></div>
+
+<div class="callout warn"><span class="tag">Common mistakes</span><div>Treating messages per session as engagement when it also measures failure. Reporting a rate without its denominator. Computing per-request standard errors in a user-randomized test. Analysing assigned users instead of exposed ones. Logging the model version but not the prompt or client version. Mixing local and UTC days. Tail-sampling logs and forgetting to reweight. Defining the same metric in three dashboards three ways. Promoting a diagnostic to a target.</div></div>
+</section>

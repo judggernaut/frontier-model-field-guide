@@ -1,0 +1,404 @@
+<section id="ai-experiments" data-title="Designing experiments for AI systems">
+<style>
+.ax-q{display:grid;gap:6px;margin-bottom:12px}
+.ax-q .q{font-size:14.5px;font-weight:700}
+.ax-q .opts{display:flex;gap:8px;flex-wrap:wrap;flex-direction:row}
+.ax-q .opts button.b{font-size:13.5px;padding:6px 12px}
+.ax-head{display:flex;align-items:center;gap:16px;margin:16px 0 10px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--sunk)}
+.ax-grade{flex:0 0 auto;width:58px;height:58px;border-radius:12px;display:grid;place-items:center;font-size:30px;font-weight:700;color:var(--gc);border:2px solid var(--gc);background:var(--card)}
+.ax-head .s{font-size:14.5px;line-height:1.55}
+.ax-flags{display:grid;gap:7px}
+.ax-flag{display:grid;grid-template-columns:86px minmax(0,1fr);gap:12px;align-items:start;padding:9px 12px;border:1px solid var(--border);border-left:4px solid var(--fc);border-radius:var(--radius);background:var(--card);font-size:14px;line-height:1.5}
+.ax-flag .sev{font-size:12px;font-weight:700;color:var(--fc);text-transform:uppercase;letter-spacing:.04em;padding-top:2px}
+.ax-flag .k{font-weight:600}
+.ax-flag a{white-space:nowrap}
+.ax-flag.ok{--fc:var(--good)}.ax-flag.minor{--fc:var(--lead)}.ax-flag.major{--fc:var(--fp)}
+.ax-check td:first-child{white-space:nowrap}
+@media(max-width:560px){.ax-flag{grid-template-columns:minmax(0,1fr);gap:2px}}
+</style>
+<h2>Designing experiments for AI systems: the whole guide in one design</h2>
+<p>Every earlier chapter supplies one piece of a trustworthy decision about an AI system: the statistics of <a href="#bigideas">Part I</a>, the evaluation craft of <a href="#evalstats">Part II</a>, the understanding of what training changed from <a href="#pipeline">Part IV</a>, the judgment of <a href="#leading">Part V</a>, and the design discipline of this part. This capstone puts them together. It covers offline evals treated as real experiments, online tests for model changes, interleaving, human evaluation, and pre-registration, then works one realistic launch from question to decision and ends with a single checklist that points each item back to the chapter that covers it.</p>
+
+<h3>1. Offline evals are experiments</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Same exam, same day, same marker</span></div>
+  <p>To find out which of two students is better at maths, you give both the same exam, on the same day, marked by the same teacher. If one got an easier paper or a kinder marker, you would learn nothing. An offline eval is that exam for models: the same questions, the same settings, the same grader, so the only thing that differs is the model. And because models answer a little differently each time, you let each one sit the exam a few times.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Treat an eval run like a lab experiment</span></div>
+  <ul>
+    <li><b>Fixed items</b>: the eval set is frozen and versioned, and both models answer every item. Changing items between runs makes comparisons meaningless.</li>
+    <li><b>Paired comparison</b>: compare per item, not just two averages. Pairing removes item difficulty from the noise and often cuts the required set size severalfold (<a href="#evalstats">statistics for eval sets</a>).</li>
+    <li><b>Seeds and sampling settings</b> recorded and repeated. A result that flips with the seed is not a result (<a href="#leading">leading eval work</a>).</li>
+    <li><b>One change at a time</b>, or a design that separates them. A run that changes the model, the prompt and the grader at once cannot say which one helped.</li>
+    <li><b>Clean items</b>: checked for contamination against training data (<a href="#contamination">contamination</a>).</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The model behind a paired eval</span></div>
+  <p>Write the score of model \(m\) on item \(i\) with seed \(s\) as \(y_{mis} = \mu_m + b_i + \varepsilon_{mis}\): a model effect, an item difficulty shared by both models, and sampling noise. The paired difference \(d_i = \bar y_{Ai\cdot} - \bar y_{Bi\cdot}\) cancels \(b_i\), so</p>
+  <div class="eq">\[ \operatorname{Var}(\bar d) = \frac{1}{n}\left(\sigma^2_{\text{model}\times\text{item}} + \frac{2\sigma^2_\varepsilon}{S}\right) \]<span class="eqcap">\(n\) items, \(S\) seeds per item and model. Item difficulty \(\sigma^2_b\) drops out entirely. More seeds shrink only the sampling term; only more items shrink the model-by-item term.</span></div>
+  <p>That decomposition tells you where to spend: if the seed term dominates, rerun; if the item term dominates, add items. Cluster the standard error by the unit that is actually independent (a conversation, a repository, a document) as in <a href="#intervals">intervals</a>, and run everything through a harness that records versions and seeds (<a href="#harness">building a harness</a>).</p>
+</div>
+
+<h3>2. Online A/B tests for model changes</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A new chef on half the tables</span></div>
+  <p>Testing a new model on real users is like letting a new chef cook for half the tables while the old chef cooks for the rest. You keep each table with the same chef all evening, because switching mid-meal would confuse everyone. You watch whether diners are happier, but also whether the food comes out slower or costs more, because a better dish that takes an hour is not better.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What is different about testing models</span></div>
+  <ul>
+    <li><b>Randomize by user</b>, not by request. Users notice tone and capability, conversations carry memory, and per-request switching mixes the two models inside one conversation.</li>
+    <li><b>Cost and latency are first-class guardrails.</b> A model change moves both, and they can matter more than quality for a free tier.</li>
+    <li><b>Safety is a guardrail with low base rates.</b> Violations at 0.1% need very large samples to detect increases; pair the online guardrail with targeted offline red-team evals (<a href="#safety">safety</a>).</li>
+    <li><b>Quality needs a measurement.</b> Thumbs are sparse and biased. Most teams run an LLM judge on a sample of production traffic from both arms, validated against human labels (<a href="#judges">LLM as judge</a>).</li>
+    <li><b>Expect novelty.</b> A new model voice draws attention for a few days. Run at least two full weeks (<a href="#abtest">A/B tests</a>).</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Pitfalls specific to LLM traffic</span></div>
+  <p><b>Shared caches</b>: a prompt or response cache shared across arms lets control serve treatment outputs; key caches by model version. <b>Capacity</b>: a treatment model on a smaller serving pool may queue under load, so latency differences partly reflect provisioning, which will change at 100%. <b>Carryover</b>: users who saw treatment and leave the test take learned behaviour (longer prompts, new tasks) with them, which matters for re-randomized follow-ups. <b>Interference</b>: shared workspaces or agents acting on shared resources violate independence; randomize at the workspace level. <b>Triggering</b>: if the change only affects some requests (say, those that call a tool), log a counterfactual trigger in control and analyse triggered users, with variance at the user level (<a href="#metrics">choosing metrics</a>).</p>
+</div>
+
+<h3>3. Interleaving for ranking and search</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Two playlists shuffled into one</span></div>
+  <p>Two friends each suggest songs for a party. Instead of playing one friend's list on Friday and the other's on Saturday, you shuffle both lists together and see whose songs people skip less. Every guest hears both, on the same night, so the weather, the crowd and the mood are identical for both lists. Interleaving does this for search results: mix two rankers' results into one list and count whose results get clicked.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Fast, sensitive, and narrow</span></div>
+  <p>Interleaving answers "which ranker do users prefer?" with far less traffic than an A/B test, because each user compares both rankers directly and between-user differences drop out. It suits retrieval for RAG, search, recommendations and tool selection. Its limit is scope: it measures preference within a results list, not downstream outcomes like task success, retention or cost. Use it to screen many ranking candidates quickly, then confirm the winner with an A/B test on the product metric.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Team-draft interleaving</span></div>
+  <p>In team-draft interleaving (Radlinski, Kurup and Joachims, CIKM 2008), the two rankers act like captains picking teams: a coin decides who picks first in each round, each picks its highest-ranked result not already chosen, and every slot remembers which team placed it. Clicks credit the team that placed the clicked result; a query is a win for whichever ranker earned more clicks, and the test is whether wins exceed 50% over queries (a sign test, clustered by user). Chapelle, Joachims, Radlinski and Yue (TOIS 2012) validated interleaving at scale on two commercial search engines, comparing it with editorial judgments and studying its statistical efficiency. For generative systems, the analogue is a side-by-side preference shown to a sample of users, which inherits the position-bias issues covered next.</p>
+</div>
+
+<h3>4. Human evaluation design</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A blind taste test</span></div>
+  <p>In a fair taste test, tasters do not know which cola is which, the cups come in random order, and you first check that tasters agree with each other on a few practice cups. If they cannot tell the difference consistently, their verdict on the real test means little. Human evaluation of models needs the same three things: hide which model wrote what, randomize the order, and measure how often raters agree.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Ratings are a measurement system to manage</span></div>
+  <ul>
+    <li><b>Blinding</b>: raters never see model names, and outputs are normalised for tell-tale formatting where possible.</li>
+    <li><b>Randomized order</b>: left/right position randomized per item, because both people and judges prefer the first or second option at measurable rates.</li>
+    <li><b>Calibration</b>: a rubric with worked examples, a calibration session, and gold items mixed in to catch drift and inattention.</li>
+    <li><b>Agreement</b>: report inter-rater agreement on overlapping items. It is the ceiling on any judge or reward model trained on these labels (<a href="#judges">LLM as judge</a>).</li>
+    <li><b>Rater effects</b>: some raters are harsher. Assign items so each rater sees both models' outputs, and analyse with rater as a factor.</li>
+  </ul>
+  <p>Public leaderboards built on blinded pairwise votes, such as Chatbot Arena (Chiang et al., 2024), show the design at scale, and also its limits: the voters and prompts are whoever shows up, which is a sampling question (<a href="#sampling">who is in your sample?</a>).</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Agreement and the rater as a cluster</span></div>
+  <p>Cohen's kappa corrects raw agreement \(p_o\) for chance agreement \(p_e\):</p>
+  <div class="eq">\[ \kappa = \frac{p_o - p_e}{1 - p_e} \]<span class="eqcap">For more than two raters or missing ratings, Krippendorff's alpha generalises the same idea.</span></div>
+  <p>Ratings from one rater are correlated, so a study with 2,000 ratings from 5 raters has far fewer than 2,000 independent observations for questions that involve rater variation. Fit a mixed model with item and rater random effects, or bootstrap over raters and items together. Plan the design so model and position are crossed with rater: every rater sees both models in both positions, which makes rater harshness and position bias estimable instead of confounded with the model effect.</p>
+</div>
+
+<h3>5. Pre-registration and analysis plans</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Sealing your prediction in an envelope</span></div>
+  <p>A magician who writes a prediction, seals it in an envelope and hands it to the audience before the trick is convincing. One who announces the prediction after seeing the card is not. Pre-registration is the sealed envelope: write the plan for analysing the data before you see the data, and share it.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">It protects the team from itself</span></div>
+  <p>With dozens of metrics, segments and analysis choices, some combination will show a win by chance. Pre-registration, popularised in science partly in response to replication failures (Nosek et al., PNAS 2018, "The preregistration revolution"), makes the choices before the data can influence them. In product teams it is lightweight: the experiment brief plus an analysis plan, timestamped in the experiment system. Deviations are allowed and recorded; what is not allowed is presenting an exploratory finding as if it were the planned test.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">What an analysis plan specifies</span></div>
+  <ol class="steps">
+    <li><div><b>Estimand</b>: the population, the unit, the metric definition (code reference), and the contrast (difference, ratio, non-inferiority margin).</div></li>
+    <li><div><b>Test and variance</b>: e.g. difference in means with delta-method variance at the user level; CUPED covariate named.</div></li>
+    <li><div><b>Error control</b>: \(\alpha\), sidedness, correction across the primary and guardrails, and the look schedule with its spending function.</div></li>
+    <li><div><b>Exclusions</b>: bots, internal users, users with no exposure; decided by rules that cannot depend on arm.</div></li>
+    <li><div><b>Segments</b>: the few pre-planned ones, with interaction tests.</div></li>
+    <li><div><b>Decision rule</b>: what each outcome leads to, and what would change our mind.</div></li>
+  </ol>
+</div>
+
+<h3>6. A full worked design: moving the free tier to a cheaper model</h3>
+<p>A realistic launch, worked end to end. The numbers are illustrative; the structure is the point.</p>
+<div class="tw"><table>
+  <thead><tr><th>Step</th><th>Decision for this launch</th><th>Chapter</th></tr></thead>
+  <tbody>
+    <tr><td>Question</td><td>Can the free tier move from model v7 to v8, a distilled model that costs about 38% less per request, without hurting users?</td><td><a href="#distillation">distillation</a></td></tr>
+    <tr><td>Hypothesis</td><td>Non-inferiority: weekly task success on v8 is no more than 1 point below v7. Secondary: cost per request falls by at least 25%.</td><td><a href="#abtest">A/B tests</a></td></tr>
+    <tr><td>Offline evidence</td><td>1,500 frozen production-sampled items, 3 seeds, paired: v8 − v7 = −0.6 points, 95% CI −1.7 to +0.5. Not enough to rule out a 1-point loss, so test online.</td><td><a href="#evalstats">eval stats</a>, <a href="#intervals">intervals</a></td></tr>
+    <tr><td>Population</td><td>Logged-in free-tier users on supported clients; excludes internal accounts and known bots by pre-set rules.</td><td><a href="#sampling">sampling</a></td></tr>
+    <tr><td>Unit and assignment</td><td>User, by hash(user ID, fresh salt) into 50/50 after a 1% then 10% safety ramp.</td><td><a href="#randomization">randomization</a></td></tr>
+    <tr><td>Primary metric</td><td>Share of active users with at least one judge-graded successful task per week. Judge validated against humans (kappa 0.71 vs human-human 0.74).</td><td><a href="#metrics">metrics</a>, <a href="#judges">judges</a></td></tr>
+    <tr><td>Guardrails</td><td>p95 latency; safety violation rate; benign refusal rate; client error rate; task success in the five smallest supported languages (distillation tends to lose long-tail skill).</td><td><a href="#metrics">metrics</a>, <a href="#safety">safety</a></td></tr>
+    <tr><td>Power</td><td>Base 62%, margin 1 point, one-sided \(\alpha\) = 0.05, 80% power: 29,133 users per arm, or 17,480 with CUPED on pre-period success (variance kept 0.6). At 4,000 new eligible users per arm per day: 5 days, so run 14 for weekly cycles and novelty.</td><td><a href="#abtest">A/B tests</a></td></tr>
+    <tr><td>Logging</td><td>Assignment and exposure (first v8 response rendered), trace IDs across model call, tool calls, client events and feedback; model, prompt, decoding and client versions on every event.</td><td><a href="#metrics">metrics</a></td></tr>
+    <tr><td>Analysis</td><td>Difference in user-level success with CUPED, delta-method variance; SRM check before anything else; group-sequential monitoring of safety guardrails only, primary read once at day 14.</td><td><a href="#abtest">A/B tests</a></td></tr>
+    <tr><td>Decision rule</td><td>Ship if the one-sided 95% lower bound on the success difference is above −1 point, cost falls at least 25%, and no guardrail is breached. Keep a 2% holdout for one quarter.</td><td><a href="#leading">leading</a></td></tr>
+    <tr><td>What would change our mind</td><td>A breach in any small-language guardrail, a safety increase beyond tolerance, or an effect that decays across exposure cohorts.</td><td><a href="#triage">triage</a></td></tr>
+  </tbody>
+</table></div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Proving "no worse", not "better"</span></div>
+  <p>This launch is not trying to make answers better. It is trying to save money without making them worse. That changes the question from "is it better?" to "is it close enough?" You set in advance how much worse is still acceptable (here, 1 point), and you ship only if the data rules out anything worse than that. "We did not see a difference" is not enough, because a small test never sees differences.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The margin is a business decision</span></div>
+  <p>The 1-point margin is the number leadership must own: it says how much quality the company will trade for a 38% cost cut. Set it from the economics and user research before the test, not after seeing the estimate. A smaller margin needs quadratically more users: halving it to 0.5 points quadruples the sample. The decision rule also requires the cost saving to be real at test traffic levels, since the whole point of the launch is cost.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Non-inferiority sample size and decision</span></div>
+  <div class="eq">\[ H_0: \Delta \le -m \quad\text{vs}\quad H_1: \Delta &gt; -m, \qquad n_{\text{per arm}} = \frac{(z_{1-\alpha} + z_{1-\beta})^2\; 2p(1-p)\,(1-\rho^2)}{m^2} \]<span class="eqcap">Assumes the true difference is zero. \(m\) is the margin; \((1-\rho^2)\) is the variance kept by CUPED. Reject \(H_0\) (ship) when \(\hat\Delta - z_{1-\alpha}\,\mathrm{SE} &gt; -m\).</span></div>
+  <p>With an observed difference of −0.3 points and standard error 0.35 points, the one-sided lower bound is \(-0.3 - 1.645 \times 0.35 = -0.88\), above −1, so the rule says ship.</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
+from statistics import NormalDist
+
+Z = NormalDist().inv_cdf                     # standard normal quantile
+
+def noninferiority_n(p, margin, alpha=0.05, power=0.8, variance_kept=1.0):
+    """Users per arm to show the new model is at most `margin` worse (one-sided test).
+
+    Assumes the true difference is zero. variance_kept below 1 models CUPED (1 - rho^2)."""
+    z = Z(1 - alpha) + Z(power)
+    return math.ceil(z * z * 2 * p * (1 - p) * variance_kept / margin ** 2)
+
+def decide(diff, se, margin, alpha=0.05):
+    """Ship only if the one-sided lower confidence bound sits above -margin."""
+    lower = diff - Z(1 - alpha) * se
+    return lower, lower &gt; -margin
+
+n = noninferiority_n(0.62, 0.01)                      # 62% weekly task success, 1-point margin
+n_cuped = noninferiority_n(0.62, 0.01, variance_kept=0.6)
+print(n, n_cuped)                                     # 29133 17480
+days = math.ceil(n_cuped / 4_000)                     # 4,000 new eligible users per arm per day
+print(days, 7 * math.ceil(days / 7))                  # 5 7  (round up to whole weeks)
+lower, ship = decide(diff=-0.003, se=0.0035, margin=0.01)
+print(f"{lower:.4f} {'ship' if ship else 'hold'}")    # -0.0088 ship</code></pre>
+<pre class="code" data-lang="rust"><code>// Rust's standard library has no normal quantile, so we inline Acklam's rational
+// approximation (relative error about 1e-9), which agrees with Python's NormalDist here.
+fn z(p: f64) -&gt; f64 {
+    let a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.383577518672690e2, -3.066479806614716e1, 2.506628277459239];
+    let b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
+    let c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+    let d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
+    let tail = |q: f64| (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0);
+    if p &lt; 0.02425 {
+        tail((-2.0 * p.ln()).sqrt())
+    } else if p &gt; 1.0 - 0.02425 {
+        -tail((-2.0 * (1.0 - p).ln()).sqrt())
+    } else {
+        let q = p - 0.5;
+        let r = q * q;
+        (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0)
+    }
+}
+
+/// Users per arm to show the new model is at most `margin` worse (one-sided test).
+/// Assumes the true difference is zero. variance_kept below 1 models CUPED (1 - rho^2).
+fn noninferiority_n(p: f64, margin: f64, alpha: f64, power: f64, variance_kept: f64) -&gt; u64 {
+    let zz = z(1.0 - alpha) + z(power);
+    (zz * zz * 2.0 * p * (1.0 - p) * variance_kept / margin.powi(2)).ceil() as u64
+}
+
+/// Ship only if the one-sided lower confidence bound sits above -margin.
+fn decide(diff: f64, se: f64, margin: f64, alpha: f64) -&gt; (f64, bool) {
+    let lower = diff - z(1.0 - alpha) * se;
+    (lower, lower &gt; -margin)
+}
+
+fn main() {
+    let n = noninferiority_n(0.62, 0.01, 0.05, 0.8, 1.0); // 62% weekly task success, 1-point margin
+    let n_cuped = noninferiority_n(0.62, 0.01, 0.05, 0.8, 0.6);
+    println!("{} {}", n, n_cuped); // 29133 17480
+    let days = (n_cuped as f64 / 4_000.0).ceil() as u64; // 4,000 new eligible users per arm per day
+    println!("{} {}", days, 7 * ((days as f64) / 7.0).ceil() as u64); // 5 7  (round up to whole weeks)
+    let (lower, ship) = decide(-0.003, 0.0035, 0.01, 0.05);
+    println!("{:.4} {}", lower, if ship { "ship" } else { "hold" }); // -0.0088 ship
+}</code></pre>
+</div>
+</div>
+
+<h3>7. The design reviewer</h3>
+<p>Pick the options a team proposed. The reviewer flags each problem in one line and points to the chapter that covers it. Start from the default draft, which has several of the most common mistakes, and fix it.</p>
+<div class="widget" id="w-ax-review">
+  <div class="wtitle">Experiment design reviewer</div>
+  <div class="wsub">A proposed online test of a new assistant model. Choose what the team plans for each item; the grade and flags update as you go.</div>
+  <div class="btnrow"><button class="b" type="button" data-preset="draft" aria-pressed="true">Typical first draft</button><button class="b" type="button" data-preset="strong" aria-pressed="false">Strong design</button></div>
+  <div data-qs></div>
+  <div class="ax-head"><div class="ax-grade" data-grade>—</div><div class="s" data-sum></div></div>
+  <div class="ax-flags" data-flags></div>
+</div>
+
+<h3>8. The end-to-end checklist</h3>
+<p>One list for any experiment on an AI system, offline or online. Each item points to the chapter that explains it.</p>
+<div class="tw"><table class="ax-check">
+  <thead><tr><th>Stage</th><th>Check</th><th>Chapter</th></tr></thead>
+  <tbody>
+    <tr><td>Design</td><td>The question is written as a decision, with the rule for each outcome.</td><td><a href="#abtest">A/B tests</a></td></tr>
+    <tr><td>Design</td><td>The causal claim needs an experiment; observational data would be confounded.</td><td><a href="#causation">causation</a></td></tr>
+    <tr><td>Design</td><td>Population and sampling frame match where the decision applies.</td><td><a href="#sampling">sampling</a></td></tr>
+    <tr><td>Design</td><td>Unit of randomization chosen for consistency and independence; assignment is random and logged.</td><td><a href="#randomization">randomization</a></td></tr>
+    <tr><td>Design</td><td>Analysis plan pre-registered: estimand, test, variance, looks, segments.</td><td><a href="#ai-experiments">this chapter</a></td></tr>
+    <tr><td>Measurement</td><td>Metric is valid and reliable for the construct; tier (north star, driver, guardrail, diagnostic) agreed.</td><td><a href="#measurement">measurement</a>, <a href="#metrics">metrics</a></td></tr>
+    <tr><td>Measurement</td><td>Ratio metrics show numerator and denominator; variance at the randomization unit.</td><td><a href="#metrics">metrics</a></td></tr>
+    <tr><td>Measurement</td><td>Exposure, versions and trace IDs logged; A/A test passes.</td><td><a href="#metrics">metrics</a></td></tr>
+    <tr><td>Evaluation</td><td>Offline items frozen, clean of contamination, paired across models, multiple seeds.</td><td><a href="#evalstats">eval stats</a>, <a href="#contamination">contamination</a></td></tr>
+    <tr><td>Evaluation</td><td>Intervals reported, clustered by the independent unit.</td><td><a href="#intervals">intervals</a></td></tr>
+    <tr><td>Evaluation</td><td>LLM judge validated against humans; position and length bias controlled.</td><td><a href="#judges">judges</a></td></tr>
+    <tr><td>Evaluation</td><td>Offline-to-online relationship calibrated for this product.</td><td><a href="#gap">offline–online gap</a></td></tr>
+    <tr><td>Training</td><td>Known side effects of the training change (length, refusals, long-tail loss, reward hacking) have guardrails.</td><td><a href="#reward-models">reward models</a>, <a href="#distillation">distillation</a>, <a href="#safety">safety</a></td></tr>
+    <tr><td>Statistics</td><td>Powered for the MDE; duration in whole weeks.</td><td><a href="#evalstats">eval stats</a>, <a href="#abtest">A/B tests</a></td></tr>
+    <tr><td>Statistics</td><td>SRM checked before results; peeking controlled by the plan.</td><td><a href="#abtest">A/B tests</a></td></tr>
+    <tr><td>Statistics</td><td>Multiple metrics and segments corrected or labelled exploratory.</td><td><a href="#evalstats">eval stats</a></td></tr>
+    <tr><td>Decision</td><td>Launch table applied; surprising results triaged before celebration.</td><td><a href="#abtest">A/B tests</a>, <a href="#triage">triage</a></td></tr>
+    <tr><td>Decision</td><td>Result reviewed with the questions a principal asks; holdout kept where warranted.</td><td><a href="#leading">leading</a></td></tr>
+  </tbody>
+</table></div>
+
+<div class="story" id="st-ax-journey">
+  <div class="story-head"><div class="story-title">One question through the whole guide</div><p class="story-sub">The free-tier launch above, walked station by station. Numbers are illustrative.</p></div>
+    <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The question, written as a decision">
+      <line x1="70" y1="30" x2="570" y2="30" stroke="var(--line-strong)" stroke-width="2"/>
+      <circle class="pulse" cx="70" cy="30" r="11" fill="var(--accent)"/>
+      <text x="70" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--fg)">Ask</text>
+      <circle cx="170" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="170" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Offline</text>
+      <circle cx="270" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="270" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Judge</text>
+      <circle cx="370" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="370" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Why</text>
+      <circle cx="470" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="470" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Online</text>
+      <circle cx="570" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="570" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Decide</text>
+      <g class="a" style="--d:0"><rect x="90" y="78" width="460" height="140" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/></g>
+      <text class="a" style="--d:1" x="112" y="106" font-size="14" font-weight="600" fill="var(--fg)">Question</text>
+      <text class="a" style="--d:1" x="112" y="126" font-size="13" fill="var(--fg)">Can the free tier move from v7 to v8, which costs 38% less?</text>
+      <text class="a" style="--d:2" x="112" y="158" font-size="14" font-weight="600" fill="var(--fg)">Decision rule</text>
+      <text class="a" style="--d:2" x="112" y="178" font-size="13" fill="var(--fg)">Switch if task success is no more than 1 point worse,</text>
+      <text class="a" style="--d:2" x="112" y="198" font-size="13" fill="var(--fg)">cost falls 25% or more, and no guardrail breaks.</text>
+      <g class="a" style="--d:5"><text x="630" y="252" text-anchor="end" font-size="12" fill="var(--accent)">design: A/B tests, this chapter</text></g>
+    </svg>
+    <p>Everything starts with a decision, not a curiosity. The team writes the question, the margin they will accept, and what they will do with each answer. Because v8 is meant to save money, the question is "no worse than 1 point", a non-inferiority test.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Offline paired eval with an interval">
+      <line x1="70" y1="30" x2="570" y2="30" stroke="var(--line-strong)" stroke-width="2"/>
+      <circle cx="70" cy="30" r="9" fill="var(--good)"/>
+      <text x="70" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Ask</text>
+      <circle class="pulse" cx="170" cy="30" r="11" fill="var(--accent)"/>
+      <text x="170" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--fg)">Offline</text>
+      <circle cx="270" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="270" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Judge</text>
+      <circle cx="370" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="370" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Why</text>
+      <circle cx="470" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="470" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Online</text>
+      <circle cx="570" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="570" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Decide</text>
+      <line x1="120" y1="170" x2="520" y2="170" stroke="var(--line-strong)"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="120" y="192">−3</text><text x="200" y="192">−2</text><text x="280" y="192">−1</text><text x="360" y="192">0</text><text x="440" y="192">+1</text><text x="520" y="192">+2</text></g>
+      <text x="320" y="214" text-anchor="middle" font-size="12" fill="var(--muted)">v8 minus v7, points of task success</text>
+      <line x1="280" y1="84" x2="280" y2="176" stroke="var(--fp)" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text x="274" y="96" text-anchor="end" font-size="12" fill="var(--fp)">margin −1</text>
+      <line x1="360" y1="84" x2="360" y2="176" stroke="var(--line-strong)"/>
+      <g class="a" style="--d:1"><line x1="224.0" y1="138" x2="400.0" y2="138" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/><circle cx="312.0" cy="138" r="8" fill="var(--accent)"/></g>
+      <text class="a" style="--d:2" x="408.0" y="128" font-size="13" font-weight="600" fill="var(--fg)">−0.6 (−1.7 to +0.5)</text>
+      <text class="a" style="--d:3" x="408.0" y="148" font-size="12" fill="var(--muted)">1,500 items × 3 seeds, paired</text>
+      <text class="a" style="--d:4" x="320" y="238" text-anchor="middle" font-size="13" fill="var(--fg)">The interval crosses the margin: offline cannot settle it.</text>
+      <g class="a" style="--d:5"><text x="630" y="252" text-anchor="end" font-size="12" fill="var(--accent)">Part I–II: eval stats, intervals</text></g>
+    </svg>
+    <p>The team runs both models on 1,500 frozen items drawn from production, three seeds each, and compares item by item. v8 is 0.6 points behind, but the interval reaches −1.7, past the margin. Offline evidence narrows the question; it cannot answer it here.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Checking the judge against people">
+      <line x1="70" y1="30" x2="570" y2="30" stroke="var(--line-strong)" stroke-width="2"/>
+      <circle cx="70" cy="30" r="9" fill="var(--good)"/>
+      <text x="70" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Ask</text>
+      <circle cx="170" cy="30" r="9" fill="var(--good)"/>
+      <text x="170" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Offline</text>
+      <circle class="pulse" cx="270" cy="30" r="11" fill="var(--accent)"/>
+      <text x="270" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--fg)">Judge</text>
+      <circle cx="370" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="370" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Why</text>
+      <circle cx="470" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="470" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Online</text>
+      <circle cx="570" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="570" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Decide</text>
+      <text x="110" y="104" font-size="13" font-weight="600" fill="var(--fg)">Agreement on 600 shared items (Cohen's kappa)</text>
+      <text x="110" y="142" font-size="13" fill="var(--fg)">human vs human</text><text x="110" y="182" font-size="13" fill="var(--fg)">judge vs human</text>
+      <rect class="grow-x" style="--d:1" x="240" y="128" width="266" height="22" rx="5" fill="var(--tn)"/>
+      <rect class="grow-x" style="--d:2" x="240" y="168" width="256" height="22" rx="5" fill="var(--accent)"/>
+      <text class="a" style="--d:2" x="514" y="144" font-size="13" font-weight="600" fill="var(--fg)">0.74</text>
+      <text class="a" style="--d:3" x="504" y="184" font-size="13" font-weight="600" fill="var(--fg)">0.71</text>
+      <text class="a" style="--d:4" x="320" y="228" text-anchor="middle" font-size="13" fill="var(--fg)">Close to the human ceiling: fit to grade production traffic.</text>
+      <g class="a" style="--d:5"><text x="630" y="252" text-anchor="end" font-size="12" fill="var(--accent)">Part II: LLM as judge</text></g>
+    </svg>
+    <p>Task success online will be graded by an LLM judge, so the judge is checked first. On 600 items labelled by two people, the judge agrees with humans almost as often as humans agree with each other, with position bias controlled by swapping order.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="What training changed tells you what to guard">
+      <line x1="70" y1="30" x2="570" y2="30" stroke="var(--line-strong)" stroke-width="2"/>
+      <circle cx="70" cy="30" r="9" fill="var(--good)"/>
+      <text x="70" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Ask</text>
+      <circle cx="170" cy="30" r="9" fill="var(--good)"/>
+      <text x="170" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Offline</text>
+      <circle cx="270" cy="30" r="9" fill="var(--good)"/>
+      <text x="270" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Judge</text>
+      <circle class="pulse" cx="370" cy="30" r="11" fill="var(--accent)"/>
+      <text x="370" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--fg)">Why</text>
+      <circle cx="470" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="470" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Online</text>
+      <circle cx="570" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="570" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Decide</text>
+      <g class="a" style="--d:0"><rect x="60" y="86" width="150" height="56" rx="10" fill="var(--deep-soft)" stroke="var(--deep)" stroke-width="2"/><text x="135" y="111" text-anchor="middle" font-size="13" font-weight="600" fill="var(--deep)">v8 = v7 distilled</text><text x="135" y="129" text-anchor="middle" font-size="12" fill="var(--muted)">into a smaller model</text></g>
+      <path class="a dash" style="--d:1" d="M212 114 L268 114" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:1"><text x="280" y="96" font-size="13" font-weight="600" fill="var(--fg)">Expected side effects</text><text x="280" y="118" font-size="12.5" fill="var(--fg)">· weaker in rare languages</text><text x="280" y="138" font-size="12.5" fill="var(--fg)">· shorter answers, faster</text><text x="280" y="158" font-size="12.5" fill="var(--fg)">· safety behaviour may shift</text></g>
+      <g class="a" style="--d:3"><rect x="60" y="180" width="520" height="40" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="320" y="205" text-anchor="middle" font-size="13" font-weight="600" fill="var(--warn)">Guardrails added: small-language success · safety · refusals · p95</text></g>
+      <g class="a" style="--d:5"><text x="630" y="252" text-anchor="end" font-size="12" fill="var(--accent)">Part IV: distillation, safety</text></g>
+    </svg>
+    <p>Knowing how v8 was made predicts where it might break. Distillation tends to lose rare skills first, so the team adds a guardrail on task success in the five smallest languages, alongside safety and refusal rates. The training chapters turn into a list of things to measure.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The online test, trust checks first">
+      <line x1="70" y1="30" x2="570" y2="30" stroke="var(--line-strong)" stroke-width="2"/>
+      <circle cx="70" cy="30" r="9" fill="var(--good)"/>
+      <text x="70" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Ask</text>
+      <circle cx="170" cy="30" r="9" fill="var(--good)"/>
+      <text x="170" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Offline</text>
+      <circle cx="270" cy="30" r="9" fill="var(--good)"/>
+      <text x="270" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Judge</text>
+      <circle cx="370" cy="30" r="9" fill="var(--good)"/>
+      <text x="370" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Why</text>
+      <circle class="pulse" cx="470" cy="30" r="11" fill="var(--accent)"/>
+      <text x="470" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--fg)">Online</text>
+      <circle cx="570" cy="30" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="570" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--muted)">Decide</text>
+      <g class="a" style="--d:0"><rect x="70" y="80" width="210" height="70" rx="10" fill="var(--surface)" stroke="var(--tn)" stroke-width="2"/><text x="175" y="108" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">v7: 31,920 users</text><text x="175" y="130" text-anchor="middle" font-size="12" fill="var(--muted)">hash(user, salt) → A</text></g>
+      <g class="a" style="--d:1"><rect x="360" y="80" width="210" height="70" rx="10" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/><text x="465" y="108" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">v8: 32,010 users</text><text x="465" y="130" text-anchor="middle" font-size="12" fill="var(--muted)">hash(user, salt) → B</text></g>
+      <g class="a" style="--d:2" font-size="13"><rect x="70" y="172" width="150" height="34" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="145" y="194" text-anchor="middle" fill="var(--good)" font-weight="600">SRM p = 0.72</text>
+      <rect x="245" y="172" width="150" height="34" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="320" y="194" text-anchor="middle" fill="var(--good)" font-weight="600">exposure 96%</text>
+      <rect x="420" y="172" width="150" height="34" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="495" y="194" text-anchor="middle" fill="var(--good)" font-weight="600">14 full days</text></g>
+      <g class="a" style="--d:5"><text x="630" y="252" text-anchor="end" font-size="12" fill="var(--accent)">Part VI: A/B tests, metrics</text></g>
+    </svg>
+    <p>Free-tier users are split by a hash of their ID for two full weeks, with exposure logged when the first answer renders and a trace ID on every event. Before anyone looks at task success, the split passes the SRM check and exposure is equal in both arms.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Read once, apply the rule">
+      <line x1="70" y1="30" x2="570" y2="30" stroke="var(--line-strong)" stroke-width="2"/>
+      <circle cx="70" cy="30" r="9" fill="var(--good)"/>
+      <text x="70" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Ask</text>
+      <circle cx="170" cy="30" r="9" fill="var(--good)"/>
+      <text x="170" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Offline</text>
+      <circle cx="270" cy="30" r="9" fill="var(--good)"/>
+      <text x="270" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Judge</text>
+      <circle cx="370" cy="30" r="9" fill="var(--good)"/>
+      <text x="370" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Why</text>
+      <circle cx="470" cy="30" r="9" fill="var(--good)"/>
+      <text x="470" y="58" text-anchor="middle" font-size="12.5" font-weight="400" fill="var(--fg)">Online</text>
+      <circle class="pulse" cx="570" cy="30" r="11" fill="var(--accent)"/>
+      <text x="570" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--fg)">Decide</text>
+      <line x1="120" y1="150" x2="520" y2="150" stroke="var(--line-strong)"/>
+      <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="120" y="170">−2</text><text x="220" y="170">−1</text><text x="320" y="170">0</text><text x="420" y="170">+1</text><text x="520" y="170">+2</text></g>
+      <line x1="220" y1="78" x2="220" y2="156" stroke="var(--fp)" stroke-width="1.5" stroke-dasharray="5 4"/><text x="214" y="90" text-anchor="end" font-size="12" fill="var(--fp)">margin</text>
+      <g class="a" style="--d:1"><line x1="232.0" y1="118" x2="348.0" y2="118" stroke="var(--good)" stroke-width="4" stroke-linecap="round"/><line x1="232.0" y1="108" x2="232.0" y2="128" stroke="var(--good)" stroke-width="3"/><circle cx="290.0" cy="118" r="8" fill="var(--good)"/></g>
+      <text class="a" style="--d:2" x="360.0" y="114" font-size="13" font-weight="600" fill="var(--fg)">−0.3, lower bound −0.88</text>
+      <text class="a" style="--d:3" x="120" y="200" font-size="13" fill="var(--fg)">Cost −38% · p95 −22% · guardrails clear · stable by cohort</text>
+      <g class="a" style="--d:4"><rect x="210" y="214" width="220" height="32" rx="8" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="320" y="235" text-anchor="middle" font-size="14" font-weight="700" fill="var(--good)">Ship, keep a 2% holdout</text></g>
+      <g class="a" style="--d:5"><text x="630" y="252" text-anchor="end" font-size="12" fill="var(--accent)">Part V: leading eval work</text></g>
+    </svg>
+    <p>At day 14 the primary metric is read once. The lower bound sits above the margin, cost and latency fall, no guardrail breaks, and the effect is steady across exposure cohorts. The rule written on day 0 says ship, with a holdout to watch the long run. Part V's reviewer questions have answers on file.</p>
+  </div>
+</div>
+
+<div class="callout eval"><span class="tag">Eval lens</span><div>The deepest lesson of the guide is that every number about a model is the output of an experiment, whether or not anyone designed it as one. A benchmark score has a sample (the items), a measurement (the grader), a comparison (the baseline), and noise (seeds, items, raters). An online metric adds assignment and exposure. Asking the design questions of every number, offline or online, is what separates an eval program from a leaderboard.</div></div>
+
+<div class="callout ask"><span class="tag">Principal asks</span><div>What decision does this experiment inform, and what result would change it? Is this a superiority or a non-inferiority question, and who set the margin? What did the offline eval establish, with what interval, and why is that not enough? What did training change that we should guard against? Who is sampled, how are they assigned, and is the analysis at the same unit? Which numbers are pre-registered, and what is exploratory? When will we look, and what stops the test early? If the result surprises us, which logs will explain it?</div></div>
+
+<div class="callout warn"><span class="tag">Common mistakes</span><div>Testing a cost-saving model for superiority and calling a flat result "no worse". Shipping on an offline win without an online test, or running an online test without offline screening. Randomizing model changes per request. Using an unvalidated judge as the primary metric. Unblinded human evals with fixed left/right order. Changing the analysis after seeing the data without saying so. Forgetting that the guardrails need power too.</div></div>
+</section>

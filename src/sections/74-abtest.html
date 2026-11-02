@@ -3,6 +3,7 @@
 #w-ab-srm input[type=number]{width:100%;box-sizing:border-box;font:inherit;font-size:14px;height:36px;padding:0 10px;border-radius:calc(var(--radius) - 2px);border:1px solid var(--input);background:var(--background);color:var(--foreground);box-shadow:var(--shadow-xs);font-variant-numeric:tabular-nums}
 .ab-verdict{margin-top:14px;padding:12px 14px;border-radius:var(--radius);border:1px solid var(--border);border-left:4px solid var(--vc,var(--good));background:var(--card);font-size:15px;font-weight:600;color:var(--vc,var(--good))}
 .ab-verdict span{display:block;font-weight:400;font-size:14px;color:var(--fg);margin-top:4px}
+figure.svgfig{background:var(--card)}
 .ab-dt td,.ab-dt th{vertical-align:top}
 .ab-dt .ship{color:var(--good);font-weight:600}.ab-dt .stop{color:var(--fp);font-weight:600}.ab-dt .think{color:var(--lead);font-weight:600}
 </style>
@@ -607,7 +608,7 @@ fn main() {
   <p>For visible changes (a new model voice, a redesigned answer layout), ask for the treatment effect plotted by days since a user's first exposure. A line that decays suggests novelty; a line that climbs suggests learning or change aversion wearing off. Either way, the number to ship on is where the line settles, not the two-week average. Power users show both effects most strongly, because they notice changes first.</p>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Cohort by first exposure, not by calendar</span></div>
-  <figure><svg viewBox="0 0 640 260" role="img" aria-label="Effect by days since first exposure: novelty decays from plus 6 to plus 1, primacy rises from minus 3 to plus 2">
+  <figure class="svgfig"><svg viewBox="0 0 640 260" role="img" aria-label="Effect by days since first exposure: novelty decays from plus 6 to plus 1, primacy rises from minus 3 to plus 2">
     <line x1="80" y1="130" x2="600" y2="130" stroke="var(--line-strong)"/><line x1="80" y1="26" x2="80" y2="200" stroke="var(--line-strong)"/>
     <text x="70" y="134" text-anchor="end" font-size="12" fill="var(--muted)">0%</text><text x="70" y="38" text-anchor="end" font-size="12" fill="var(--muted)">+6%</text><text x="70" y="182" text-anchor="end" font-size="12" fill="var(--muted)">−3%</text>
     <polyline points="80.0,34.0 98.6,51.7 117.1,65.5 135.7,76.2 154.3,84.6 172.9,91.1 191.4,96.1 210.0,100.1 228.6,103.2 247.1,105.6 265.7,107.4 284.3,108.9 302.9,110.0 321.4,110.9 340.0,111.6 358.6,112.1 377.1,112.5 395.7,112.9 414.3,113.1 432.9,113.3 451.4,113.5 470.0,113.6 488.6,113.7 507.1,113.7 525.7,113.8 544.3,113.8 562.9,113.9 581.4,113.9 600.0,113.9" fill="none" stroke="var(--fn)" stroke-width="2.5"/>
@@ -616,7 +617,7 @@ fn main() {
     <text x="150" y="168" font-size="13" font-weight="600" fill="var(--accent)">primacy: climbs to +2%</text>
     <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="80" y="220">day 0</text><text x="210" y="220">7</text><text x="340" y="220">14</text><text x="470" y="220">21</text><text x="600" y="220">28</text></g>
     <text x="340" y="248" text-anchor="middle" font-size="12" fill="var(--muted)">days since the user's first exposure (illustrative curves)</text>
-  </svg><figcaption>Two changes with opposite early behaviour. A one-week test would ship the first and kill the second, the reverse of their long-run effects.</figcaption></figure>
+  </svg><figcaption>Two changes with opposite early behaviour. A one-week test would overstate the first change several times over and kill the second, which ends up the better of the two.</figcaption></figure>
   <p>Plotting the effect by calendar day mixes users at different points in their exposure, because new users keep entering the test. Instead, group users by the date they were first exposed and plot the effect against days since that date. A cleaner check is to compare users who entered in week 1 with those who entered in week 2, measured over their own first seven days: if the effect is a property of the change, the two cohorts should agree. For long-term effects, a holdout (section 10) is the only direct measurement; models of the decay are a fallback.</p>
 </div>
 
