@@ -44,7 +44,7 @@
   <div class="eq">\[ r = \frac{\operatorname{Cov}(X,Y)}{s_X\, s_Y} = \frac{\sum_i (x_i-\bar x)(y_i-\bar y)}{\sqrt{\sum_i (x_i-\bar x)^2}\,\sqrt{\sum_i (y_i-\bar y)^2}}, \qquad \hat\beta_{Y\sim X} = r\,\frac{s_Y}{s_X} \]<span class="eqcap">r is unitless and lies in [−1, 1]. The least-squares slope of Y on X is r times the ratio of standard deviations, so slope and correlation always share a sign. \(r^2\) is the share of Y's variance a straight line in X accounts for.</span></div>
   <ul>
     <li><b>Linear only.</b> A perfect U-shape can have r = 0. Zero correlation does not mean independence.</li>
-    <li><b>Fragile to outliers and shapes.</b> Anscombe's quartet (Anscombe 1973) is four datasets with the same means, variances, regression line and r ≈ 0.82, one of which is a curve and one a single outlier. Plot before you summarise.</li>
+    <li><b>Fragile to outliers and shapes.</b> Anscombe's quartet (Anscombe 1973) is four datasets with the same means, variances, regression line and r ≈ 0.82, one a curve, and two dominated by a single outlying point. Plot before you summarise.</li>
     <li><b>Restricted range shrinks r.</b> Correlate SAT scores with grades among admitted students only and r falls, because admission removed the low scorers. This is a selection effect, covered below.</li>
     <li><b>r has sampling error.</b> With n pairs, Fisher's transform \(z=\tanh^{-1} r\) has standard error about \(1/\sqrt{n-3}\). On 30 points, r = 0.40 has a 95% interval of roughly 0.05 to 0.66 (<a href="#intervals">intervals</a>).</li>
   </ul>
@@ -398,7 +398,7 @@ fn main() {
   <p>The companion problem, measuring only the units that survived, gets its own chapter: <a href="#sampling">who is in your sample</a>.</p>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Conditioning on a common effect</span></div>
-  <p>A <b>collider</b> is a variable with two arrows pointing into it, \(X \rightarrow S \leftarrow Y\). With X and Y independent, conditioning on S (by filtering, stratifying or adding it to a regression) makes them dependent. For the restaurant rule \(S = \mathbf{1}[X+Y&gt;t]\) with X and Y uniform on [0, 1] and t = 1.05, the simulation above gives r = -0.45 among survivors from r ≈ 0 overall.</p>
+  <p>A <b>collider</b> is a variable with two arrows pointing into it, \(X \rightarrow S \leftarrow Y\). With X and Y independent, conditioning on S (by filtering, stratifying or adding it to a regression) makes them dependent. For the restaurant rule \(S = \mathbf{1}[X+Y&gt;t]\) with X and Y uniform on [0, 1] and t = 1.05, the simulated sample above gives r = -0.45 among survivors (the population value under this rule is exactly -0.5) from r ≈ 0 overall.</p>
   <div class="eq">\[ X \perp\!\!\!\perp Y \quad\not\Rightarrow\quad X \perp\!\!\!\perp Y \mid S \qquad \text{when } X \rightarrow S \leftarrow Y \]<span class="eqcap">Independence in the full population does not survive conditioning on a common effect. Explaining away: once you know a restaurant survived, learning its food is bad tells you its location must be good.</span></div>
   <p>Selection does not need a sharp threshold. Any selection probability that depends on both X and Y, such as a response rate that depends on satisfaction and on usage, induces some dependence. The remedies are to observe the unselected units, to model the selection probability and reweight (inverse probability weighting, if the probability can be estimated), or to bound the effect with sensitivity analysis.</p>
 </div>

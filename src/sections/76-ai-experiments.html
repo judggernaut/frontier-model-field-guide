@@ -33,8 +33,8 @@
   </ul>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The model behind a paired eval</span></div>
-  <p>Write the score of model \(m\) on item \(i\) with seed \(s\) as \(y_{mis} = \mu_m + b_i + \varepsilon_{mis}\): a model effect, an item difficulty shared by both models, and sampling noise. The paired difference \(d_i = \bar y_{Ai\cdot} - \bar y_{Bi\cdot}\) cancels \(b_i\), so</p>
-  <div class="eq">\[ \operatorname{Var}(\bar d) = \frac{1}{n}\left(\sigma^2_{\text{model}\times\text{item}} + \frac{2\sigma^2_\varepsilon}{S}\right) \]<span class="eqcap">\(n\) items, \(S\) seeds per item and model. Item difficulty \(\sigma^2_b\) drops out entirely. More seeds shrink only the sampling term; only more items shrink the model-by-item term.</span></div>
+  <p>Write the score of model \(m\) on item \(i\) with seed \(s\) as \(y_{mis} = \mu_m + b_i + \gamma_{mi} + \varepsilon_{mis}\): a model effect, an item difficulty shared by both models, a model-by-item interaction (some items suit one model more than the other), and sampling noise. The paired difference \(d_i = \bar y_{Ai\cdot} - \bar y_{Bi\cdot}\) cancels \(b_i\), so</p>
+  <div class="eq">\[ \operatorname{Var}(\bar d) = \frac{1}{n}\left(\underbrace{\operatorname{Var}(\gamma_{Ai}-\gamma_{Bi})}_{\sigma^2_{\text{model}\times\text{item}}} + \frac{2\sigma^2_\varepsilon}{S}\right) \]<span class="eqcap">\(n\) items, \(S\) seeds per item and model. Item difficulty \(\sigma^2_b\) drops out entirely. More seeds shrink only the sampling term; only more items shrink the model-by-item term.</span></div>
   <p>That decomposition tells you where to spend: if the seed term dominates, rerun; if the item term dominates, add items. Cluster the standard error by the unit that is actually independent (a conversation, a repository, a document) as in <a href="#intervals">intervals</a>, and run everything through a harness that records versions and seeds (<a href="#harness">building a harness</a>).</p>
 </div>
 

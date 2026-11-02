@@ -214,7 +214,7 @@ fn main() {
     <li><b>Thumbs-up rate</b> rewards agreeable, flattering answers. Pushed hard, it selects for sycophancy.</li>
     <li><b>Session length or messages per session</b> rise when the model is slow to resolve a task.</li>
     <li><b>Judge score</b> inherits the judge's biases toward length and confident tone; see <a href="#judges">LLM as judge</a>.</li>
-    <li><b>Refusal rate on a red-team set</b> falls to zero if the model learns to refuse everything that looks risky, harming benign users.</li>
+    <li><b>Harmful-compliance rate on a red-team set</b> falls to zero if the model learns to refuse everything that looks risky, harming benign users.</li>
   </ul>
   <p>The defences: pair each proxy with a counter-metric that moves the other way when it is gamed (length with judged correctness, refusals with benign refusal rate), keep a slow, expensive measurement (human review, retention) as a periodic audit, and rotate or refresh proxies. <a href="#leading">Leading eval work</a> treats Goodhart as the default condition to plan around.</p>
 </div>
@@ -321,7 +321,7 @@ fn main() {
   "ts_server": "2026-10-12T09:15:40.120Z",  "ts_client": "2026-10-12T11:15:39.870+02:00",
   "latency_ms": 11800,  "output_tokens": 1480,  "error_code": "CLIENT_TIMEOUT"
 }</code></pre>
-  <p><b>Time.</b> Store server time in UTC as the source of truth; keep client time for latency and offline queues, but expect clock skew and late-arriving events. Define the analysis "day" explicitly (UTC, or the user's local day) and use it everywhere, or a test that starts at 17:00 Pacific will have a first "day" that is seven hours long in UTC.</p>
+  <p><b>Time.</b> Store server time in UTC as the source of truth; keep client time for latency and offline queues, but expect clock skew and late-arriving events. Define the analysis "day" explicitly (UTC, or the user's local day) and use it everywhere, or you get partial days: a test that starts at 17:00 Pacific (00:00 UTC) has a full first UTC day but a first local day only seven hours long.</p>
   <p><b>Log sampling.</b> Full traces are expensive, so teams sample. Sampling is safe only if it is independent of the outcome and of the arm. Two classic biases: <b>tail sampling</b> that keeps all errors but 1% of successes inflates error rates unless you reweight by the inverse sampling probability; and sampling decided per request after the response returns can depend on latency. Decide sampling at the trace's start by hashing the trace ID, log the sampling rate on the event, and keep metric computation on unsampled counters where possible.</p>
 </div>
 

@@ -151,7 +151,7 @@ figure.svgfig{background:var(--card)}
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The sample size formula and the rule of 16</span></div>
   <p>For a two-arm test with equal allocation, per-arm variance \(\sigma^2\), and absolute effect \(\delta\):</p>
-  <div class="eq">\[ n_{\text{per arm}} = \frac{2\,(z_{1-\alpha/2} + z_{1-\beta})^2\,\sigma^2}{\delta^2} \;\approx\; \frac{16\,\sigma^2}{\delta^2} \quad (\alpha = 0.05,\ 1-\beta = 0.8) \]<span class="eqcap">\(2(1.96+0.84)^2 \approx 15.7\), hence the rule of 16 popularised by Kohavi, Tang and Xu (2020). For a rate \(p\), \(\sigma^2 = p(1-p)\).</span></div>
+  <div class="eq">\[ n_{\text{per arm}} = \frac{2\,(z_{1-\alpha/2} + z_{1-\beta})^2\,\sigma^2}{\delta^2} \;\approx\; \frac{16\,\sigma^2}{\delta^2} \quad (\alpha = 0.05,\ 1-\beta = 0.8) \]<span class="eqcap">\(2(1.96+0.84)^2 \approx 15.7\), hence the rule of 16 (Lehr 1992; van Belle 2002), standard in online experimentation (Kohavi, Tang and Xu 2020). For a rate \(p\), \(\sigma^2 = p(1-p)\).</span></div>
   <p>Worked example (illustrative): weekly task success \(p = 0.40\), and you want to detect a 2% relative lift, so \(\delta = 0.008\). Then \(n \approx 16 \times 0.24 / 0.008^2 = 60{,}000\) per arm. With 20,000 eligible users a day split 50/50, that is 6 days, rounded up to 7, and in practice 14 for novelty. Turn it around to get the MDE you can afford: \(\delta_{\min} = (z_{1-\alpha/2}+z_{1-\beta})\sqrt{2\sigma^2/n}\). Required users scale with \(1/\delta^2\); MDE scales with \(1/\sqrt{n}\), so doubling the duration buys only a 29% smaller MDE. For the paired, item-level version used in offline evals, see <a href="#evalstats">statistics for eval sets</a>.</p>
 </div>
 
@@ -242,7 +242,7 @@ figure.svgfig{background:var(--card)}
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The chi-square test, worked</span></div>
   <p>With \(k\) arms, configured shares \(s_i\), observed counts \(O_i\) and total \(N\), the expected counts are \(E_i = N s_i\) and</p>
   <div class="eq">\[ \chi^2 = \sum_{i=1}^{k} \frac{(O_i - E_i)^2}{E_i} \;\sim\; \chi^2_{k-1} \text{ under a healthy split}, \qquad k=2:\; p = \operatorname{erfc}\!\left(\sqrt{\chi^2/2}\right) \]<span class="eqcap">For two arms the statistic has one degree of freedom and equals \(z^2\) for the one-proportion z test of the observed share.</span></div>
-  <p>Worked example: a 50/50 test counts 50,500 users in control and 49,500 in treatment. \(E = 50{,}000\) each, so \(\chi^2 = 500^2/50{,}000 + 500^2/50{,}000 = 5 + 5 = 10\), and \(p = \operatorname{erfc}(\sqrt{5}) \approx 0.0016\). A split of 50.5% to 49.5% looks harmless to the eye. The test says it would happen by chance about 1.6 times in 1,000. Many platforms alarm at a strict threshold such as \(p &lt; 0.001\), because the check runs on every experiment and false alarms erode trust; anything near that line deserves a look. At two million users, even 50.1% versus 49.9% gives \(p \approx 0.001\). The larger the test, the smaller the imbalance it can detect, so "the gap is tiny" is never a defence.</p>
+  <p>Worked example: a 50/50 test counts 50,500 users in control and 49,500 in treatment. \(E = 50{,}000\) each, so \(\chi^2 = 500^2/50{,}000 + 500^2/50{,}000 = 5 + 5 = 10\), and \(p = \operatorname{erfc}(\sqrt{5}) \approx 0.0016\). A split of 50.5% to 49.5% looks harmless to the eye. The test says it would happen by chance about 1.6 times in 1,000. Many platforms alarm at a strict threshold such as \(p &lt; 0.001\), because the check runs on every experiment and false alarms erode trust; anything near that line deserves a look. At two million users, even 50.1% versus 49.9% gives \(p \approx 0.005\), and 50.12% versus 49.88% gives \(p \approx 0.001\). The larger the test, the smaller the imbalance it can detect, so "the gap is tiny" is never a defence.</p>
   <div class="codetabs">
 <pre class="code" data-lang="python"><code>import math
 
@@ -263,7 +263,7 @@ print(f"{chi2:.2f} {p:.6f}")                 # 10.00 0.001565  -&gt; investigate
 # A healthy split of the same size.
 chi2, p = srm_check([50_090, 49_910], [0.5, 0.5])
 print(f"{chi2:.2f} {p:.6f}")                 # 0.32 0.569214   -&gt; fine
-# Two million users, 50.1% vs 49.9%: tiny to the eye, decisive to the test.
+# Two million users, 50.12% vs 49.88%: tiny to the eye, decisive to the test.
 chi2, p = srm_check([1_002_300, 997_700], [0.5, 0.5])
 print(f"{chi2:.2f} {p:.6f}")                 # 10.58 0.001143  -&gt; investigate</code></pre>
 <pre class="code" data-lang="rust"><code>// erfc is not in Rust's standard library, so we use the Numerical Recipes
@@ -299,7 +299,7 @@ fn main() {
     // A healthy split of the same size.
     let (chi2, p) = srm_check(&amp;[50_090.0, 49_910.0], &amp;[0.5, 0.5]);
     println!("{:.2} {:.6}", chi2, p); // 0.32 0.569214   -&gt; fine
-    // Two million users, 50.1% vs 49.9%: tiny to the eye, decisive to the test.
+    // Two million users, 50.12% vs 49.88%: tiny to the eye, decisive to the test.
     let (chi2, p) = srm_check(&amp;[1_002_300.0, 997_700.0], &amp;[0.5, 0.5]);
     println!("{:.2} {:.6}", chi2, p); // 10.58 0.001143  -&gt; investigate
 }</code></pre>

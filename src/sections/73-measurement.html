@@ -314,9 +314,10 @@ fn main() {
   <p>The light-bulb data from the story. Each record is a time and whether the bulb burned out (1) or was censored (0).</p>
   <div class="codetabs">
 <pre class="code" data-lang="python"><code>def kaplan_meier(times, events):
-    """Survival curve as (time, S(t)) at each event time. Assumes distinct times or
-    processes ties one record at a time, which gives the same product."""
-    data = sorted(zip(times, events))
+    """Survival curve as (time, S(t)) at each event time. Tied events are processed one
+    record at a time, which gives the same product; at a shared time, events come before
+    censorings, because a unit censored at t was still at risk at t."""
+    data = sorted(zip(times, events), key=lambda r: (r[0], -r[1]))
     at_risk, s, curve = len(data), 1.0, []
     for t, burned_out in data:
         if burned_out:
@@ -334,11 +335,12 @@ for t, s in kaplan_meier(times, events):
 # 610 0.5833
 # 780 0.4375   first time below 0.5, so the median is 780 h
 # 900 0.2917</code></pre>
-<pre class="code" data-lang="rust"><code>/// Survival curve as (time, S(t)) at each event time. Assumes distinct times or
-/// processes ties one record at a time, which gives the same product.
+<pre class="code" data-lang="rust"><code>/// Survival curve as (time, S(t)) at each event time. Tied events are processed one
+/// record at a time, which gives the same product; at a shared time, events come before
+/// censorings, because a unit censored at t was still at risk at t.
 fn kaplan_meier(times: &amp;[u32], events: &amp;[u8]) -&gt; Vec&lt;(u32, f64)&gt; {
     let mut data: Vec&lt;(u32, u8)&gt; = times.iter().cloned().zip(events.iter().cloned()).collect();
-    data.sort();
+    data.sort_by(|a, b| a.0.cmp(&amp;b.0).then(b.1.cmp(&amp;a.1)));
     let (mut at_risk, mut s, mut curve) = (data.len() as f64, 1.0, Vec::new());
     for (t, burned_out) in data {
         if burned_out == 1 {
