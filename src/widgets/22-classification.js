@@ -177,3 +177,74 @@ G.widget('w-cl-auc', function (root) {
   G.on([st, sq, spi], 'input', draw);
   return draw;
 });
+
+/* One confusion matrix, many scores: accuracy, balanced accuracy, F1, MCC, kappa side by side */
+G.widget('w-cl-mcc', function (root) {
+  var sP = G.$(root, '#clm-p'), sSe = G.$(root, '#clm-se'), sSp = G.$(root, '#clm-sp');
+  var oP = G.$(root, '#clm-p-o'), oSe = G.$(root, '#clm-se-o'), oSp = G.$(root, '#clm-sp-o');
+  var cv = G.$(root, 'canvas'), mx = G.$(root, '[data-mx]'), out = G.$(root, '[data-out]'), k = function (n) { return G.$(root, '[data-k=' + n + ']'); };
+  var N = 1000;
+  function box(n, c, l) { return '<div class="cl-b" style="--c:' + c + '"><strong>' + n + '</strong><span>' + l + '</span></div>'; }
+  function scores(tp, fp, fn, tn) {
+    var n = tp + fp + fn + tn, pos = tp + fn, neg = tn + fp;
+    var acc = (tp + tn) / n;
+    var sens = pos ? tp / pos : NaN, spec = neg ? tn / neg : NaN, ba = (sens + spec) / 2;
+    var f1 = (2 * tp + fp + fn) ? 2 * tp / (2 * tp + fp + fn) : NaN;
+    var den = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)), mccU = den === 0;
+    var mcc = den ? (tp * tn - fp * fn) / den : 0;                     // 0 = chance when undefined
+    var po = acc, pe = ((tp + fp) * (tp + fn) + (tn + fn) * (tn + fp)) / (n * n);
+    var kap = pe !== 1 ? (po - pe) / (1 - pe) : 0;
+    return { acc: acc, ba: ba, f1: f1, mcc: mcc, mccU: mccU, kap: kap, sens: sens, spec: spec };
+  }
+  function draw() {
+    var P = G.pal(), prev = +sP.value / 100, se = +sSe.value / 100, sp = +sSp.value / 100;
+    oP.textContent = G.pct(prev, prev < 0.1 ? 1 : 0); oSe.textContent = G.pct(se); oSp.textContent = G.pct(sp);
+    var pos = Math.round(N * prev), neg = N - pos, tp = Math.round(pos * se), fn = pos - tp, tn = Math.round(neg * sp), fp = neg - tn;
+    mx.innerHTML = '<div></div><div class="cl-h">Said positive</div><div class="cl-h">Said negative</div><div class="cl-rh">Truly positive</div>' +
+      box(tp, 'var(--tp)', 'TP') + box(fn, 'var(--fn)', 'FN') + '<div class="cl-rh">Truly negative</div>' + box(fp, 'var(--fp)', 'FP') + box(tn, 'var(--tn)', 'TN');
+    var m = scores(tp, fp, fn, tn), maj = Math.max(prev, 1 - prev), f1base = 2 * prev / (1 + prev);
+    var rows = [
+      ['Accuracy', m.acc, maj, 0, 'always-majority'],
+      ['Balanced acc.', m.ba, 0.5, 0, 'coin flip'],
+      ['F1', m.f1, f1base, 0, 'always-positive'],
+      ['MCC', m.mcc, 0, -1, 'chance'],
+      ['Kappa', m.kap, 0, -1, 'chance']];
+    var narrow = (cv.parentElement.clientWidth || 640) < 380;
+    var c = G.canvas(cv, 5 * 38 + 34), ctx = c.ctx, L = narrow ? 86 : 104, Rr = c.w - 54, BW = Rr - L;
+    function X(v) { return L + (v + 1) / 2 * BW; }   // shared −1 … +1 axis so MCC and kappa can go negative
+    ctx.strokeStyle = P.line; ctx.lineWidth = 1;
+    [-1, -0.5, 0, 0.5, 1].forEach(function (t) {
+      ctx.globalAlpha = t === 0 ? 1 : 0.5; ctx.beginPath(); ctx.moveTo(X(t), 6); ctx.lineTo(X(t), 5 * 38 + 8); ctx.stroke(); ctx.globalAlpha = 1;
+      G.text(ctx, (t > 0 ? '+' : t < 0 ? '−' : '') + G.fmt(Math.abs(t), t % 1 ? 1 : 0), X(t), 5 * 38 + 20, P.faint, 'center', 11);
+    });
+    rows.forEach(function (rw, i) {
+      var y = 10 + i * 38, v = rw[1];
+      G.text(ctx, rw[0], 0, y + 11, P.fg, 'left', 12.5);
+      ctx.fillStyle = P.sunk; ctx.fillRect(X(rw[3]), y + 3, X(1) - X(rw[3]), 16);
+      if (isFinite(v)) {
+        var x0 = X(Math.min(0, v)), x1 = X(Math.max(0, v));
+        ctx.fillStyle = v >= rw[2] + 0.005 ? P.accent : P.warn; ctx.fillRect(x0, y + 3, Math.max(1.5, x1 - x0), 16);
+      }
+      var bx = X(rw[2]); ctx.strokeStyle = P.fg; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx, y - 1); ctx.lineTo(bx, y + 23); ctx.stroke();
+      G.text(ctx, isFinite(v) ? G.fmt(v, 2) : '—', c.w, y + 11, P.fg, 'right', 12.5);
+    });
+    k('acc').textContent = G.pct(m.acc, 1); k('ba').textContent = G.pct(m.ba, 1); k('f1').textContent = G.fmt(m.f1, 2);
+    k('mcc').textContent = G.fmt(m.mcc, 2) + (m.mccU ? '*' : ''); k('kap').textContent = G.fmt(m.kap, 2);
+    var s = 'Of ' + N.toLocaleString('en-US') + ' cases, ' + pos + ' are truly positive. The model gets ' + G.pct(m.acc, 1) + ' right, but always answering "' +
+      (prev <= 0.5 ? 'negative' : 'positive') + '" would already score <b>' + G.pct(maj, 1) + '</b> (the tick on the accuracy row)' +
+      (m.acc < maj - 1e-9 ? ', so on accuracy alone this model looks worse than doing nothing. ' : '. ');
+    if (m.mccU) s += '<b>MCC is undefined here</b> (a row or column of the matrix is empty, so its denominator is zero) and is reported as 0*, the chance level. ';
+    if (m.mcc <= 0.05 && m.acc >= 0.9) s += 'High accuracy with MCC and kappa near zero means the model has learned nothing beyond the class split. <b>Trust MCC and kappa here</b>: both measure agreement beyond what chance and the class balance give for free. ';
+    else if (m.mcc < 0) s += 'MCC and kappa are negative: predictions run against the truth, worse than guessing. ';
+    else s += 'MCC is ' + G.fmt(m.mcc, 2) + ' and kappa ' + G.fmt(m.kap, 2) + ': skill above chance, on a scale where 0 is no skill and 1 is perfect. ';
+    s += 'Balanced accuracy (' + G.pct(m.ba, 1) + ') averages sensitivity ' + G.pct(m.sens) + ' and specificity ' + G.pct(m.spec) + ', so 50% is always chance. ' +
+      'F1 (' + G.fmt(m.f1, 2) + ') looks only at the positive class and never uses the ' + tn + ' true negatives; it is useful when positives are what you care about, but it can move a lot when you just relabel which class is "positive". ' +
+      'When one number has to summarise a skewed problem, MCC is the safest default; still show the matrix.';
+    out.innerHTML = s;
+  }
+  G.on([sP, sSe, sSp], 'input', draw);
+  G.$$(root, '[data-pre]').forEach(function (btn) {
+    G.on(btn, 'click', function () { var q = btn.getAttribute('data-pre').split(','); sP.value = q[0]; sSe.value = q[1]; sSp.value = q[2]; draw(); });
+  });
+  return draw;
+});

@@ -445,6 +445,25 @@
   <p>Stacking \(L\) layers of 3×3 kernels gives each output a <b>receptive field</b> of \((2L+1)\times(2L+1)\) pixels; pooling and striding grow it faster. LeNet (LeCun et al. 1989) applied this to handwritten digits. AlexNet (Krizhevsky, Sutskever and Hinton 2012) had five convolutional and three fully connected layers, about 60 million parameters, and used ReLU activations, dropout, data augmentation and two GPUs. Its ImageNet top-5 error of about 15% against 26% for the runner-up was the moment the field switched. ResNets (2015) then pushed CNNs past 100 layers with the residual connection that every transformer now uses.</p>
 </div>
 
+<p>Here is the flashlight in slow motion: one 3×3 filter, one small image, and the output it builds one cell at a time.</p>
+<div class="widget" id="w-fm-conv">
+  <div class="wtitle">A filter sliding over an image</div>
+  <div class="wsub">Pick a filter, then press Step or Run to slide it across the letter T and watch the 9 multiplications at each stop add up to one output cell; click any input or output cell to jump there.</div>
+  <div class="controls">
+    <div class="ctl"><label for="cv-k">Filter</label><select id="cv-k"><option value="v">Vertical edge (Sobel)</option><option value="h">Horizontal edge (Sobel)</option><option value="blur">Blur (average of 9)</option><option value="sharp">Sharpen</option></select></div>
+  </div>
+  <div class="btnrow"><button class="b" type="button" data-step>Step</button><button class="b" type="button" data-run aria-pressed="false">Run</button><button class="b" type="button" data-all>Fill all</button><button class="b" type="button" data-reset>Reset</button></div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--fg)"></span>bright pixel (1)</span><span><span class="sw" style="background:var(--accent)"></span>positive output</span><span><span class="sw" style="background:var(--lead)"></span>negative output</span><span>outlined box: the 3×3 window being read now</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Weights in this filter</div><div class="v" data-k="w">—</div></div>
+    <div class="mc"><div class="l">Positions that reuse them</div><div class="v" data-k="pos">—</div></div>
+    <div class="mc"><div class="l">Dense layer, same input and output</div><div class="v" data-k="dense">—</div></div>
+    <div class="mc"><div class="l">Output at this position</div><div class="v" data-k="val">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
 <h3>Recurrent networks and LSTMs: memory for sequences</h3>
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Reading a book with one sticky note</span></div>
   <p>Picture reading a novel one word at a time, and the only thing you may keep is a single sticky note that you rewrite after every word. You must decide, word by word, what to keep on the note and what to rub out. That is a recurrent network. By page 300, details from page 1 are hard to hold on to. An <b>LSTM</b> gives the note a protected section and simple rules (gates) for when to write, keep or erase, so important facts last much longer.</p>

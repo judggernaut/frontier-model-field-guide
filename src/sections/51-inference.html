@@ -217,6 +217,28 @@ fn main() {
   <p>Sampling variance has two sources: which problems are in the set, and which samples each problem drew. With \(n\) samples per problem, the per-problem estimate of pass@1 is \(c/n\), whose variance shrinks with \(n\). The between-problem variance does not. More samples per problem helps only until problem-to-problem variation dominates. For intervals, bootstrap over problems, keeping each problem's samples together (the clustering point from <a href="#evalstats">eval statistics</a>).</p>
 </div>
 
+<p>A tempting shortcut is to plug the observed rate \(\hat p = c/n\) into \(1-(1-\hat p)^k\). The widget compares that plug-in number with the unbiased estimator for one problem.</p>
+<div class="widget" id="w-in-passk">
+  <div class="wtitle">pass@k from n samples</div>
+  <div class="wsub">Start at n = 20, c = 3 (the code example above) and slide k: the two curves agree at k = 1, then the plug-in curve falls below. Set k past n − c and watch the unbiased estimate hit exactly 100%.</div>
+  <div class="controls">
+    <div class="ctl"><label for="in-pk-n">Samples generated n: <output id="in-pk-n-o">20</output></label><input type="range" id="in-pk-n" min="1" max="200" step="1" value="20"></div>
+    <div class="ctl"><label for="in-pk-c">Correct samples c: <output id="in-pk-c-o">3</output></label><input type="range" id="in-pk-c" min="0" max="20" step="1" value="3"></div>
+    <div class="ctl"><label for="in-pk-k">k (attempts allowed): <output id="in-pk-k-o">5</output></label><input type="range" id="in-pk-k" min="1" max="20" step="1" value="5"></div>
+  </div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--accent)"></span>Unbiased 1 − C(n−c, k) / C(n, k)</span><span><span class="sw" style="background:var(--fn)"></span>Plug-in 1 − (1 − c/n)<sup>k</sup> (biased)</span></div>
+  <div class="btnrow" style="margin-top:12px"><button class="b" data-draw>Draw another random k-subset</button></div>
+  <canvas data-c="strip"></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Unbiased pass@k</div><div class="v" data-k="u">—</div></div>
+    <div class="mc"><div class="l">Plug-in estimate</div><div class="v" data-k="p">—</div></div>
+    <div class="mc"><div class="l">Plug-in minus unbiased</div><div class="v" data-k="d">—</div></div>
+    <div class="mc"><div class="l">2,000 random k-subsets with a correct one</div><div class="v" data-k="sim">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
 <h3>Test-time compute: thinking longer, sampling wider</h3>
 <div class="story" id="st-in-friends">
   <div class="story-head"><div class="story-title">Asking more friends: voting versus a judge</div><p class="story-sub">Test-time compute in five pictures.</p></div>

@@ -191,6 +191,28 @@ fn main() {
 </div>
 </div>
 
+<p>The widget runs the same <code>gae</code> function on a short response, so you can see where each token's advantage comes from.</p>
+<div class="widget" id="w-rl-gae">
+  <div class="wtitle">Discount and GAE</div>
+  <div class="wsub">Pick "Reward only at the end" and drag λ from 1 down to 0: watch the end reward stop reaching the early tokens, which then lean on the critic's guesses instead. Drag or tap on the top chart to edit rewards or values.</div>
+  <div class="btnrow"><button class="b" data-rw="end" aria-pressed="true">Reward only at the end</button><button class="b" data-rw="kl" aria-pressed="false">KL penalty + end reward</button><button class="b" data-rw="ex" aria-pressed="false">Chapter example (3 tokens)</button></div>
+  <div class="btnrow"><button class="b" data-cr="ramp" aria-pressed="true">Critic: rising guess</button><button class="b" data-cr="flat" aria-pressed="false">Critic: flat 0.5</button><button class="b" data-cr="zero" aria-pressed="false">No critic (V = 0)</button></div>
+  <div class="controls">
+    <div class="ctl"><label for="rl-gae-g">Discount γ: <output id="rl-gae-g-o">1.00</output></label><input type="range" id="rl-gae-g" min="0.8" max="1" step="0.01" value="1"></div>
+    <div class="ctl"><label for="rl-gae-l">GAE λ: <output id="rl-gae-l-o">0.95</output></label><input type="range" id="rl-gae-l" min="0" max="1" step="0.01" value="0.95"></div>
+    <div class="ctl"><label>Dragging on the top chart edits</label><div class="btnrow" style="margin:0"><button class="b" data-ed="r" aria-pressed="true">rewards</button><button class="b" data-ed="v" aria-pressed="false">values</button></div></div>
+  </div>
+  <canvas style="touch-action:pan-y"></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--accent)"></span>reward r<sub>t</sub></span><span><span class="sw" style="background:var(--fn)"></span>critic V(s<sub>t</sub>)</span><span><span class="sw" style="background:var(--eli5)"></span>TD error δ<sub>t</sub></span><span><span class="sw" style="background:var(--tp)"></span>GAE advantage Â<sub>t</sub> (positive)</span><span><span class="sw" style="background:var(--fp)"></span>(negative)</span><span>○ λ = 0 &nbsp; ◆ λ = 1</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">γλ (decay per token)</div><div class="v" data-k="gl">—</div></div>
+    <div class="mc"><div class="l">Effective look-ahead 1/(1 − γλ)</div><div class="v" data-k="hz">—</div></div>
+    <div class="mc"><div class="l">Weight of the last reward on token 1</div><div class="v" data-k="w0">—</div></div>
+    <div class="mc"><div class="l">Advantage of token 1, Â<sub>1</sub></div><div class="v" data-k="a0">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
 <h3>PPO's clipped surrogate</h3>
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Small steps only</span></div>
   <p>Collecting answers and scoring them is expensive, so you want to learn as much as possible from each batch. But if you change the model a lot based on one batch, you can wreck it, and the next batch of answers comes from a broken model. PPO's rule is simple: within one batch, no single answer's probability may move by more than a fixed fraction, say 20 percent. Once it has moved that far, PPO stops pushing on it.</p>

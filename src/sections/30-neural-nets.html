@@ -92,6 +92,28 @@
   <p>Geometrically, \(\mathbf{w}^\top\mathbf{x} + b = 0\) is a hyperplane (a line, in two dimensions). The neuron measures signed distance from that hyperplane, scaled by \(\|\mathbf{w}\|\), and the activation decides what to do with it. A ReLU neuron is "off" on one side of its hyperplane and grows linearly on the other.</p>
 </div>
 
+<p>The widget below puts all of this on one picture. With two inputs the hyperplane is a line on a flat map, and you can move it with your hands.</p>
+<div class="widget" id="w-nn-neuron">
+  <div class="wtitle">One neuron, two inputs</div>
+  <div class="wsub">Move the weights and the bias until every good cycling day sits on the shaded "yes" side, click any day to see its sum worked out, then switch the data to the XOR pattern and try again.</div>
+  <div class="controls">
+    <div class="ctl"><label for="nr-w1">Weight w₁ (temperature): <output id="nr-w1-o">1.0</output></label><input type="range" id="nr-w1" min="-2" max="2" step="0.1" value="1"></div>
+    <div class="ctl"><label for="nr-w2">Weight w₂ (rain): <output id="nr-w2-o">-1.5</output></label><input type="range" id="nr-w2" min="-3" max="3" step="0.1" value="-1.5"></div>
+    <div class="ctl"><label for="nr-b">Bias b: <output id="nr-b-o">-1.2</output></label><input type="range" id="nr-b" min="-4" max="4" step="0.1" value="-1.2"></div>
+    <div class="ctl"><label for="nr-act">Activation</label><select id="nr-act"><option value="step">Step (output 0 or 1)</option><option value="sigmoid" selected>Sigmoid (output 0 to 1)</option><option value="relu">ReLU (output 0 or more)</option></select></div>
+    <div class="ctl"><label for="nr-data">Data</label><select id="nr-data"><option value="cycle">Good day to cycle? (temperature, rain)</option><option value="xor">XOR: yes when exactly one input is high</option></select></div>
+  </div>
+  <div class="btnrow"><button class="b" type="button" data-next>Next point</button><button class="b" type="button" data-best>Find the best single line</button><button class="b" type="button" data-two aria-pressed="false">Show the two-neuron fix</button></div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--accent);border-radius:50%"></span>labelled yes</span><span><span class="sw" style="background:var(--lead)"></span>labelled no</span><span>shading: what the neuron outputs at each spot</span><span>dashed line: z = 0</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Points on the correct side</div><div class="v" data-k="acc">—</div></div>
+    <div class="mc"><div class="l">Weighted sum z (selected)</div><div class="v" data-k="z">—</div></div>
+    <div class="mc"><div class="l">Output y (selected)</div><div class="v" data-k="y">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
 <h3>Why the bend matters: non-linear activations</h3>
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Converting units twice is still converting units</span></div>
   <p>Convert miles to kilometres, then kilometres to metres. Two steps, but you could have done it in one: multiply by 1,609. Chaining "multiply and add" steps always collapses into a single "multiply and add" step. A stack of a hundred neurons with no bend is exactly as powerful as one neuron. It can only draw straight lines.</p>

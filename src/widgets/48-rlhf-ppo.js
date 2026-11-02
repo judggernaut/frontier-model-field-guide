@@ -89,3 +89,148 @@ G.widget('w-rl-bandit', function (root) {
   G.on([sb, sl], 'input', draw);
   return draw;
 });
+
+/* Chapter 48: GAE on a short response. Same recursion as the chapter's gae():
+   delta_t = r_t + gamma * V(s_{t+1}) - V(s_t), with V = 0 after the final token;
+   A_t = delta_t + gamma * lambda * A_{t+1}. */
+G.widget('w-rl-gae', function (root) {
+  var sg = G.$(root, '#rl-gae-g'), sl = G.$(root, '#rl-gae-l'), cv = G.$(root, 'canvas'), out = G.$(root, '[data-out]');
+  var k = function (n) { return G.$(root, '[data-k=' + n + ']'); };
+  var RW = {
+    end: [0, 0, 0, 0, 0, 0, 0, 1],
+    kl: [-0.02, -0.05, -0.01, -0.03, -0.02, -0.04, -0.01, 0.9],
+    ex: [-0.01, -0.02, 0.9]
+  };
+  var CR = {
+    ramp: function (u) { return 0.4 + 0.5 * u; },
+    flat: function () { return 0.5; },
+    zero: function () { return 0; }
+  };
+  var rewards = RW.end.slice(), values = [], rwName = 'end', crName = 'ramp', edit = 'r';
+  function applyCritic(name) {
+    var T = rewards.length;
+    values = rewards.map(function (_, t) { return Math.round(CR[name](T > 1 ? t / (T - 1) : 0) * 100) / 100; });
+  }
+  applyCritic('ramp');
+  function press(sel, attr, name) { G.$$(root, sel).forEach(function (b) { b.setAttribute('aria-pressed', b.dataset[attr] === name ? 'true' : 'false'); }); }
+  G.$$(root, 'button[data-rw]').forEach(function (b) {
+    G.on(b, 'click', function () {
+      rwName = b.dataset.rw; rewards = RW[rwName].slice();
+      if (rwName === 'ex') { values = [0.5, 0.6, 0.7]; crName = ''; } else { if (!crName) crName = 'ramp'; applyCritic(crName); }
+      press('button[data-rw]', 'rw', rwName); press('button[data-cr]', 'cr', crName); draw();
+    });
+  });
+  G.$$(root, 'button[data-cr]').forEach(function (b) {
+    G.on(b, 'click', function () { crName = b.dataset.cr; applyCritic(crName); press('button[data-cr]', 'cr', crName); draw(); });
+  });
+  G.$$(root, 'button[data-ed]').forEach(function (b) {
+    G.on(b, 'click', function () { edit = b.dataset.ed; press('button[data-ed]', 'ed', edit); });
+  });
+  function gae(r, v, gamma, lam) {
+    var T = r.length, adv = new Array(T), delta = new Array(T), last = 0;
+    for (var t = T - 1; t >= 0; t--) {
+      var nextV = t + 1 < T ? v[t + 1] : 0;          // no value after the final token
+      delta[t] = r[t] + gamma * nextV - v[t];
+      last = delta[t] + gamma * lam * last;            // discounted sum of future deltas
+      adv[t] = last;
+    }
+    return { adv: adv, delta: delta };
+  }
+  var geo = null, RANGE = [-1, 1.5];
+  function niceMax(m) { var steps = [0.5, 1, 1.5, 2, 3, 4, 6]; for (var i = 0; i < steps.length; i++) if (m <= steps[i]) return steps[i]; return Math.ceil(m); }
+  function draw() {
+    var P = G.pal(), gamma = +sg.value, lam = +sl.value, T = rewards.length;
+    G.$(root, '#rl-gae-g-o').textContent = G.fmt(gamma, 2); G.$(root, '#rl-gae-l-o').textContent = G.fmt(lam, 2);
+    var g = gae(rewards, values, gamma, lam), g0 = gae(rewards, values, gamma, 0), g1 = gae(rewards, values, gamma, 1);
+    var m = 0.25;
+    [g.adv, g.delta, g0.adv, g1.adv].forEach(function (a) { a.forEach(function (x) { m = Math.max(m, Math.abs(x)); }); });
+    var M = niceMax(m * 1.08);
+    var ph = 118, gap = 30, c = G.canvas(cv, 3 * ph + 2 * gap + 30), ctx = c.ctx, L = 46, R = 12;
+    var slot = (c.w - L - R) / T, bw = Math.min(34, slot * 0.5), showVals = slot >= 40;
+    var panels = [
+      { y0: 18, lo: RANGE[0], hi: RANGE[1], ticks: [-1, 0, 1], title: 'Rewards r_t (bars) and critic V(s_t) (line). Drag here to edit ' + (edit === 'r' ? 'rewards' : 'values') + '.' },
+      { y0: 18 + ph + gap, lo: -M, hi: M, ticks: [-M, 0, M], title: 'TD errors δ_t = r_t + γ·V(s_t+1) − V(s_t)' },
+      { y0: 18 + 2 * (ph + gap), lo: -M, hi: M, ticks: [-M, 0, M], title: 'GAE advantages Â_t = δ_t + γλ·Â_t+1' }
+    ];
+    panels.forEach(function (p) {
+      p.Y = function (v) { return p.y0 + 16 + (p.hi - v) / (p.hi - p.lo) * (ph - 16); };
+      G.text(ctx, p.title, L, p.y0 + 2, P.muted, 'left', 11.5);
+      p.ticks.forEach(function (t) {
+        ctx.strokeStyle = P.line; ctx.lineWidth = 1; ctx.globalAlpha = t === 0 ? 1 : 0.6;
+        ctx.beginPath(); ctx.moveTo(L, p.Y(t)); ctx.lineTo(c.w - R, p.Y(t)); ctx.stroke(); ctx.globalAlpha = 1;
+        G.text(ctx, G.fmt(t, Math.abs(t) % 1 ? 1 : 0), L - 6, p.Y(t), P.faint, 'right', 11);
+      });
+    });
+    function X(t) { return L + slot * (t + 0.5); }
+    function bar(p, t, v, col, w) {
+      var y0 = p.Y(0), y1 = p.Y(Math.max(p.lo, Math.min(p.hi, v)));
+      ctx.fillStyle = col; ctx.fillRect(X(t) - w / 2, Math.min(y0, y1), w, Math.max(1, Math.abs(y1 - y0)));
+      if (showVals && Math.abs(v) >= 0.005) G.text(ctx, G.fmt(v, 2), X(t), v >= 0 ? Math.min(y0, y1) - 8 : Math.max(y0, y1) + 9, P.fg, 'center', 10.5);
+    }
+    // panel 1: rewards and critic
+    var p1 = panels[0];
+    rewards.forEach(function (r, t) { bar(p1, t, r, P.accent, bw); });
+    G.line(ctx, values.map(function (v, t) { return [X(t), p1.Y(v)]; }), P.fn, 2);
+    values.forEach(function (v, t) { G.dot(ctx, X(t), p1.Y(v), 4.5, P.fn, P.surface); });
+    // panel 2: TD errors
+    g.delta.forEach(function (d, t) { bar(panels[1], t, d, P.eli5, bw); });
+    // panel 3: advantages, with the lambda = 0 and lambda = 1 answers as markers
+    var p3 = panels[2];
+    g.adv.forEach(function (a, t) { bar(p3, t, a, a >= 0 ? P.tp : P.fp, bw); });
+    g0.adv.forEach(function (a, t) {
+      ctx.beginPath(); ctx.arc(X(t) - bw / 2 - 7, p3.Y(a), 4, 0, 2 * Math.PI); ctx.strokeStyle = P.fg; ctx.lineWidth = 1.5; ctx.stroke();
+    });
+    g1.adv.forEach(function (a, t) {
+      var x = X(t) + bw / 2 + 7, y = p3.Y(a);
+      ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath(); ctx.fillStyle = P.fg; ctx.fill();
+    });
+    var yb = 18 + 3 * ph + 2 * gap + 14;
+    for (var t = 0; t < T; t++) G.text(ctx, (slot >= 40 ? 'token ' : '') + (t + 1), X(t), yb, P.faint, 'center', 11);
+    geo = { p1: p1, L: L, slot: slot, T: T };
+
+    // numbers for the cards and the readout
+    var gl = gamma * lam, w0 = Math.pow(gl, T - 1);
+    var critic = 0; for (var mm = 1; mm <= T - 1; mm++) critic += gamma * (1 - lam) * Math.pow(gl, mm - 1);
+    var ret0 = 0; for (t = T - 1; t >= 0; t--) ret0 = rewards[t] + gamma * ret0;
+    k('gl').textContent = G.fmt(gl, 2);
+    k('hz').textContent = gl >= 0.9995 ? 'all ' + T : G.fmt(Math.min(1 / (1 - gl), 999), 1) + ' tokens';
+    k('w0').textContent = G.fmt(w0, 3);
+    k('a0').textContent = G.fmt(g.adv[0], 3);
+    var s = 'Token 1 sees the reward on the last token with weight (γλ)<sup>' + (T - 1) + '</sup> = <b>' + G.fmt(w0, 3) + '</b>, and leans on the critic\'s guesses about later tokens with total weight <b>' + G.fmt(critic, 2) + '</b>. ';
+    if (lam <= 0.05) s += 'At λ ≈ 0 each advantage is a single TD error: one reward and two critic guesses. That barely changes from one sampled response to the next (low variance), but if the critic is wrong, every advantage is wrong in the same direction (bias). ';
+    else if (lam >= 0.95 && gamma >= 0.995) s += 'At λ near 1 with γ = 1 the advantage is close to the actual sum of remaining rewards minus V(s<sub>t</sub>). The critic only acts as a baseline, so its errors add little bias, but every later token\'s luck lands on every earlier token (high variance). ';
+    else s += 'In between, GAE blends the two: near tokens are judged by real rewards, far tokens through the critic. Lower λ means less variance and more trust in the critic. ';
+    if (crName === 'flat' && lam <= 0.5 && rwName === 'end') s += 'With a flat critic and a reward only at the end, the middle TD errors are zero, so early tokens get almost no credit at low λ. ';
+    if (crName === 'zero') s += 'With no critic, each TD error is just the reward, so λ below 1 simply discounts later rewards away; only λ = 1 gives the plain REINFORCE signal (all remaining reward), with its full variance. ';
+    if (gamma < 0.995) s += 'γ = ' + G.fmt(gamma, 2) + ' shrinks the reward itself on the way back (return from token 1: ' + G.fmt(ret0, 3) + '), which changes what the policy is optimising. λ only changes how the advantage is estimated, which is why RLHF keeps γ = 1 and tunes λ.';
+    else s += 'RLHF usually keeps γ = 1 and λ around 0.95: almost the full reward signal, with the critic trimming some variance.';
+    out.innerHTML = s;
+  }
+  // dragging on the top panel edits rewards or values
+  var dragging = false;
+  function setFrom(ev) {
+    if (!geo) return;
+    var rect = cv.getBoundingClientRect(), x = ev.clientX - rect.left, y = ev.clientY - rect.top, p = geo.p1;
+    var t = Math.floor((x - geo.L) / geo.slot);
+    if (t < 0 || t >= geo.T) return;
+    var v = p.hi - (y - p.y0 - 16) / (118 - 16) * (p.hi - p.lo);
+    v = Math.max(p.lo, Math.min(p.hi, Math.round(v * 20) / 20));
+    if (edit === 'r') { rewards[t] = v; rwName = ''; press('button[data-rw]', 'rw', ''); }
+    else { values[t] = v; crName = ''; press('button[data-cr]', 'cr', ''); }
+    draw();
+  }
+  G.on(cv, 'pointerdown', function (ev) {
+    if (!geo) return;
+    var rect = cv.getBoundingClientRect(), y = ev.clientY - rect.top;
+    if (y > geo.p1.y0 + 118 + 6) return;
+    dragging = true; cv.setPointerCapture(ev.pointerId); setFrom(ev);
+  });
+  G.on(cv, 'pointermove', function (ev) {
+    if (dragging) { setFrom(ev); return; }
+    if (geo) cv.style.cursor = ev.clientY - cv.getBoundingClientRect().top <= geo.p1.y0 + 118 + 6 ? 'ns-resize' : 'default';
+  });
+  G.on(cv, 'pointerup', function () { dragging = false; });
+  G.on(cv, 'pointercancel', function () { dragging = false; });
+  G.on([sg, sl], 'input', draw);
+  return draw;
+});
