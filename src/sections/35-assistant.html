@@ -125,7 +125,7 @@ doc = render(msgs)
 # &lt;|im_start|&gt;user
 # Capital of Australia?&lt;|im_end|&gt;
 # &lt;|im_start|&gt;assistant
-print(doc)   # the five lines below, ending in an open assistant turn
+print(doc)   # prints the five lines shown above, ending in an open assistant turn
 print(len(doc), "characters, all of it one document the predictor continues")  # 129 characters, ...</code></pre>
 <pre class="code" data-lang="rust"><code>struct Message { role: &amp;'static str, content: &amp;'static str }
 
@@ -153,7 +153,7 @@ fn main() {
     // &lt;|im_start|&gt;user
     // Capital of Australia?&lt;|im_end|&gt;
     // &lt;|im_start|&gt;assistant
-    println!("{}", doc); // the five lines below, ending in an open assistant turn
+    println!("{}", doc); // prints the five lines shown above, ending in an open assistant turn
     println!("{} characters, all of it one document the predictor continues", doc.len()); // 129 characters, ...
 }</code></pre>
 </div>

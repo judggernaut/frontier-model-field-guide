@@ -22,7 +22,11 @@ PARTS = [  # (first prefix, last prefix, part id, label, title, blurb)
     (40, 59, 'part-4', 'Part IV', 'Training models',
      'How a frontier model is made: pretraining, optimisation, scaling, supervised fine-tuning, LoRA, reward models, RLHF, DPO, GRPO, distillation, inference, and safety training.'),
     (60, 69, 'part-5', 'Part V', 'Leading the work',
-     'How the pieces connect, the questions a principal asks, and a reference for every term.'),
+     'How training and evaluation connect, the questions a principal asks, and the red flags to look for.'),
+    (70, 79, 'part-6', 'Part VI', 'Experimental design',
+     'Correlation and causation, who is really in your sample, random assignment and its alternatives, measuring the right thing with the right formula, A/B tests end to end, metrics and logging, and designing experiments for AI systems.'),
+    (90, 99, 'appendix', 'Appendix', 'Reference',
+     'Every term in the guide, defined in a sentence or two.'),
 ]
 
 def read(p): return open(p, encoding='utf-8').read()

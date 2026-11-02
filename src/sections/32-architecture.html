@@ -154,7 +154,7 @@
         <text x="344" y="188" font-size="12.5" fill="var(--fg)">more capacity needs more data,</text>
         <text x="344" y="208" font-size="12.5" fill="var(--fg)">and each doubling buys less</text></g>
     </svg>
-    <p>So "why not infinite layers?" has four answers. The gradient problem is solved well enough by residuals and normalisation. The other three are permanent: depth costs compute and memory, it costs latency on every token, and extra capacity only helps if you have the data to fill it and the budget to train it.</p>
+    <p>So "why not infinite layers?" has six answers, in three groups. The two gradient problems are solved well enough by residuals and normalisation. The other four are permanent: compute and memory, latency on every token, data to fill the extra capacity, and diminishing returns.</p>
   </div>
 </div>
 
@@ -185,7 +185,7 @@
     <li><b>Depth sets pipeline stages.</b> Layer count is chosen to divide evenly across pipeline-parallel stages.</li>
     <li><b>Very shallow or very narrow both hurt.</b> Too shallow limits how many steps of composition the model can do per token; too narrow starves each layer of room, and attention heads get too small.</li>
   </ul>
-  <p>Published frontier-scale decoders cluster around 100 to 130 hidden units per layer of depth:</p>
+  <p>The dense decoders in the table sit around 100 to 130 hidden units per layer of depth (recent MoE models vary more widely: Qwen3-235B has 94 layers at width 4,096, about 44 per layer):</p>
   <div class="tw"><table>
     <thead><tr><th>Model (source)</th><th>Parameters</th><th>Layers</th><th>Width d</th><th>Heads (KV heads)</th><th>d / layers</th></tr></thead>
     <tbody>
@@ -359,7 +359,7 @@ fn main() {
     <li><b>KV cache memory</b> scales with layer count: each layer stores keys and values for every token in context. That memory caps how many users fit on a server and how long the context can be (see <a href="#inference">inference</a>).</li>
     <li><b>Training memory</b> for activations grows with depth, which forces activation checkpointing (recomputing instead of storing) and deeper pipeline parallelism, which adds idle "bubbles".</li>
   </ul>
-  <p>This is why the shape table above stops near 126 layers even for a 405B model: past that point, serving latency and parallelism overheads cost more than the small modelling gain.</p>
+  <p>Published models have not gone far beyond about 130 layers, even at 405B parameters, which is consistent with these costs.</p>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The arithmetic of depth at inference</span></div>
   <div class="eq">\[ t_{\text{token}} \approx L \cdot t_{\text{layer}}, \qquad \text{KV bytes per token} = 2 \cdot L \cdot n_{kv} \cdot d_{\text{head}} \cdot b \]<span class="eqcap">\(n_{kv}\) key-value heads, \(d_{\text{head}}\) head size, \(b\) bytes per number, factor 2 for keys and values. Decoding is usually limited by memory bandwidth, so \(t_{\text{layer}}\) is roughly the time to read that layer's weights.</span></div>
@@ -371,7 +371,7 @@ fn main() {
   <p>Give a student a notebook with ten times as many pages and no extra lessons, and they will either leave the pages blank or fill them with memorised answers to the practice questions. Extra capacity helps only when there is more to learn. And even with plenty of lessons, each doubling of effort brings a smaller improvement than the last.</p>
 </div>
 <div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Capacity has to be fed and paid for</span></div>
-  <p>Adding layers adds parameters. Scaling laws (see <a href="#scaling">scaling laws</a>) say loss falls as a power law in parameters <i>and</i> data, and the compute-optimal recipe grows both together. A model made deeper without more data or compute sits off the optimal frontier: it underfits its compute budget or overfits its data. And the curve flattens: every doubling of size removes a fixed fraction of the remaining reducible loss, not a fixed amount.</p>
+  <p>Adding layers adds parameters. Scaling laws (see <a href="#scaling">scaling laws</a>) say loss falls as a power law in parameters <i>and</i> data, and the compute-optimal recipe grows both together. A model made deeper without more data or compute sits off the optimal frontier: it underfits its compute budget or overfits its data. And the curve flattens: every doubling of parameters removes a fixed fraction (about 21%) of the parameter-limited part of the loss, not a fixed amount.</p>
   <div class="callout eval"><span class="tag">Eval lens</span><div>Architecture comparisons are only meaningful when <b>compute-matched</b>: same training FLOPs (or same tokens and parameters), same data, same tuning effort, several seeds. A deeper model trained for the same steps uses more compute, so it "wins" for the wrong reason. Separate the sources of a benchmark gain: a new model generation usually changes data, compute, and architecture at once, and the data and compute changes typically dominate. Ask for an ablation that changes only the architecture, run at two or more scales, and check whether the gain holds or shrinks as the models get bigger.</div></div>
 </div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The power law in numbers</span></div>
