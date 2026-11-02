@@ -51,7 +51,7 @@ G.widget('w-ms-same', function (root) {
     var th = U / (A.n * B.n), vU = A.n * B.n / 12 * ((N + 1) - ties / (N * (N - 1)));
     var uz = (U - A.n * B.n / 2) / Math.sqrt(vU), up = 2 * (1 - G.ncdf(Math.abs(uz)));
     // chart: grouped bars of shares per category
-    var c = G.canvas(cv, 250), ctx = c.ctx, pad = { l: 44, r: 12, t: 26, b: 64 };
+    var c = G.canvas(cv, 250), ctx = c.ctx, pad = { l: 44, r: 12, t: c.w < 520 ? 44 : 26, b: 64 };
     var ymax = Math.max(0.5, Math.ceil(Math.max.apply(null, pa.concat(pb)) * 10 + 0.5) / 10);
     var yt = []; for (var y = 0; y <= ymax + 1e-9; y += 0.1) yt.push(Math.round(y * 10) / 10);
     var ax = G.axes(ctx, c.w, c.h, pad, { x: [0.5, 5.5], y: [0, ymax], xt: [1, 2, 3, 4, 5], yt: yt, yf: function (v) { return Math.round(v * 100) + '%'; }, yl: 'share of ratings' });
@@ -71,7 +71,7 @@ G.widget('w-ms-same', function (root) {
       var mx = ax.X(S.m); ctx.beginPath(); ctx.moveTo(mx, yy - 6); ctx.lineTo(mx + 6, yy); ctx.lineTo(mx, yy + 6); ctx.lineTo(mx - 6, yy); ctx.closePath(); ctx.fill();
     }
     strip(c.h - 30, A, P.accent, 'A'); strip(c.h - 12, B, P.eli5, 'B');
-    G.text(ctx, '◆ mean   | median', c.w - pad.r, c.h - 44, P.muted, 'right', 11);
+    if (c.w < 520) G.text(ctx, '◆ mean   | median (strips below)', pad.l + 4, 30, P.muted, 'left', 11); else G.text(ctx, '◆ mean   | median (strips below)', c.w - pad.r, 12, P.muted, 'right', 11);
     k('mean').textContent = G.fmt(A.m, 2) + ' / ' + G.fmt(B.m, 2);
     k('med').textContent = A.med + ' / ' + B.med;
     k('tp').textContent = tp < 0.001 ? '<0.001' : G.fmt(tp, 3); k('tp').style.color = tp < 0.05 ? 'var(--fp)' : 'var(--fg)';
@@ -80,10 +80,10 @@ G.widget('w-ms-same', function (root) {
     k('one').textContent = G.pct(ca[0] / A.n, 0) + ' / ' + G.pct(cb[0] / B.n, 0);
     var msg = '';
     if (!feasible) msg += '<b>Model B cannot reach a mean of ' + G.fmt(mu, 2) + ' with a ' + G.pct(w, 0) + ' unhappy minority</b>, so the means no longer match; lower the minority or the mean. ';
-    msg += 'Both models average about <b>' + G.fmt(A.m, 2) + '</b>, so the t-test sees nothing (p = ' + (tp < 0.001 ? '&lt;0.001' : G.fmt(tp, 2)) + '). ';
+    msg += 'Both models average about <b>' + G.fmt(A.m, 2) + '</b>, so the t-test sees nothing (p ' + (tp < 0.001 ? '&lt; 0.001' : '= ' + G.fmt(tp, 2)) + '). ';
     if (w < 0.02) msg += 'With no unhappy minority the two distributions differ only in spread, and the rank test also finds little: P(B rated higher) is ' + G.pct(th, 0) + '.';
     else {
-      msg += 'The rank test asks a different question, whether a random B rating tends to beat a random A rating, and answers ' + G.pct(th, 0) + ' (p = ' + (up < 0.001 ? '&lt;0.001' : G.fmt(up, 3)) + '). ';
+      msg += 'The rank test asks a different question, whether a random B rating tends to beat a random A rating, and answers ' + G.pct(th, 0) + ' (p ' + (up < 0.001 ? '&lt; 0.001' : '= ' + G.fmt(up, 3)) + '). ';
       msg += 'Meanwhile B gives a 1 to <b>' + G.pct(cb[0] / B.n, 0) + '</b> of users against ' + G.pct(ca[0] / A.n, 0) + ' for A. ';
       msg += 'Neither test is wrong. Which model is better depends on whether the decision cares about the typical user, the average, or the users B fails, and only the full distribution shows all three.';
     }

@@ -32,7 +32,7 @@ G.widget('w-cz-confound', function (root) {
     var P = G.pal(), s = SC[+sc.value], a = +ss.value, b = +sb.value, c = s.sign * a;
     os.textContent = G.fmt(a, 2); ob.textContent = (b > 0 ? '+' : '') + G.fmt(b, 2);
     // Same seed every draw so the cloud only moves when a slider moves.
-    var r = G.rng(70), Z = [], X = [], Y = [], i;
+    var r = G.rng(63), Z = [], X = [], Y = [], i;
     for (i = 0; i < N; i++) {
       var z = G.gauss(r), x = a * z + G.gauss(r);
       Z.push(z); X.push(x); Y.push(b * x + c * z + 0.7 * G.gauss(r));
@@ -89,7 +89,7 @@ G.widget('w-cz-confound', function (root) {
     out.innerHTML = 'Correlation r = <b>' + G.fmt(rr, 2) + '</b>. The naive slope says one unit more ' + s.x + ' goes with <b>' + G.fmt(naive, 2) + '</b> units of ' + s.y +
       '; the true causal effect is <b>' + G.fmt(b, 2) + '</b>, so the confounder adds <b>' + (bias >= 0 ? '+' : '') + G.fmt(bias, 2) + '</b>. ' +
       (flip ? 'The confounder has <b>flipped the sign</b>: the raw data point the opposite way from the truth. ' : '') +
-      (strat ? 'Within each band of ' + s.z + ' the lines are close to the true slope. Five coarse bands leave a little confounding inside each band (' + G.fmt(within, 2) + '); adjusting for ' + s.z + ' exactly recovers ' + G.fmt(adj, 2) + '.'
+      (strat ? 'Within each band of ' + s.z + ' the lines are close to the true slope. Five coarse bands leave a little confounding inside each band (' + G.fmt(within, 2) + '); regression on ' + s.z + ' itself gives ' + G.fmt(adj, 2) + ', within sampling noise of the truth.'
         : 'Press <i>Stratify</i> to colour each point by the hidden ' + s.z + ' and fit a line inside each band.');
   }
   function varOf(v) { var m = G.mean(v), t = 0; v.forEach(function (x) { t += (x - m) * (x - m); }); return t / v.length; }

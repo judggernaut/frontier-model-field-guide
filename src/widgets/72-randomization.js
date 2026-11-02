@@ -156,8 +156,8 @@ G.widget('w-rz-did', function (root) {
     // DiD's implied counterfactual: treated pre level plus the control group's change
     var preGap = mean(T, 0, L) - mean(C, 0, L), DC = C.map(function (v) { return v + preGap; });
     var all = C.concat(T, CF, DC), lo = Math.min.apply(null, all) - 4, hi = Math.max.apply(null, all) + 6;
-    var c = G.canvas(cv, 270), ctx = c.ctx, pad = { l: 44, r: c.w < 520 ? 16 : 150, t: 16, b: 36 };
-    var ax = G.axes(ctx, c.w, c.h, pad, { x: [0.6, W + 0.4], y: [lo, hi], xt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], yt: rzNice(lo, hi, 5), xl: 'week', yl: 'daily metric' });
+    var c = G.canvas(cv, 270), ctx = c.ctx, pad = { l: 44, r: c.w < 520 ? 16 : 150, t: 16, b: c.w < 520 ? 44 : 36 };
+    var ax = G.axes(ctx, c.w, c.h, pad, { x: [0.6, W + 0.4], y: [lo, hi], xt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], yt: rzNice(lo, hi, 5), xl: c.w < 520 ? '' : 'week', yl: 'daily metric' });
     ctx.fillStyle = P.sunk; ctx.globalAlpha = 0.5; ctx.fillRect(ax.X(L + 0.5), pad.t, ax.X(W + 0.4) - ax.X(L + 0.5), c.h - pad.t - pad.b); ctx.globalAlpha = 1;
     G.text(ctx, 'after launch', ax.X(L + 0.5) + 6, pad.t + 10, P.muted, 'left', 11.5);
     function pts(a, from, to) { var p = []; for (var j = from; j < to; j++) p.push([ax.X(j + 1), ax.Y(a[j])]); return p; }
@@ -172,7 +172,7 @@ G.widget('w-rz-did', function (root) {
       var lastY = -1e9;
       ends.forEach(function (e) { var y = Math.max(ax.Y(e[0]), lastY + 15); lastY = y; G.text(ctx, e[1], lx, y, e[2], 'left', 11.5); });
     } else {
-      G.text(ctx, '— treated   — control   - - DiD assumes   ··· truth', pad.l + 6, c.h - pad.b - 10, P.muted, 'left', 11);
+      G.text(ctx, 'week · — treated  — control  - - DiD assumes  ··· truth', pad.l, c.h - 10, P.muted, 'left', 11);
     }
     k('true').textContent = G.fmt(tau, 1); k('did').textContent = G.fmt(did, 1);
     k('bias').textContent = (bias > 0 ? '+' : '') + G.fmt(bias, 1); k('bias').style.color = Math.abs(bias) > 1.5 ? 'var(--fp)' : 'var(--good)';

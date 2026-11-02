@@ -106,9 +106,9 @@
   <div class="wtitle">Confounder explorer</div>
   <div class="wsub">A hidden variable drives both X and Y. Raise its strength and watch the naive slope drift away from the true effect, then stratify to see the slope inside each band of the confounder. Try the thinking-tokens scenario with the true effect above zero.</div>
   <div class="controls">
-    <div class="ctl"><label for="cz-sc">Scenario</label><select id="cz-sc"><option value="0">Ice cream and drownings (Z = temperature)</option><option value="1">Feature usage and retention (Z = prior engagement)</option><option value="2">Thinking tokens and pass rate (Z = task difficulty)</option></select></div>
+    <div class="ctl"><label for="cz-sc">Scenario</label><select id="cz-sc"><option value="0">Ice cream and drownings</option><option value="1">Feature usage and retention</option><option value="2">Thinking tokens and pass rate</option></select></div>
     <div class="ctl"><label for="cz-s">Confounder strength <output id="cz-s-o">1.20</output></label><input type="range" id="cz-s" min="0" max="2" step="0.05" value="1.2"></div>
-    <div class="ctl"><label for="cz-b">True causal effect of X on Y <output id="cz-b-o">0</output></label><input type="range" id="cz-b" min="-1" max="1" step="0.05" value="0"></div>
+    <div class="ctl"><label for="cz-b">True effect of X on Y <output id="cz-b-o">0</output></label><input type="range" id="cz-b" min="-1" max="1" step="0.05" value="0"></div>
   </div>
   <div class="btnrow"><button class="b" data-strat aria-pressed="false">Stratify by the confounder</button></div>
   <canvas></canvas>

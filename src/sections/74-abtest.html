@@ -1,0 +1,776 @@
+<section id="abtest" data-title="A/B tests end to end">
+<style>
+#w-ab-srm input[type=number]{width:100%;box-sizing:border-box;font:inherit;font-size:14px;height:36px;padding:0 10px;border-radius:calc(var(--radius) - 2px);border:1px solid var(--input);background:var(--background);color:var(--foreground);box-shadow:var(--shadow-xs);font-variant-numeric:tabular-nums}
+.ab-verdict{margin-top:14px;padding:12px 14px;border-radius:var(--radius);border:1px solid var(--border);border-left:4px solid var(--vc,var(--good));background:var(--card);font-size:15px;font-weight:600;color:var(--vc,var(--good))}
+.ab-verdict span{display:block;font-weight:400;font-size:14px;color:var(--fg);margin-top:4px}
+.ab-dt td,.ab-dt th{vertical-align:top}
+.ab-dt .ship{color:var(--good);font-weight:600}.ab-dt .stop{color:var(--fp);font-weight:600}.ab-dt .think{color:var(--lead);font-weight:600}
+</style>
+<h2>A/B tests end to end: from a written bet to a launch decision</h2>
+<p>An A/B test is the closest thing product work has to a laboratory. You split real users at random, give one group the change, and compare. Done well, it answers "did this change cause that outcome?" better than any dashboard, offline eval, or expert opinion. Done carelessly, it produces confident numbers that are wrong. This chapter walks through a test in the order you run one: write the decision down, choose the unit, choose the metrics, size it, check that the split is healthy, resist peeking, and read the result. The statistics come from <a href="#evalstats">statistics for eval sets</a> and <a href="#intervals">intervals</a>; randomization itself is covered in <a href="#randomization">randomization</a>.</p>
+
+<div class="story" id="st-ab-cafe">
+  <div class="story-head"><div class="story-title">A café tests a new menu board</div><p class="story-sub">A whole A/B test in five pictures, before any formulas.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="An index card with the bet, the measure and the decision rule written before the test">
+      <g class="a" style="--d:0"><rect x="130" y="26" width="380" height="190" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="320" cy="26" r="7" fill="var(--fp)"/></g>
+      <text class="a" style="--d:1" x="154" y="66" font-size="15" font-weight="600" fill="var(--fg)">The bet</text>
+      <text class="a" style="--d:1" x="154" y="88" font-size="14" fill="var(--fg)">The new menu board raises orders per visitor.</text>
+      <text class="a" style="--d:2" x="154" y="122" font-size="15" font-weight="600" fill="var(--fg)">How we measure</text>
+      <text class="a" style="--d:2" x="154" y="144" font-size="14" fill="var(--fg)">Orders per visitor, over two full weeks.</text>
+      <text class="a" style="--d:3" x="154" y="178" font-size="15" font-weight="600" fill="var(--fg)">Switch if</text>
+      <text class="a" style="--d:3" x="154" y="200" font-size="14" fill="var(--fg)">orders go up and the wait is no longer.</text>
+      <text class="a" style="--d:4" x="320" y="246" text-anchor="middle" font-size="13" fill="var(--muted)">Written on day 0, before a single customer is counted.</text>
+    </svg>
+    <p>Before changing anything, the owner writes down what she expects, how she will measure it, and what result would make her switch boards. Writing it first stops her from choosing the story after she sees the numbers.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Customers enter and a coin flip sends each to the old or new board">
+      <g class="a" style="--d:0"><rect x="30" y="70" width="70" height="120" rx="6" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><text x="65" y="214" text-anchor="middle" font-size="13" fill="var(--muted)">door</text></g>
+      <g class="a" style="--d:1"><circle cx="160" cy="130" r="26" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="160" y="135" text-anchor="middle" font-size="14" font-weight="700" fill="var(--lead)">coin</text></g>
+      <path class="a dash" style="--d:1" d="M102 130 L130 130" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <path class="a dash" style="--d:2" d="M188 118 L330 70" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <path class="a dash" style="--d:2" d="M188 142 L330 190" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:3"><rect x="340" y="40" width="250" height="60" rx="10" fill="var(--surface)" stroke="var(--tn)" stroke-width="2"/><text x="465" y="66" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">A: old menu board</text><text x="465" y="86" text-anchor="middle" font-size="12" fill="var(--muted)">heads</text></g>
+      <g class="a" style="--d:3"><rect x="340" y="160" width="250" height="60" rx="10" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/><text x="465" y="186" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">B: new menu board</text><text x="465" y="206" text-anchor="middle" font-size="12" fill="var(--muted)">tails</text></g>
+      <g class="a" style="--d:4"><circle cx="230" cy="96" r="7" fill="var(--tn)"/><circle cx="262" cy="86" r="7" fill="var(--tn)"/><circle cx="294" cy="76" r="7" fill="var(--tn)"/><circle cx="230" cy="164" r="7" fill="var(--accent)"/><circle cx="262" cy="174" r="7" fill="var(--accent)"/><circle cx="294" cy="184" r="7" fill="var(--accent)"/></g>
+    </svg>
+    <p>Each customer who walks in is assigned by a coin flip. Because the coin decides, the two groups are alike in every way except the board: the same weather, the same weekdays, the same mix of regulars and tourists. Any difference at the end can be blamed on the board.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Fourteen daily bars for each group, with weekends taller">
+      <text x="40" y="70" font-size="13" font-weight="600" fill="var(--fg)">A</text><text x="40" y="160" font-size="13" font-weight="600" fill="var(--fg)">B</text>
+      <g class="a" style="--d:0" fill="var(--tn)"><rect x="70" y="58" width="26" height="22"/><rect x="104" y="60" width="26" height="20"/><rect x="138" y="58" width="26" height="22"/><rect x="172" y="56" width="26" height="24"/><rect x="206" y="50" width="26" height="30"/><rect x="240" y="36" width="26" height="44"/><rect x="274" y="40" width="26" height="40"/><rect x="340" y="59" width="26" height="21"/><rect x="374" y="58" width="26" height="22"/><rect x="408" y="57" width="26" height="23"/><rect x="442" y="56" width="26" height="24"/><rect x="476" y="49" width="26" height="31"/><rect x="510" y="34" width="26" height="46"/><rect x="544" y="38" width="26" height="42"/></g>
+      <g class="a" style="--d:1" fill="var(--accent)"><rect x="70" y="146" width="26" height="24"/><rect x="104" y="149" width="26" height="21"/><rect x="138" y="147" width="26" height="23"/><rect x="172" y="145" width="26" height="25"/><rect x="206" y="138" width="26" height="32"/><rect x="240" y="124" width="26" height="46"/><rect x="274" y="128" width="26" height="42"/><rect x="340" y="148" width="26" height="22"/><rect x="374" y="147" width="26" height="23"/><rect x="408" y="146" width="26" height="24"/><rect x="442" y="145" width="26" height="25"/><rect x="476" y="137" width="26" height="33"/><rect x="510" y="122" width="26" height="48"/><rect x="544" y="126" width="26" height="44"/></g>
+      <line x1="66" y1="81" x2="574" y2="81" stroke="var(--line-strong)"/><line x1="66" y1="171" x2="574" y2="171" stroke="var(--line-strong)"/>
+      <g class="a" style="--d:2" font-size="12" fill="var(--muted)" text-anchor="middle"><text x="83" y="192">Mon</text><text x="253" y="192">Sat</text><text x="287" y="192">Sun</text><text x="353" y="192">Mon</text><text x="523" y="192">Sat</text><text x="557" y="192">Sun</text></g>
+      <g class="a" style="--d:3"><text x="185" y="222" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">week 1</text><text x="455" y="222" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">week 2</text></g>
+      <text class="a" style="--d:4" x="320" y="250" text-anchor="middle" font-size="13" fill="var(--muted)">Weekends are busier and different. Full weeks keep the mix fair.</text>
+    </svg>
+    <p>She runs two full weeks, so both groups include the same quiet Mondays and busy Saturdays. Weekend customers order differently. Stopping on a Wednesday would compare a lopsided mix of days, and a second week shows whether the effect holds once the board stops being new.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Headcount check: 1,012 versus 988 customers, a normal coin result">
+      <g class="a" style="--d:0"><rect x="80" y="40" width="210" height="110" rx="12" fill="var(--surface)" stroke="var(--tn)" stroke-width="2"/><text x="185" y="74" text-anchor="middle" font-size="14" fill="var(--muted)">A: old board</text><text x="185" y="120" text-anchor="middle" font-size="32" font-weight="700" fill="var(--fg)">1,012</text></g>
+      <g class="a" style="--d:1"><rect x="350" y="40" width="210" height="110" rx="12" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/><text x="455" y="74" text-anchor="middle" font-size="14" fill="var(--muted)">B: new board</text><text x="455" y="120" text-anchor="middle" font-size="32" font-weight="700" fill="var(--fg)">988</text></g>
+      <text class="a" style="--d:2" x="320" y="184" text-anchor="middle" font-size="14" fill="var(--fg)">A fair coin would give about 1,000 each. Is 12 off normal?</text>
+      <g class="a" style="--d:3"><rect x="190" y="202" width="260" height="34" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="320" y="224" text-anchor="middle" font-size="14" font-weight="600" fill="var(--good)">Yes: split looks fair (p = 0.59)</text></g>
+    </svg>
+    <p>Before looking at any result, she checks the headcount. A coin should give roughly equal groups, and 1,012 versus 988 is ordinary coin luck. A big imbalance would mean something between the coin and the till is losing customers from one group, and then no result can be trusted. This check has a name, the sample ratio mismatch test, covered below.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Orders per visitor up 3.1 percent with an interval above zero; wait time unchanged; decision ship">
+      <line x1="100" y1="40" x2="100" y2="200" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="100" y="222" text-anchor="middle" font-size="12" fill="var(--muted)">no change</text>
+      <text x="40" y="82" font-size="13" font-weight="600" fill="var(--fg)">orders</text>
+      <text x="40" y="162" font-size="13" font-weight="600" fill="var(--fg)">wait</text>
+      <g class="a" style="--d:1"><line x1="140" y1="78" x2="308" y2="78" stroke="var(--good)" stroke-width="4" stroke-linecap="round"/><circle cx="224" cy="78" r="8" fill="var(--good)"/><text x="224" y="58" text-anchor="middle" font-size="14" font-weight="600" fill="var(--good)">+3.1% (95% CI +1.0% to +5.2%)</text></g>
+      <g class="a" style="--d:2"><line x1="88" y1="158" x2="128" y2="158" stroke="var(--tn)" stroke-width="4" stroke-linecap="round"/><circle cx="108" cy="158" r="8" fill="var(--tn)"/><text x="140" y="163" font-size="14" fill="var(--fg)">+0.2 min (−0.3 to +0.7), limit is +1 min</text></g>
+      <g class="a" style="--d:3"><rect x="440" y="100" width="150" height="56" rx="10" fill="var(--good-soft)" stroke="var(--good)" stroke-width="2"/><text x="515" y="135" text-anchor="middle" font-size="20" font-weight="700" fill="var(--good)">Switch</text></g>
+      <text class="a" style="--d:4" x="320" y="252" text-anchor="middle" font-size="13" fill="var(--muted)">The decision follows the card written on day 0. Numbers are illustrative.</text>
+    </svg>
+    <p>Orders per visitor rose 3.1%, and the 95% interval sits entirely above zero. Wait time barely moved and stays well inside the limit she set. The rule on the card says switch, so she switches. No one had to argue about what the numbers meant, because that was settled before the test began.</p>
+  </div>
+</div>
+
+<h3>1. Write the decision before you launch</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Call the shot before you take it</span></div>
+  <p>In pool, you call the pocket before you shoot. If the ball drops somewhere else, it does not count. An A/B test works the same way. Before launch you write down the change, the one number you expect it to move, which way, and what you will do for each possible result. If you wait until after, every result can be told as a success: "engagement fell, but that means people found answers faster."</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The one-page experiment brief</span></div>
+  <p>Insist on a short brief, reviewed before any traffic is allocated. It costs an hour and prevents the two most expensive failures: tests that cannot answer the question, and results that get reinterpreted until they say yes.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Field</th><th>Example for a model change</th></tr></thead>
+    <tbody>
+      <tr><td>Change</td><td>Route free-tier chat to model v8 instead of v7.</td></tr>
+      <tr><td>Hypothesis</td><td>v8 raises weekly task success because it calls tools more reliably.</td></tr>
+      <tr><td>Primary metric</td><td>Share of active users with at least one judged-successful task per week.</td></tr>
+      <tr><td>Guardrails</td><td>p95 latency, cost per request, safety violation rate, benign refusal rate, error rate.</td></tr>
+      <tr><td>Unit and population</td><td>Logged-in users on supported clients, randomized by user ID.</td></tr>
+      <tr><td>Size and duration</td><td>MDE of 1 point; 2 full weeks; sample size from a power calculation.</td></tr>
+      <tr><td>Decision rule</td><td>Ship if the primary metric's interval excludes zero on the positive side and no guardrail is breached. Otherwise see the decision table at the end of this chapter.</td></tr>
+      <tr><td>Analysis plan</td><td>Test used, variance method, CUPED covariate, segments to report, when we look.</td></tr>
+    </tbody>
+  </table></div>
+  <p>The decision rule matters most. "We'll see what the data says" is a plan to be persuaded by noise.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Hypotheses, error rates, decision rule</span></div>
+  <p>Formally, for a treatment mean \(\mu_T\) and control mean \(\mu_C\), the usual superiority test is</p>
+  <div class="eq">\[ H_0: \Delta = \mu_T - \mu_C = 0 \qquad H_1: \Delta \neq 0, \qquad \hat\Delta = \bar Y_T - \bar Y_C, \qquad z = \frac{\hat\Delta}{\widehat{\mathrm{SE}}(\hat\Delta)} \]<span class="eqcap">\(\alpha\) is the false positive rate you accept when \(\Delta=0\) (usually 0.05 two-sided); power \(1-\beta\) is the chance of detecting a true \(\Delta\) of the size you care about (usually 0.8).</span></div>
+  <p>Three choices belong in the brief because each one changes the answer. <b>Sidedness</b>: a one-sided test is legitimate only if you would act the same way on "no effect" and "harm". <b>Non-inferiority</b>: when the change is meant to save cost or latency, the question is "is it no worse than a margin \(m\)?", tested as \(H_0: \Delta \le -m\); <a href="#ai-experiments">designing experiments for AI systems</a> works one through. <b>Absolute or relative effect</b>: a 2% relative lift on a 40% base is 0.8 points; sample size depends on the absolute difference.</p>
+</div>
+
+<h3>2. Unit of randomization and exposure</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Flip the coin for the right thing</span></div>
+  <p>You must decide what the coin is flipped for: each person, each visit, or each question they ask. If you flip per question, the same person might get the new assistant on Monday and the old one on Tuesday, and their experience becomes a confusing mix. Most of the time you flip once per person and keep them in their group.</p>
+  <p>You also only count people who actually <b>met</b> the change. If the new feature lives on a settings page that most people never open, counting everyone drowns the effect in people who never saw it.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Unit choice is a validity decision</span></div>
+  <ul>
+    <li><b>User-level</b> is the default for anything a person can notice or learn from: a new model, tone, memory, UI. It keeps each person's experience consistent and lets you measure retention.</li>
+    <li><b>Request-level</b> buys more samples and is fine for invisible, stateless changes like a cache or a router, where users cannot tell and nothing carries over.</li>
+    <li><b>Cluster-level</b> (organisation, workspace, region) is needed when users affect each other, such as a shared team assistant, or when a marketplace links buyers and sellers. Interference breaks the independence that every standard test assumes; see <a href="#randomization">randomization</a>.</li>
+  </ul>
+  <p>Ask how exposure is defined. A test that randomizes all users but only 8% ever trigger the changed code path has diluted its effect twelvefold, and its sample size calculation was wrong by a factor of about 150.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Triggering, dilution, analysis unit</span></div>
+  <p><b>Triggered analysis.</b> Analyse only users who reached the point where treatment and control would differ, and log that moment in <b>both</b> arms (a counterfactual trigger in control). If a fraction \(q\) of users trigger and the effect on them is \(\Delta\), the effect on everyone is \(q\Delta\). Because required sample size scales with \(1/\text{effect}^2\), dilution costs roughly \(1/q\) more users even after accounting for the larger population.</p>
+  <p><b>Analysis unit must match randomization unit.</b> If you randomize users but compute a per-request metric, requests from one user are correlated. Treating them as independent understates the standard error, sometimes by a factor of two or more. Use the delta method or a cluster bootstrap at the user level; <a href="#metrics">choosing metrics</a> shows the computation and <a href="#intervals">intervals</a> covers clustering.</p>
+  <p><b>Assignment.</b> Use a deterministic hash of (unit ID, experiment salt) mapped to buckets. A fresh salt per experiment prevents the same users from always landing in treatment across tests, which would carry over effects from one test to the next.</p>
+</div>
+
+<h3>3. Primary metric, guardrails, diagnostics</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">One goal, some tripwires, some gauges</span></div>
+  <p>A test needs one main number that says whether the change helped: the goal. It also needs tripwires: numbers that must not get worse, like wait time or complaints, even if the goal improves. And it needs gauges that explain what happened, like how long answers were, so that a surprising result can be understood.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Three roles, decided in advance</span></div>
+  <ul>
+    <li><b>Primary metric</b> (or overall evaluation criterion, OEC): the single number the decision hangs on. One. If you have three "primary" metrics, you have zero.</li>
+    <li><b>Guardrails</b>: things you will not trade away. Two kinds: <b>business</b> guardrails (latency, cost, safety, refusals) and <b>trust</b> guardrails (sample ratio, logging completeness) that tell you whether to believe the test at all.</li>
+    <li><b>Diagnostics</b>: explain the mechanism. Response length, tool calls per task, cache hit rate. Never ship on a diagnostic.</li>
+  </ul>
+  <p><a href="#metrics">Choosing metrics</a> covers how to pick each and what makes a metric good.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Guardrails are tested differently</span></div>
+  <p>The primary metric gets a superiority (or non-inferiority) test with your full \(\alpha\). Guardrails are usually tested for <b>harm</b>: a one-sided test against a tolerance, \(H_0: \Delta_g \ge -t_g\), so that "no detectable harm" does not pass simply because the guardrail is underpowered. Check power for the guardrails too. A safety violation rate of 0.1% needs far more users to detect a 20% relative increase than a task success rate of 60% needs to detect a 1-point gain, and a guardrail you cannot detect a breach on is decoration.</p>
+</div>
+
+<h3>4. Power, minimum detectable effect, sample size, duration</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">How long to wait before you can tell</span></div>
+  <p>If you flip two coins ten times each, one will often come up with more heads just by luck. To tell a coin that lands heads 52% of the time from a fair one, you need thousands of flips. Tests are the same. The smaller the improvement you want to catch, the more people you need, and halving the improvement means about four times the people. The <b>minimum detectable effect</b> is the smallest improvement your test can reliably see. Pick it first, then work out how long to run.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Pick the MDE from the decision, then do the arithmetic</span></div>
+  <ul>
+    <li><b>Ask: what is the smallest change worth shipping?</b> That is the MDE. If a 0.5-point gain would not change your decision, do not pay to detect it.</li>
+    <li><b>Run whole weeks.</b> Usage differs by weekday. Round durations up to 7, 14 or 21 days, even if the calculator says 9.</li>
+    <li><b>Two weeks is a common floor</b> for anything users can notice, because of novelty effects (section 7).</li>
+    <li><b>If the required duration is absurd</b> (six months), change the design: a more sensitive metric, CUPED, a triggered population, or accept a bigger MDE. Do not run it short and hope.</li>
+    <li><b>A null result needs its MDE.</b> "No significant change" from a test that could only detect 5-point moves says nothing about a 1-point effect.</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The sample size formula and the rule of 16</span></div>
+  <p>For a two-arm test with equal allocation, per-arm variance \(\sigma^2\), and absolute effect \(\delta\):</p>
+  <div class="eq">\[ n_{\text{per arm}} = \frac{2\,(z_{1-\alpha/2} + z_{1-\beta})^2\,\sigma^2}{\delta^2} \;\approx\; \frac{16\,\sigma^2}{\delta^2} \quad (\alpha = 0.05,\ 1-\beta = 0.8) \]<span class="eqcap">\(2(1.96+0.84)^2 \approx 15.7\), hence the rule of 16 popularised by Kohavi, Tang and Xu (2020). For a rate \(p\), \(\sigma^2 = p(1-p)\).</span></div>
+  <p>Worked example (illustrative): weekly task success \(p = 0.40\), and you want to detect a 2% relative lift, so \(\delta = 0.008\). Then \(n \approx 16 \times 0.24 / 0.008^2 = 60{,}000\) per arm. With 20,000 eligible users a day split 50/50, that is 6 days, rounded up to 7, and in practice 14 for novelty. Turn it around to get the MDE you can afford: \(\delta_{\min} = (z_{1-\alpha/2}+z_{1-\beta})\sqrt{2\sigma^2/n}\). Required users scale with \(1/\delta^2\); MDE scales with \(1/\sqrt{n}\), so doubling the duration buys only a 29% smaller MDE. For the paired, item-level version used in offline evals, see <a href="#evalstats">statistics for eval sets</a>.</p>
+</div>
+
+<div class="widget" id="w-ab-dur">
+  <div class="wtitle">Duration and MDE calculator</div>
+  <div class="wsub">Set the base rate, the smallest lift worth detecting, and your traffic. The chart shows the smallest lift you could detect after each whole week, so you can see what a longer test buys.</div>
+  <div class="controls">
+    <div class="ctl"><label for="ab-du-p">Baseline rate: <output id="ab-du-p-o">40%</output></label><input type="range" id="ab-du-p" min="1" max="90" step="1" value="40"></div>
+    <div class="ctl"><label for="ab-du-m">Relative MDE: <output id="ab-du-m-o">2.0%</output></label><input type="range" id="ab-du-m" min="0.5" max="20" step="0.5" value="2"></div>
+    <div class="ctl"><label for="ab-du-u">Eligible users per day</label><select id="ab-du-u"><option value="2000">2,000</option><option value="5000">5,000</option><option value="20000" selected>20,000</option><option value="50000">50,000</option><option value="200000">200,000</option><option value="1000000">1,000,000</option></select></div>
+    <div class="ctl"><label for="ab-du-a">Share of traffic in the test: <output id="ab-du-a-o">100%</output></label><input type="range" id="ab-du-a" min="10" max="100" step="10" value="100"></div>
+    <div class="ctl"><label for="ab-du-c">Variance reduction (CUPED)</label><select id="ab-du-c"><option value="1" selected>None</option><option value="0.8">Keeps 80% of variance (ρ ≈ 0.45)</option><option value="0.6">Keeps 60% (ρ ≈ 0.63)</option><option value="0.5">Keeps 50% (ρ ≈ 0.71)</option></select></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Users needed per arm</div><div class="v" data-n>—</div></div>
+    <div class="mc"><div class="l">Days of traffic</div><div class="v" data-d>—</div></div>
+    <div class="mc"><div class="l">Run for (whole weeks)</div><div class="v" data-w>—</div></div>
+    <div class="mc"><div class="l">MDE in points</div><div class="v" data-abs>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>5. Sample ratio mismatch: check the split before the result</h3>
+
+<div class="story" id="st-ab-srm">
+  <div class="story-head"><div class="story-title">The sticky door</div><p class="story-sub">How losing people from one group quietly poisons a test.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A host flips a coin to send party guests to room A or room B">
+      <g class="a" style="--d:0"><circle cx="90" cy="120" r="24" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="2"/><text x="90" y="125" text-anchor="middle" font-size="13" font-weight="700" fill="var(--lead)">host</text><text x="90" y="166" text-anchor="middle" font-size="12" fill="var(--muted)">flips a coin</text></g>
+      <g class="a" style="--d:1"><rect x="330" y="30" width="260" height="80" rx="10" fill="var(--surface)" stroke="var(--tn)" stroke-width="2"/><text x="460" y="62" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Room A: old playlist</text><text x="460" y="88" text-anchor="middle" font-size="13" fill="var(--muted)">expect about half</text></g>
+      <g class="a" style="--d:1"><rect x="330" y="140" width="260" height="80" rx="10" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/><text x="460" y="172" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Room B: new playlist</text><text x="460" y="198" text-anchor="middle" font-size="13" fill="var(--muted)">expect about half</text></g>
+      <path class="a dash" style="--d:2" d="M118 110 L322 72" stroke="var(--faint)" stroke-width="2" fill="none"/>
+      <path class="a dash" style="--d:2" d="M118 130 L322 180" stroke="var(--faint)" stroke-width="2" fill="none"/>
+    </svg>
+    <p>A host tests a new playlist. At the entrance she flips a coin for each guest: heads to room A with the old music, tails to room B with the new. She will compare how much people dance. With a fair coin, each room should get about half the guests.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Room B's door sticks and some guests give up and leave">
+      <rect x="330" y="30" width="260" height="80" rx="10" fill="var(--surface)" stroke="var(--tn)" stroke-width="2"/><text x="460" y="76" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Room A</text>
+      <rect x="330" y="140" width="260" height="80" rx="10" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/><text x="460" y="186" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Room B</text>
+      <g class="a" style="--d:0"><rect x="314" y="150" width="14" height="60" rx="3" fill="var(--fp)"/><text x="290" y="240" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fp)">door sticks</text></g>
+      <g class="a" style="--d:1"><circle cx="270" cy="170" r="8" fill="var(--tn)"/><circle cx="246" cy="190" r="8" fill="var(--tn)"/><circle cx="222" cy="206" r="8" fill="var(--tn)"/></g>
+      <path class="a dash" style="--d:2" d="M260 178 C200 210 160 220 110 226" stroke="var(--tn)" stroke-width="2" fill="none"/>
+      <text class="a" style="--d:2" x="40" y="214" font-size="13" fill="var(--muted)">tired guests give up</text>
+      <text class="a" style="--d:3" x="40" y="60" font-size="13" fill="var(--muted)">Only the keenest</text>
+      <text class="a" style="--d:3" x="40" y="78" font-size="13" fill="var(--muted)">push through door B.</text>
+    </svg>
+    <p>Room B's door sticks. Some guests sent to B give up and go home. The ones who get in are the keenest dancers. Nobody notices, because the host only counts people once they are inside.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Room B shows more dancing per guest, but the groups are no longer alike">
+      <text x="60" y="70" font-size="14" font-weight="600" fill="var(--fg)">A</text><text x="60" y="140" font-size="14" font-weight="600" fill="var(--fg)">B</text>
+      <rect class="grow-x" style="--d:0" x="90" y="52" width="250" height="28" rx="5" fill="var(--tn)"/>
+      <rect class="grow-x" style="--d:1" x="90" y="122" width="330" height="28" rx="5" fill="var(--accent)"/>
+      <text class="a" style="--d:1" x="350" y="71" font-size="14" fill="var(--fg)">2.5 dances per guest</text>
+      <text class="a" style="--d:2" x="430" y="141" font-size="14" fill="var(--fg)">3.3 per guest</text>
+      <text class="a" style="--d:3" x="320" y="200" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fp)">The playlist did not do this. The door did.</text>
+      <text class="a" style="--d:4" x="320" y="228" text-anchor="middle" font-size="13" fill="var(--muted)">Room B lost its least keen guests, so it is no longer a fair comparison.</text>
+    </svg>
+    <p>Room B shows a big jump in dancing per guest. It looks like the new playlist is a hit. It is not: room B lost its least enthusiastic guests, so the two rooms no longer hold similar people. The coin's guarantee is broken.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Headcount 5,000 versus 4,600, which a fair coin almost never produces">
+      <g class="a" style="--d:0"><rect x="80" y="36" width="210" height="100" rx="12" fill="var(--surface)" stroke="var(--tn)" stroke-width="2"/><text x="185" y="66" text-anchor="middle" font-size="14" fill="var(--muted)">entered A, all season</text><text x="185" y="110" text-anchor="middle" font-size="30" font-weight="700" fill="var(--fg)">5,000</text></g>
+      <g class="a" style="--d:1"><rect x="350" y="36" width="210" height="100" rx="12" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/><text x="455" y="66" text-anchor="middle" font-size="14" fill="var(--muted)">entered B, all season</text><text x="455" y="110" text-anchor="middle" font-size="30" font-weight="700" fill="var(--fg)">4,600</text></g>
+      <g class="a" style="--d:2"><rect x="120" y="160" width="400" height="36" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="320" y="183" text-anchor="middle" font-size="14" font-weight="600" fill="var(--warn)">A fair coin gives this split less than 1 time in 10,000</text></g>
+      <text class="a" style="--d:3" x="320" y="230" text-anchor="middle" font-size="14" fill="var(--fg)">Stop. Find the leak. Do not read the dance numbers.</text>
+    </svg>
+    <p>The headcount gives it away. Over a season, 5,000 guests entered A and 4,600 entered B. A fair coin almost never produces that (chi-square p ≈ 0.00004). This is a <b>sample ratio mismatch</b>: something between the coin and the count is removing people from one group. The only safe response is to find the leak before reading any result.</p>
+  </div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The headcount is your smoke alarm</span></div>
+  <p>If you planned a 50/50 split, you should get close to 50/50. Not exactly, because coins are random, but close. A statistical test tells you how far off is too far for luck. When the split is off, something is losing or adding people in one group, and those people are rarely a random handful. The comparison is then between two different kinds of people, and the result is meaningless no matter how good it looks.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">An SRM invalidates the test. Full stop.</span></div>
+  <p>SRM is common. Fabijan et al. (KDD 2019) reported that about 6% of experiments at Microsoft showed a sample ratio mismatch, and a LinkedIn paper (Chen, Liu and Xu, 2018) reported about 10% of its triggered experiments used to. Typical causes:</p>
+  <ul>
+    <li>The treatment crashes or times out for some users before they are logged (the sticky door).</li>
+    <li>A bot filter or fraud filter treats the arms differently, for example because the new model's responses change what looks like bot behaviour.</li>
+    <li>Treatment changes whether a user triggers the analysis, such as a new onboarding flow that changes who reaches the chat screen.</li>
+    <li>Redirects, caching, or a client version that only ships the treatment code path to some platforms.</li>
+    <li>Starting arms at different times, or a ramp-up that was not accounted for.</li>
+  </ul>
+  <p>The policy should be automatic: the platform runs the check on every experiment, flags failures before anyone sees the metric results, and teams do not get to argue that "the effect is so big it must be real". The bigger the surprise, the more likely the bug.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The chi-square test, worked</span></div>
+  <p>With \(k\) arms, configured shares \(s_i\), observed counts \(O_i\) and total \(N\), the expected counts are \(E_i = N s_i\) and</p>
+  <div class="eq">\[ \chi^2 = \sum_{i=1}^{k} \frac{(O_i - E_i)^2}{E_i} \;\sim\; \chi^2_{k-1} \text{ under a healthy split}, \qquad k=2:\; p = \operatorname{erfc}\!\left(\sqrt{\chi^2/2}\right) \]<span class="eqcap">For two arms the statistic has one degree of freedom and equals \(z^2\) for the one-proportion z test of the observed share.</span></div>
+  <p>Worked example: a 50/50 test counts 50,500 users in control and 49,500 in treatment. \(E = 50{,}000\) each, so \(\chi^2 = 500^2/50{,}000 + 500^2/50{,}000 = 5 + 5 = 10\), and \(p = \operatorname{erfc}(\sqrt{5}) \approx 0.0016\). A split of 50.5% to 49.5% looks harmless to the eye. The test says it would happen by chance about 1.6 times in 1,000. Many platforms alarm at a strict threshold such as \(p &lt; 0.001\), because the check runs on every experiment and false alarms erode trust; anything near that line deserves a look. At two million users, even 50.1% versus 49.9% gives \(p \approx 0.001\). The larger the test, the smaller the imbalance it can detect, so "the gap is tiny" is never a defence.</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
+
+def srm_check(observed, expected_share):
+    """Chi-square goodness-of-fit test of the traffic split. Returns (chi2, p)."""
+    n = sum(observed)
+    chi2 = 0.0
+    for obs, share in zip(observed, expected_share):
+        exp = n * share                      # users this arm should have received
+        chi2 += (obs - exp) ** 2 / exp
+    # Two arms means 1 degree of freedom, and P(chi2_1 &gt; x) = erfc(sqrt(x / 2)).
+    p = math.erfc(math.sqrt(chi2 / 2))
+    return chi2, p
+
+# A 50/50 test that came back 50,500 vs 49,500: only 1 point of traffic off.
+chi2, p = srm_check([50_500, 49_500], [0.5, 0.5])
+print(f"{chi2:.2f} {p:.6f}")                 # 10.00 0.001565  -&gt; investigate
+# A healthy split of the same size.
+chi2, p = srm_check([50_090, 49_910], [0.5, 0.5])
+print(f"{chi2:.2f} {p:.6f}")                 # 0.32 0.569214   -&gt; fine
+# Two million users, 50.1% vs 49.9%: tiny to the eye, decisive to the test.
+chi2, p = srm_check([1_002_300, 997_700], [0.5, 0.5])
+print(f"{chi2:.2f} {p:.6f}")                 # 10.58 0.001143  -&gt; investigate</code></pre>
+<pre class="code" data-lang="rust"><code>// erfc is not in Rust's standard library, so we use the Numerical Recipes
+// Chebyshev fit (relative error below 1.2e-7), plenty for an SRM p-value.
+fn erfc(x: f64) -&gt; f64 {
+    let z = x.abs();
+    let t = 1.0 / (1.0 + 0.5 * z);
+    let r = t * (-z * z - 1.26551223
+        + t * (1.00002368 + t * (0.37409196 + t * (0.09678418
+        + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398
+        + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))))
+        .exp();
+    if x &gt;= 0.0 { r } else { 2.0 - r }
+}
+
+/// Chi-square goodness-of-fit test of the traffic split. Returns (chi2, p).
+fn srm_check(observed: &amp;[f64], expected_share: &amp;[f64]) -&gt; (f64, f64) {
+    let n: f64 = observed.iter().sum();
+    let mut chi2 = 0.0;
+    for (obs, share) in observed.iter().zip(expected_share) {
+        let exp = n * share; // users this arm should have received
+        chi2 += (obs - exp).powi(2) / exp;
+    }
+    // Two arms means 1 degree of freedom, and P(chi2_1 &gt; x) = erfc(sqrt(x / 2)).
+    let p = erfc((chi2 / 2.0).sqrt());
+    (chi2, p)
+}
+
+fn main() {
+    // A 50/50 test that came back 50,500 vs 49,500: only 1 point of traffic off.
+    let (chi2, p) = srm_check(&amp;[50_500.0, 49_500.0], &amp;[0.5, 0.5]);
+    println!("{:.2} {:.6}", chi2, p); // 10.00 0.001565  -&gt; investigate
+    // A healthy split of the same size.
+    let (chi2, p) = srm_check(&amp;[50_090.0, 49_910.0], &amp;[0.5, 0.5]);
+    println!("{:.2} {:.6}", chi2, p); // 0.32 0.569214   -&gt; fine
+    // Two million users, 50.1% vs 49.9%: tiny to the eye, decisive to the test.
+    let (chi2, p) = srm_check(&amp;[1_002_300.0, 997_700.0], &amp;[0.5, 0.5]);
+    println!("{:.2} {:.6}", chi2, p); // 10.58 0.001143  -&gt; investigate
+}</code></pre>
+</div>
+  <p>Check SRM per day and per segment too. A leak that only affects one client version or one day can hide inside a healthy-looking total.</p>
+</div>
+
+<div class="widget" id="w-ab-srm">
+  <div class="wtitle">SRM checker</div>
+  <div class="wsub">Enter the split you configured and the users you actually counted. The band shows the range of shares a fair coin produces 99.9% of the time at this sample size; watch it shrink as the counts grow.</div>
+  <div class="btnrow"><button class="b" type="button" data-preset="ok">Healthy 50/50</button><button class="b" type="button" data-preset="one">1 point off at 100K</button><button class="b" type="button" data-preset="bot">Bot filter hits treatment</button><button class="b" type="button" data-preset="small">Small test, big gap</button></div>
+  <div class="controls">
+    <div class="ctl"><label for="ab-srm-s">Control share: <output id="ab-srm-s-o">50%</output></label><input type="range" id="ab-srm-s" min="5" max="95" step="1" value="50"></div>
+    <div class="ctl"><label for="ab-srm-a">Users counted in control</label><input type="number" id="ab-srm-a" min="0" step="1" value="50500"></div>
+    <div class="ctl"><label for="ab-srm-b">Users counted in treatment</label><input type="number" id="ab-srm-b" min="0" step="1" value="49500"></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Observed share to control</div><div class="v" data-sh>—</div></div>
+    <div class="mc"><div class="l">Expected in control</div><div class="v" data-ex>—</div></div>
+    <div class="mc"><div class="l">Chi-square (1 df)</div><div class="v" data-chi>—</div></div>
+    <div class="mc"><div class="l">p-value</div><div class="v" data-p>—</div></div>
+  </div>
+  <div class="ab-verdict" data-verdict></div>
+</div>
+
+<h3>6. Peeking and optional stopping</h3>
+<div class="story" id="st-ab-peek">
+  <div class="story-head"><div class="story-title">The scoreboard you keep checking</div><p class="story-sub">Why peeking at a running test manufactures winners, and how a planned boundary fixes it.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Checked once at the end, a fair test shows no difference">
+      <rect x="90" y="37.6" width="520" height="37.5" fill="var(--warn-soft)"/>
+      <rect x="90" y="184.9" width="520" height="37.5" fill="var(--warn-soft)"/>
+      <line x1="90" x2="610" y1="75.1" y2="75.1" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <line x1="90" x2="610" y1="184.9" y2="184.9" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text x="604" y="55.8" text-anchor="end" font-size="12" fill="var(--warn)">"B is better", p &lt; 0.05</text>
+      <text x="604" y="207.0" text-anchor="end" font-size="12" fill="var(--warn)">"B is worse", p &lt; 0.05</text>
+      <line x1="90" x2="610" y1="130.0" y2="130.0" stroke="var(--line-strong)" stroke-width="1"/>
+      <line x1="90" x2="90" y1="37.6" y2="222.4" stroke="var(--line-strong)" stroke-width="1"/>
+      <text x="80" y="134.0" text-anchor="end" font-size="12" fill="var(--muted)">z = 0</text>
+      <text x="80" y="79.1" text-anchor="end" font-size="12" fill="var(--muted)">+1.96</text>
+      <text x="80" y="188.9" text-anchor="end" font-size="12" fill="var(--muted)">−1.96</text>
+      <text x="115.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 1</text>
+      <text x="217.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 5</text>
+      <text x="345.0" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 10</text>
+      <text x="472.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 15</text>
+      <text x="600.0" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 20</text>
+      <polyline class="a" style="--d:1" points="115.5,95.9 141.0,86.7 166.5,116.8 192.0,145.7 217.5,145.3 243.0,135.3 268.5,136.4 294.0,150.5 319.5,153.9 345.0,140.0 370.5,151.2 396.0,141.8 421.5,137.3 447.0,133.4 472.5,127.8 498.0,131.7 523.5,132.4 549.0,120.4 574.5,123.2 600.0,126.0" fill="none" stroke="var(--tn)" stroke-width="2"/>
+      <circle class="a pulse" style="--d:2" cx="600.0" cy="126.0" r="6" fill="var(--accent)"/>
+      <text class="a" style="--d:3" x="590.0" y="150.0" text-anchor="end" font-size="13" font-weight="600" fill="var(--fg)">day 20: inside the band</text>
+    </svg>
+    <p>An A/A test splits users into two groups that get the <b>same</b> product, so any difference is pure luck. The line is the test statistic as data accumulates. Looked at once, on the planned last day, it lands inside the band where nothing is declared. That happens 95% of the time, which is what p &lt; 0.05 promises.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Check every day">
+      <rect x="90" y="37.6" width="520" height="37.5" fill="var(--warn-soft)"/>
+      <rect x="90" y="184.9" width="520" height="37.5" fill="var(--warn-soft)"/>
+      <line x1="90" x2="610" y1="75.1" y2="75.1" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <line x1="90" x2="610" y1="184.9" y2="184.9" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text x="604" y="55.8" text-anchor="end" font-size="12" fill="var(--warn)">"B is better", p &lt; 0.05</text>
+      <text x="604" y="207.0" text-anchor="end" font-size="12" fill="var(--warn)">"B is worse", p &lt; 0.05</text>
+      <line x1="90" x2="610" y1="130.0" y2="130.0" stroke="var(--line-strong)" stroke-width="1"/>
+      <line x1="90" x2="90" y1="37.6" y2="222.4" stroke="var(--line-strong)" stroke-width="1"/>
+      <text x="80" y="134.0" text-anchor="end" font-size="12" fill="var(--muted)">z = 0</text>
+      <text x="80" y="79.1" text-anchor="end" font-size="12" fill="var(--muted)">+1.96</text>
+      <text x="80" y="188.9" text-anchor="end" font-size="12" fill="var(--muted)">−1.96</text>
+      <text x="115.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 1</text>
+      <text x="217.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 5</text>
+      <text x="345.0" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 10</text>
+      <text x="472.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 15</text>
+      <text x="600.0" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 20</text>
+      <polyline class="a" style="--d:1" points="115.5,129.5 141.0,99.7 166.5,105.6 192.0,109.3 217.5,102.3 243.0,104.9 268.5,82.5 294.0,87.2 319.5,74.7" fill="none" stroke="var(--fp)" stroke-width="2.2"/>
+      <polyline class="a" style="--d:3" points="319.5,74.7 345.0,87.7 370.5,97.0 396.0,93.1 421.5,104.9 447.0,91.3 472.5,88.8 498.0,89.4 523.5,78.8 549.0,83.4 574.5,89.3 600.0,106.1" fill="none" stroke="var(--tn)" stroke-width="1.6" stroke-dasharray="4 4"/>
+      <circle class="a pulse" style="--d:2" cx="319.5" cy="74.7" r="6" fill="var(--fp)"/>
+      <g class="a" style="--d:2"><rect x="249.5" y="28.7" width="140" height="26" rx="6" fill="var(--surface)" stroke="var(--fp)"/><text x="319.5" y="45.7" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fp)">day 9: "ship it!"</text></g>
+    </svg>
+    <p>Now someone checks the dashboard every morning and stops the first time p dips below 0.05. This same no-difference test crossed the line on day 9, purely by luck, and then wandered back. Stop on day 9 and you ship a change that does nothing.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Twenty A/A tests, checked daily">
+      <rect x="90" y="37.6" width="520" height="37.5" fill="var(--warn-soft)"/>
+      <rect x="90" y="184.9" width="520" height="37.5" fill="var(--warn-soft)"/>
+      <line x1="90" x2="610" y1="75.1" y2="75.1" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <line x1="90" x2="610" y1="184.9" y2="184.9" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text x="604" y="55.8" text-anchor="end" font-size="12" fill="var(--warn)">"B is better", p &lt; 0.05</text>
+      <text x="604" y="207.0" text-anchor="end" font-size="12" fill="var(--warn)">"B is worse", p &lt; 0.05</text>
+      <line x1="90" x2="610" y1="130.0" y2="130.0" stroke="var(--line-strong)" stroke-width="1"/>
+      <line x1="90" x2="90" y1="37.6" y2="222.4" stroke="var(--line-strong)" stroke-width="1"/>
+      <text x="80" y="134.0" text-anchor="end" font-size="12" fill="var(--muted)">z = 0</text>
+      <text x="80" y="79.1" text-anchor="end" font-size="12" fill="var(--muted)">+1.96</text>
+      <text x="80" y="188.9" text-anchor="end" font-size="12" fill="var(--muted)">−1.96</text>
+      <text x="115.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 1</text>
+      <text x="217.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 5</text>
+      <text x="345.0" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 10</text>
+      <text x="472.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 15</text>
+      <text x="600.0" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 20</text>
+      <g class="a" style="--d:1"><polyline points="115.5,95.9 141.0,86.7 166.5,116.8 192.0,145.7 217.5,145.3 243.0,135.3 268.5,136.4 294.0,150.5 319.5,153.9 345.0,140.0 370.5,151.2 396.0,141.8 421.5,137.3 447.0,133.4 472.5,127.8 498.0,131.7 523.5,132.4 549.0,120.4 574.5,123.2 600.0,126.0" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,169.2 141.0,167.0 166.5,148.3 192.0,128.3 217.5,120.4 243.0,114.0 268.5,109.0 294.0,107.0 319.5,98.9 345.0,101.7 370.5,94.0 396.0,96.0 421.5,109.7 447.0,119.9 472.5,121.6 498.0,125.0 523.5,133.3 549.0,138.2 574.5,136.8 600.0,134.1" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,106.3 141.0,130.0 166.5,123.9 192.0,110.3 217.5,107.9 243.0,89.8 268.5,97.7 294.0,99.8 319.5,99.9 345.0,104.9 370.5,106.4 396.0,105.6 421.5,106.7 447.0,111.3 472.5,115.1 498.0,116.0 523.5,126.7 549.0,125.6 574.5,132.6 600.0,134.0" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,159.9 141.0,149.1 166.5,151.6 192.0,152.2 217.5,158.9 243.0,155.1 268.5,136.6 294.0,153.7 319.5,147.6 345.0,144.7 370.5,147.2 396.0,156.5 421.5,143.4 447.0,141.6 472.5,134.0 498.0,136.4 523.5,141.3 549.0,134.0 574.5,129.2 600.0,131.1" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,135.8 141.0,122.0 166.5,136.1 192.0,146.6 217.5,145.3 243.0,132.7 268.5,123.6 294.0,122.1 319.5,110.2 345.0,112.5 370.5,117.4 396.0,99.3 421.5,104.2 447.0,100.8 472.5,97.8 498.0,97.9 523.5,97.4 549.0,93.7 574.5,91.2 600.0,95.7" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,129.7 141.0,102.8 166.5,96.2 192.0,106.5 217.5,108.1 243.0,120.9 268.5,134.8 294.0,139.5 319.5,124.3 345.0,129.8 370.5,146.0 396.0,146.1 421.5,150.6 447.0,144.4 472.5,135.1 498.0,137.1 523.5,136.0 549.0,141.6 574.5,133.6 600.0,137.9" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,128.9 141.0,83.1 166.5,106.2 192.0,106.9 217.5,109.8 243.0,106.2 268.5,103.0 294.0,90.3 319.5,88.0 345.0,84.9 370.5,97.0 396.0,95.1 421.5,106.4 447.0,98.3 472.5,99.7 498.0,93.9 523.5,98.2 549.0,97.5 574.5,97.8 600.0,95.1" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,132.4 141.0,142.7 166.5,146.0 192.0,152.5 217.5,161.2 243.0,171.8 268.5,183.6 294.0,161.8 319.5,166.6 345.0,174.1 370.5,163.8 396.0,160.0 421.5,159.7 447.0,150.2 472.5,136.4 498.0,141.8 523.5,132.0 549.0,128.2 574.5,120.9 600.0,124.2" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,83.9 141.0,74.7 166.5,125.4 192.0,108.5 217.5,94.2 243.0,112.5 268.5,110.2 294.0,113.1 319.5,111.9 345.0,120.1 370.5,115.1 396.0,109.8 421.5,111.2 447.0,112.3 472.5,124.9 498.0,121.3 523.5,129.9 549.0,129.6 574.5,134.6 600.0,118.4" fill="none" stroke="var(--fp)" stroke-width="1.8" opacity="1"/>
+      <polyline points="115.5,129.5 141.0,99.7 166.5,105.6 192.0,109.3 217.5,102.3 243.0,104.9 268.5,82.5 294.0,87.2 319.5,74.7 345.0,87.7 370.5,97.0 396.0,93.1 421.5,104.9 447.0,91.3 472.5,88.8 498.0,89.4 523.5,78.8 549.0,83.4 574.5,89.3 600.0,106.1" fill="none" stroke="var(--fp)" stroke-width="1.8" opacity="1"/>
+      <polyline points="115.5,182.6 141.0,172.7 166.5,197.4 192.0,177.8 217.5,160.6 243.0,152.7 268.5,167.7 294.0,173.5 319.5,183.4 345.0,174.4 370.5,163.7 396.0,164.0 421.5,162.1 447.0,159.1 472.5,152.8 498.0,158.2 523.5,163.6 549.0,157.5 574.5,153.5 600.0,149.8" fill="none" stroke="var(--fp)" stroke-width="1.8" opacity="1"/>
+      <polyline points="115.5,128.1 141.0,113.5 166.5,108.8 192.0,119.8 217.5,99.7 243.0,90.0 268.5,95.3 294.0,98.4 319.5,106.6 345.0,119.8 370.5,128.9 396.0,140.2 421.5,144.7 447.0,141.7 472.5,141.7 498.0,151.1 523.5,151.7 549.0,155.2 574.5,161.4 600.0,153.7" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,158.5 141.0,132.3 166.5,158.6 192.0,150.8 217.5,157.1 243.0,143.8 268.5,138.5 294.0,145.4 319.5,138.6 345.0,126.9 370.5,115.9 396.0,104.6 421.5,108.3 447.0,93.0 472.5,98.4 498.0,100.2 523.5,111.3 549.0,113.2 574.5,122.7 600.0,122.1" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,178.2 141.0,127.3 166.5,114.6 192.0,94.4 217.5,83.4 243.0,85.5 268.5,83.6 294.0,84.5 319.5,104.3 345.0,115.7 370.5,119.5 396.0,112.3 421.5,123.5 447.0,122.2 472.5,126.4 498.0,121.3 523.5,116.3 549.0,123.4 574.5,130.7 600.0,121.4" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,100.2 141.0,109.1 166.5,99.2 192.0,102.2 217.5,98.9 243.0,105.8 268.5,101.7 294.0,86.9 319.5,75.7 345.0,67.1 370.5,68.8 396.0,63.5 421.5,69.2 447.0,73.5 472.5,74.2 498.0,83.4 523.5,83.3 549.0,95.7 574.5,86.1 600.0,81.8" fill="none" stroke="var(--fp)" stroke-width="1.8" opacity="1"/>
+      <polyline points="115.5,121.0 141.0,137.0 166.5,144.9 192.0,148.0 217.5,166.4 243.0,167.8 268.5,174.4 294.0,163.0 319.5,148.5 345.0,134.5 370.5,145.5 396.0,155.7 421.5,143.4 447.0,136.9 472.5,128.9 498.0,124.2 523.5,122.6 549.0,108.7 574.5,103.5 600.0,99.8" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,157.2 141.0,145.7 166.5,120.8 192.0,113.8 217.5,103.9 243.0,108.0 268.5,101.9 294.0,109.1 319.5,111.8 345.0,103.1 370.5,89.9 396.0,94.0 421.5,96.9 447.0,99.6 472.5,101.9 498.0,102.4 523.5,97.1 549.0,95.6 574.5,96.4 600.0,94.3" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,178.8 141.0,167.0 166.5,128.1 192.0,142.4 217.5,148.1 243.0,143.3 268.5,131.5 294.0,133.8 319.5,143.1 345.0,128.7 370.5,148.2 396.0,154.6 421.5,159.3 447.0,175.4 472.5,164.0 498.0,149.1 523.5,158.7 549.0,160.5 574.5,161.2 600.0,156.0" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,134.9 141.0,121.9 166.5,115.5 192.0,119.2 217.5,119.5 243.0,104.2 268.5,104.1 294.0,99.2 319.5,101.1 345.0,96.1 370.5,83.8 396.0,84.9 421.5,90.3 447.0,97.2 472.5,90.8 498.0,97.4 523.5,95.1 549.0,79.3 574.5,79.1 600.0,69.1" fill="none" stroke="var(--fp)" stroke-width="1.8" opacity="1"/>
+      <polyline points="115.5,129.1 141.0,130.8 166.5,121.0 192.0,134.2 217.5,164.0 243.0,161.4 268.5,166.6 294.0,162.0 319.5,141.7 345.0,135.4 370.5,148.0 396.0,143.6 421.5,156.8 447.0,172.1 472.5,155.0 498.0,160.6 523.5,174.6 549.0,173.8 574.5,173.8 600.0,169.6" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/></g>
+      <g class="a" style="--d:3"><rect x="300" y="12" width="232" height="28" rx="7" fill="var(--surface)" stroke="var(--fp)"/><text x="416" y="31" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fp)">5 of 20 crossed at least once</text></g>
+    </svg>
+    <p>Run twenty of these A/A tests and peek daily. Here 5 of 20 cross the line at some point. Across thousands of simulated runs, 20 daily looks raise the false-positive rate from the promised 5% to about 25% (simulation in the code below; Armitage, McPherson and Rowe described the effect in 1969).</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A boundary that starts strict">
+      <line x1="90" x2="610" y1="130.0" y2="130.0" stroke="var(--line-strong)" stroke-width="1"/>
+      <line x1="90" x2="90" y1="37.6" y2="222.4" stroke="var(--line-strong)" stroke-width="1"/>
+      <text x="80" y="134.0" text-anchor="end" font-size="12" fill="var(--muted)">z = 0</text>
+      <text x="80" y="79.1" text-anchor="end" font-size="12" fill="var(--muted)">+1.96</text>
+      <text x="80" y="188.9" text-anchor="end" font-size="12" fill="var(--muted)">−1.96</text>
+      <text x="115.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 1</text>
+      <text x="217.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 5</text>
+      <text x="345.0" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 10</text>
+      <text x="472.5" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 15</text>
+      <text x="600.0" y="242" text-anchor="middle" font-size="12" fill="var(--muted)">day 20</text>
+      <g><polyline points="115.5,95.9 141.0,86.7 166.5,116.8 192.0,145.7 217.5,145.3 243.0,135.3 268.5,136.4 294.0,150.5 319.5,153.9 345.0,140.0 370.5,151.2 396.0,141.8 421.5,137.3 447.0,133.4 472.5,127.8 498.0,131.7 523.5,132.4 549.0,120.4 574.5,123.2 600.0,126.0" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,169.2 141.0,167.0 166.5,148.3 192.0,128.3 217.5,120.4 243.0,114.0 268.5,109.0 294.0,107.0 319.5,98.9 345.0,101.7 370.5,94.0 396.0,96.0 421.5,109.7 447.0,119.9 472.5,121.6 498.0,125.0 523.5,133.3 549.0,138.2 574.5,136.8 600.0,134.1" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,106.3 141.0,130.0 166.5,123.9 192.0,110.3 217.5,107.9 243.0,89.8 268.5,97.7 294.0,99.8 319.5,99.9 345.0,104.9 370.5,106.4 396.0,105.6 421.5,106.7 447.0,111.3 472.5,115.1 498.0,116.0 523.5,126.7 549.0,125.6 574.5,132.6 600.0,134.0" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,159.9 141.0,149.1 166.5,151.6 192.0,152.2 217.5,158.9 243.0,155.1 268.5,136.6 294.0,153.7 319.5,147.6 345.0,144.7 370.5,147.2 396.0,156.5 421.5,143.4 447.0,141.6 472.5,134.0 498.0,136.4 523.5,141.3 549.0,134.0 574.5,129.2 600.0,131.1" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,135.8 141.0,122.0 166.5,136.1 192.0,146.6 217.5,145.3 243.0,132.7 268.5,123.6 294.0,122.1 319.5,110.2 345.0,112.5 370.5,117.4 396.0,99.3 421.5,104.2 447.0,100.8 472.5,97.8 498.0,97.9 523.5,97.4 549.0,93.7 574.5,91.2 600.0,95.7" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,129.7 141.0,102.8 166.5,96.2 192.0,106.5 217.5,108.1 243.0,120.9 268.5,134.8 294.0,139.5 319.5,124.3 345.0,129.8 370.5,146.0 396.0,146.1 421.5,150.6 447.0,144.4 472.5,135.1 498.0,137.1 523.5,136.0 549.0,141.6 574.5,133.6 600.0,137.9" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,128.9 141.0,83.1 166.5,106.2 192.0,106.9 217.5,109.8 243.0,106.2 268.5,103.0 294.0,90.3 319.5,88.0 345.0,84.9 370.5,97.0 396.0,95.1 421.5,106.4 447.0,98.3 472.5,99.7 498.0,93.9 523.5,98.2 549.0,97.5 574.5,97.8 600.0,95.1" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,132.4 141.0,142.7 166.5,146.0 192.0,152.5 217.5,161.2 243.0,171.8 268.5,183.6 294.0,161.8 319.5,166.6 345.0,174.1 370.5,163.8 396.0,160.0 421.5,159.7 447.0,150.2 472.5,136.4 498.0,141.8 523.5,132.0 549.0,128.2 574.5,120.9 600.0,124.2" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,83.9 141.0,74.7 166.5,125.4 192.0,108.5 217.5,94.2 243.0,112.5 268.5,110.2 294.0,113.1 319.5,111.9 345.0,120.1 370.5,115.1 396.0,109.8 421.5,111.2 447.0,112.3 472.5,124.9 498.0,121.3 523.5,129.9 549.0,129.6 574.5,134.6 600.0,118.4" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,129.5 141.0,99.7 166.5,105.6 192.0,109.3 217.5,102.3 243.0,104.9 268.5,82.5 294.0,87.2 319.5,74.7 345.0,87.7 370.5,97.0 396.0,93.1 421.5,104.9 447.0,91.3 472.5,88.8 498.0,89.4 523.5,78.8 549.0,83.4 574.5,89.3 600.0,106.1" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,182.6 141.0,172.7 166.5,197.4 192.0,177.8 217.5,160.6 243.0,152.7 268.5,167.7 294.0,173.5 319.5,183.4 345.0,174.4 370.5,163.7 396.0,164.0 421.5,162.1 447.0,159.1 472.5,152.8 498.0,158.2 523.5,163.6 549.0,157.5 574.5,153.5 600.0,149.8" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,128.1 141.0,113.5 166.5,108.8 192.0,119.8 217.5,99.7 243.0,90.0 268.5,95.3 294.0,98.4 319.5,106.6 345.0,119.8 370.5,128.9 396.0,140.2 421.5,144.7 447.0,141.7 472.5,141.7 498.0,151.1 523.5,151.7 549.0,155.2 574.5,161.4 600.0,153.7" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,158.5 141.0,132.3 166.5,158.6 192.0,150.8 217.5,157.1 243.0,143.8 268.5,138.5 294.0,145.4 319.5,138.6 345.0,126.9 370.5,115.9 396.0,104.6 421.5,108.3 447.0,93.0 472.5,98.4 498.0,100.2 523.5,111.3 549.0,113.2 574.5,122.7 600.0,122.1" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,178.2 141.0,127.3 166.5,114.6 192.0,94.4 217.5,83.4 243.0,85.5 268.5,83.6 294.0,84.5 319.5,104.3 345.0,115.7 370.5,119.5 396.0,112.3 421.5,123.5 447.0,122.2 472.5,126.4 498.0,121.3 523.5,116.3 549.0,123.4 574.5,130.7 600.0,121.4" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,100.2 141.0,109.1 166.5,99.2 192.0,102.2 217.5,98.9 243.0,105.8 268.5,101.7 294.0,86.9 319.5,75.7 345.0,67.1 370.5,68.8 396.0,63.5 421.5,69.2 447.0,73.5 472.5,74.2 498.0,83.4 523.5,83.3 549.0,95.7 574.5,86.1 600.0,81.8" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,121.0 141.0,137.0 166.5,144.9 192.0,148.0 217.5,166.4 243.0,167.8 268.5,174.4 294.0,163.0 319.5,148.5 345.0,134.5 370.5,145.5 396.0,155.7 421.5,143.4 447.0,136.9 472.5,128.9 498.0,124.2 523.5,122.6 549.0,108.7 574.5,103.5 600.0,99.8" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,157.2 141.0,145.7 166.5,120.8 192.0,113.8 217.5,103.9 243.0,108.0 268.5,101.9 294.0,109.1 319.5,111.8 345.0,103.1 370.5,89.9 396.0,94.0 421.5,96.9 447.0,99.6 472.5,101.9 498.0,102.4 523.5,97.1 549.0,95.6 574.5,96.4 600.0,94.3" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,178.8 141.0,167.0 166.5,128.1 192.0,142.4 217.5,148.1 243.0,143.3 268.5,131.5 294.0,133.8 319.5,143.1 345.0,128.7 370.5,148.2 396.0,154.6 421.5,159.3 447.0,175.4 472.5,164.0 498.0,149.1 523.5,158.7 549.0,160.5 574.5,161.2 600.0,156.0" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/>
+      <polyline points="115.5,134.9 141.0,121.9 166.5,115.5 192.0,119.2 217.5,119.5 243.0,104.2 268.5,104.1 294.0,99.2 319.5,101.1 345.0,96.1 370.5,83.8 396.0,84.9 421.5,90.3 447.0,97.2 472.5,90.8 498.0,97.4 523.5,95.1 549.0,79.3 574.5,79.1 600.0,69.1" fill="none" stroke="var(--fp)" stroke-width="1.8" opacity="1"/>
+      <polyline points="115.5,129.1 141.0,130.8 166.5,121.0 192.0,134.2 217.5,164.0 243.0,161.4 268.5,166.6 294.0,162.0 319.5,141.7 345.0,135.4 370.5,148.0 396.0,143.6 421.5,156.8 447.0,172.1 472.5,155.0 498.0,160.6 523.5,174.6 549.0,173.8 574.5,173.8 600.0,169.6" fill="none" stroke="var(--tn)" stroke-width="1.2" opacity="0.55"/></g>
+      <polyline class="a" style="--d:1" points="115.5,37.6 141.0,37.6 166.5,37.6 192.0,37.6 217.5,37.6 243.0,37.6 268.5,37.6 294.0,37.6 319.5,40.6 345.0,45.2 370.5,49.2 396.0,52.6 421.5,55.7 447.0,58.4 472.5,60.8 498.0,63.0 523.5,65.0 549.0,66.8 574.5,68.5 600.0,70.1" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+      <polyline class="a" style="--d:1" points="115.5,222.4 141.0,222.4 166.5,222.4 192.0,222.4 217.5,222.4 243.0,222.4 268.5,222.4 294.0,222.4 319.5,219.4 345.0,214.8 370.5,210.8 396.0,207.4 421.5,204.3 447.0,201.6 472.5,199.2 498.0,197.0 523.5,195.0 549.0,193.2 574.5,191.5 600.0,189.9" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+      <text class="a" style="--d:2" x="596.0" y="60.1" text-anchor="end" font-size="12" fill="var(--accent)">sequential boundary, ends at z = 2.14</text>
+      <g class="a" style="--d:3"><rect x="300" y="12" width="232" height="28" rx="7" fill="var(--surface)" stroke="var(--accent)"/><text x="416" y="31" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">1 of 20 crossed</text></g>
+    </svg>
+    <p>The fix is to decide in advance how often you will look and to pay for those looks. A sequential boundary is very strict on early days, when the line swings most, and relaxes toward the end. The same twenty tests now produce one false alarm, about the 5% you signed up for, and you can still stop early when an effect is large.</p>
+  </div>
+</div>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Every look is another lottery ticket</span></div>
+  <p>A p-value of 0.05 means: if nothing is going on, results this extreme show up 1 time in 20. That promise holds if you look <b>once</b>. Every extra look is another chance for luck to produce an extreme number. Look every day for a month and stop the first time it looks good, and you will "find" winners in tests where nothing changed. The fix is to decide in advance when and how often you will look, and to use a stricter bar when you look more often.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Peeking is fine if the method allows it</span></div>
+  <p>People will look at a live dashboard; banning that is unrealistic. What matters is the rule for <b>stopping</b>. Three acceptable policies:</p>
+  <ul>
+    <li><b>Fixed horizon.</b> Compute the sample size, run to it, analyse once. Dashboards during the test are for guardrail and bug monitoring only, and nobody stops early for a good-looking primary metric.</li>
+    <li><b>Group sequential.</b> Plan a handful of interim analyses (say, end of each week) with boundaries that spend the error budget over time. You can stop early for a large win or a clear harm, at the cost of slightly more users if you run to the end.</li>
+    <li><b>Always-valid (continuous) monitoring.</b> Methods such as the mixture sequential probability ratio test give p-values that stay valid however often you look. Some commercial platforms adopted this so customers can watch results live. The price is lower power at a fixed sample size.</li>
+  </ul>
+  <p>Stopping early to cut losses on a harmful change is always fine; you just cannot then claim the estimate is unbiased. The unacceptable policy is the common one: look daily, stop at the first p &lt; 0.05, report it as if planned.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why it inflates, and the corrections</span></div>
+  <p>Under \(H_0\), the z statistic at equally spaced looks behaves like a scaled random walk: \(z_k = S_k/\sqrt{k}\) with \(S_k\) a sum of \(k\) independent standard normal increments. The naive procedure rejects if \(\max_{k \le K} |z_k| &gt; 1.96\), and that maximum exceeds 1.96 far more often than 5% of the time. Armitage, McPherson and Rowe (1969) quantified this; the simulation below reproduces it: about 14% with 5 looks and 25% with 20. With unlimited looks the false positive rate tends to 1, by the law of the iterated logarithm.</p>
+  <p><b>Group sequential boundaries.</b> Choose critical values \(c_1,\dots,c_K\) with \(P_{H_0}(\exists k: |z_k| &gt; c_k) = \alpha\). Pocock (1977) uses the same \(c\) at every look (2.413 for 5 looks at \(\alpha = 0.05\)); O'Brien and Fleming (1979) use \(c_k = c\sqrt{K/k}\), very strict early and close to 1.96 at the end (2.040 at the final of 5 looks). Lan and DeMets (1983) generalised this with an <b>alpha spending function</b> \(\alpha(t)\), the error spent by information fraction \(t\), so looks need not be equally spaced or planned exactly:</p>
+  <div class="eq">\[ \alpha_{\text{OBF}}(t) = 2 - 2\,\Phi\!\left(\frac{z_{1-\alpha/2}}{\sqrt{t}}\right), \qquad \alpha_{\text{Pocock}}(t) = \alpha \ln\!\big(1 + (e-1)\,t\big) \]<span class="eqcap">\(t \in (0,1]\) is the fraction of planned users observed so far. Both spend the full \(\alpha\) by \(t=1\); the O'Brien–Fleming-type function spends almost nothing early.</span></div>
+  <p><b>Always-valid p-values.</b> Johari, Koomen, Pekelis and Walsh (KDD 2017; Operations Research 2022) adapt the mixture SPRT: compute a likelihood ratio \(\Lambda_n\) of "some effect, drawn from a prior \(N(0,\tau^2)\)" against "no effect" and report \(p_n = \min(p_{n-1}, 1/\Lambda_n)\). Because \(\Lambda_n\) is a nonnegative martingale under \(H_0\), Ville's inequality gives \(P(\exists n: \Lambda_n \ge 1/\alpha) \le \alpha\), so stopping whenever \(p_n &lt; \alpha\) keeps the error rate at \(\alpha\). The confidence sequences that go with it are wider than fixed-horizon intervals at any given \(n\).</p>
+  <p>The simulation uses a hand-written generator in both languages, so Python and Rust print identical numbers.</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
+
+MASK = (1 &lt;&lt; 64) - 1
+
+class SplitMix64:
+    """A tiny PRNG written out by hand so the Rust twin draws the exact same numbers."""
+    def __init__(self, seed):
+        self.s = seed &amp; MASK
+    def next_u64(self):
+        self.s = (self.s + 0x9E3779B97F4A7C15) &amp; MASK
+        z = self.s
+        z = ((z ^ (z &gt;&gt; 30)) * 0xBF58476D1CE4E5B9) &amp; MASK
+        z = ((z ^ (z &gt;&gt; 27)) * 0x94D049BB133111EB) &amp; MASK
+        return z ^ (z &gt;&gt; 31)
+    def uniform(self):                       # in (0, 1], never exactly 0
+        return ((self.next_u64() &gt;&gt; 11) + 1) / 2**53
+    def gauss(self):                         # Box-Muller
+        u1, u2 = self.uniform(), self.uniform()
+        return math.sqrt(-2 * math.log(u1)) * math.cos(2 * math.pi * u2)
+
+def aa_false_positives(looks, pocock=0.0, obf=0.0, sims=20_000, seed=7):
+    """Run A/A tests (no true effect) and check each one `looks` times."""
+    rng = SplitMix64(seed)
+    fixed = naive = poc = ob = 0
+    for _ in range(sims):
+        s, hit_n, hit_p, hit_o = 0.0, False, False, False
+        for k in range(1, looks + 1):
+            s += rng.gauss()                 # each look adds one equal batch of users
+            z = s / math.sqrt(k)             # the z statistic on the dashboard at look k
+            hit_n = hit_n or abs(z) &gt; 1.96   # naive: stop the first time p &lt; 0.05
+            hit_p = hit_p or (pocock &gt; 0 and abs(z) &gt; pocock)
+            hit_o = hit_o or (obf &gt; 0 and abs(z) &gt; obf * math.sqrt(looks / k))
+        fixed += abs(z) &gt; 1.96               # fixed horizon: test once, at the end
+        naive += hit_n
+        poc += hit_p
+        ob += hit_o
+    return fixed / sims, naive / sims, poc / sims, ob / sims
+
+# Pocock and O'Brien-Fleming constants for 5 looks at two-sided alpha = 0.05.
+f, n, p, o = aa_false_positives(5, pocock=2.413, obf=2.040)
+print(f"5 looks:  fixed {f:.3f} naive {n:.3f} pocock {p:.3f} obf {o:.3f}")
+# 5 looks:  fixed 0.051 naive 0.140 pocock 0.050 obf 0.051
+f, n, _, _ = aa_false_positives(20)
+print(f"20 looks: fixed {f:.3f} naive {n:.3f}")
+# 20 looks: fixed 0.050 naive 0.246</code></pre>
+<pre class="code" data-lang="rust"><code>/// A tiny PRNG written out by hand so the Python twin draws the exact same numbers.
+struct SplitMix64 {
+    s: u64,
+}
+
+impl SplitMix64 {
+    fn new(seed: u64) -&gt; Self {
+        SplitMix64 { s: seed }
+    }
+    fn next_u64(&amp;mut self) -&gt; u64 {
+        self.s = self.s.wrapping_add(0x9E3779B97F4A7C15);
+        let mut z = self.s;
+        z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+        z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D049BB133111EB);
+        z ^ (z &gt;&gt; 31)
+    }
+    fn uniform(&amp;mut self) -&gt; f64 {
+        // in (0, 1], never exactly 0
+        ((self.next_u64() &gt;&gt; 11) + 1) as f64 / 9007199254740992.0
+    }
+    fn gauss(&amp;mut self) -&gt; f64 {
+        // Box-Muller
+        let (u1, u2) = (self.uniform(), self.uniform());
+        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+    }
+}
+
+/// Run A/A tests (no true effect) and check each one `looks` times.
+fn aa_false_positives(looks: usize, pocock: f64, obf: f64, sims: usize, seed: u64) -&gt; (f64, f64, f64, f64) {
+    let mut rng = SplitMix64::new(seed);
+    let (mut fixed, mut naive, mut poc, mut ob) = (0, 0, 0, 0);
+    for _ in 0..sims {
+        let (mut s, mut z) = (0.0, 0.0);
+        let (mut hit_n, mut hit_p, mut hit_o) = (false, false, false);
+        for k in 1..=looks {
+            s += rng.gauss(); // each look adds one equal batch of users
+            z = s / (k as f64).sqrt(); // the z statistic on the dashboard at look k
+            hit_n = hit_n || z.abs() &gt; 1.96; // naive: stop the first time p &lt; 0.05
+            hit_p = hit_p || (pocock &gt; 0.0 &amp;&amp; z.abs() &gt; pocock);
+            hit_o = hit_o || (obf &gt; 0.0 &amp;&amp; z.abs() &gt; obf * (looks as f64 / k as f64).sqrt());
+        }
+        fixed += (z.abs() &gt; 1.96) as usize; // fixed horizon: test once, at the end
+        naive += hit_n as usize;
+        poc += hit_p as usize;
+        ob += hit_o as usize;
+    }
+    let n = sims as f64;
+    (fixed as f64 / n, naive as f64 / n, poc as f64 / n, ob as f64 / n)
+}
+
+fn main() {
+    // Pocock and O'Brien-Fleming constants for 5 looks at two-sided alpha = 0.05.
+    let (f, n, p, o) = aa_false_positives(5, 2.413, 2.040, 20_000, 7);
+    println!("5 looks:  fixed {:.3} naive {:.3} pocock {:.3} obf {:.3}", f, n, p, o);
+    // 5 looks:  fixed 0.051 naive 0.140 pocock 0.050 obf 0.051
+    let (f, n, _, _) = aa_false_positives(20, 0.0, 0.0, 20_000, 7);
+    println!("20 looks: fixed {:.3} naive {:.3}", f, n);
+    // 20 looks: fixed 0.050 naive 0.246
+}</code></pre>
+</div>
+</div>
+
+<div class="widget" id="w-ab-peek">
+  <div class="wtitle">Peeking simulator</div>
+  <div class="wsub">Thousands of A/A tests, where nothing differs between arms, each checked at evenly spaced looks. Red paths crossed p &lt; 0.05 at some look and would have been "shipped". Add looks and watch the naive false positive rate climb while the sequential boundary holds near 5%.</div>
+  <div class="controls">
+    <div class="ctl"><label for="ab-pk-k">Number of looks: <output id="ab-pk-k-o">14</output></label><input type="range" id="ab-pk-k" min="1" max="30" step="1" value="14"></div>
+    <div class="ctl"><label for="ab-pk-b">Sequential boundary</label><select id="ab-pk-b"><option value="obf" selected>O'Brien–Fleming shape (strict early)</option><option value="poc">Pocock shape (same bar every look)</option></select></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Naive peeking</div><div class="v" data-naive>—</div></div>
+    <div class="mc"><div class="l">Sequential boundary</div><div class="v" data-seq>—</div></div>
+    <div class="mc"><div class="l">One look at the end</div><div class="v" data-fixed>—</div></div>
+    <div class="mc"><div class="l">z needed at final look</div><div class="v" data-bar>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>7. Novelty and primacy effects</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">New toys and old habits</span></div>
+  <p>Give a child a new toy and they play with it constantly for a week, then it joins the pile. That is a <b>novelty effect</b>: the change looks great at first because it is new. The opposite also happens. Move the light switch in your kitchen and you miss it for weeks, until your hand learns the new spot. That is a <b>primacy effect</b>, or change aversion: a good change looks bad at first because people are used to the old way. Both fade with time, so a short test can get the answer backwards.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Ask to see the effect over time</span></div>
+  <p>For visible changes (a new model voice, a redesigned answer layout), ask for the treatment effect plotted by days since a user's first exposure. A line that decays suggests novelty; a line that climbs suggests learning or change aversion wearing off. Either way, the number to ship on is where the line settles, not the two-week average. Power users show both effects most strongly, because they notice changes first.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Cohort by first exposure, not by calendar</span></div>
+  <figure><svg viewBox="0 0 640 260" role="img" aria-label="Effect by days since first exposure: novelty decays from plus 6 to plus 1, primacy rises from minus 3 to plus 2">
+    <line x1="80" y1="130" x2="600" y2="130" stroke="var(--line-strong)"/><line x1="80" y1="26" x2="80" y2="200" stroke="var(--line-strong)"/>
+    <text x="70" y="134" text-anchor="end" font-size="12" fill="var(--muted)">0%</text><text x="70" y="38" text-anchor="end" font-size="12" fill="var(--muted)">+6%</text><text x="70" y="182" text-anchor="end" font-size="12" fill="var(--muted)">−3%</text>
+    <polyline points="80.0,34.0 98.6,51.7 117.1,65.5 135.7,76.2 154.3,84.6 172.9,91.1 191.4,96.1 210.0,100.1 228.6,103.2 247.1,105.6 265.7,107.4 284.3,108.9 302.9,110.0 321.4,110.9 340.0,111.6 358.6,112.1 377.1,112.5 395.7,112.9 414.3,113.1 432.9,113.3 451.4,113.5 470.0,113.6 488.6,113.7 507.1,113.7 525.7,113.8 544.3,113.8 562.9,113.9 581.4,113.9 600.0,113.9" fill="none" stroke="var(--fn)" stroke-width="2.5"/>
+    <polyline points="80.0,178.0 98.6,163.5 117.1,151.6 135.7,141.9 154.3,133.9 172.9,127.4 191.4,122.1 210.0,117.7 228.6,114.2 247.1,111.2 265.7,108.8 284.3,106.9 302.9,105.3 321.4,103.9 340.0,102.9 358.6,102.0 377.1,101.3 395.7,100.7 414.3,100.2 432.9,99.8 451.4,99.5 470.0,99.2 488.6,99.0 507.1,98.8 525.7,98.7 544.3,98.5 562.9,98.4 581.4,98.4 600.0,98.3" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+    <text x="140" y="56" font-size="13" font-weight="600" fill="var(--fn)">novelty: fades to +1%</text>
+    <text x="150" y="168" font-size="13" font-weight="600" fill="var(--accent)">primacy: climbs to +2%</text>
+    <g font-size="12" fill="var(--muted)" text-anchor="middle"><text x="80" y="220">day 0</text><text x="210" y="220">7</text><text x="340" y="220">14</text><text x="470" y="220">21</text><text x="600" y="220">28</text></g>
+    <text x="340" y="248" text-anchor="middle" font-size="12" fill="var(--muted)">days since the user's first exposure (illustrative curves)</text>
+  </svg><figcaption>Two changes with opposite early behaviour. A one-week test would ship the first and kill the second, the reverse of their long-run effects.</figcaption></figure>
+  <p>Plotting the effect by calendar day mixes users at different points in their exposure, because new users keep entering the test. Instead, group users by the date they were first exposed and plot the effect against days since that date. A cleaner check is to compare users who entered in week 1 with those who entered in week 2, measured over their own first seven days: if the effect is a property of the change, the two cohorts should agree. For long-term effects, a holdout (section 10) is the only direct measurement; models of the decay are a fallback.</p>
+</div>
+
+<h3>8. Variance reduction with CUPED</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Judge the improvement, not the starting point</span></div>
+  <p>Two classes take a maths test after trying different teaching methods. One class happens to contain more strong students. The raw scores mostly tell you who the students were before the experiment. A fairer comparison asks how much each student improved over their own score last term. People who were strong before tend to stay strong, so subtracting what you already knew about them removes most of the noise, and the effect of the teaching shows up with far fewer students.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Free sensitivity, if the pre-period data exists</span></div>
+  <p>CUPED (Deng, Xu, Kohavi and Walker, WSDM 2013) uses each user's behaviour from before the test to explain away part of the noise. On Bing it cut variance by about 50%, which means the same power with roughly half the users or half the duration. It is now standard on most mature experimentation platforms.</p>
+  <ul>
+    <li>Gains depend on how well the past predicts the future. Engagement metrics for returning users: large. New-user tests: little, because there is no history.</li>
+    <li>The covariate must be measured <b>before</b> assignment. Using anything the treatment could affect biases the result.</li>
+    <li>It is an analysis choice, so it belongs in the pre-registered analysis plan, not chosen after seeing which version gives a smaller p-value.</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The estimator</span></div>
+  <p>Let \(Y\) be the metric during the test and \(X\) a pre-period covariate, often the same metric in the weeks before. Define</p>
+  <div class="eq">\[ Y^{\text{cv}}_i = Y_i - \theta\,(X_i - \bar X), \qquad \theta = \frac{\operatorname{Cov}(X, Y)}{\operatorname{Var}(X)}, \qquad \operatorname{Var}\!\big(\bar Y^{\text{cv}}\big) = \operatorname{Var}(\bar Y)\,(1 - \rho^2) \]<span class="eqcap">\(\rho\) is the correlation between \(X\) and \(Y\). \(\theta\) is estimated on pooled data from both arms; because \(X\) is independent of assignment, \(E[\bar X_T - \bar X_C] = 0\) and the adjusted difference stays unbiased.</span></div>
+  <p>The treatment effect estimate is \(\bar Y^{\text{cv}}_T - \bar Y^{\text{cv}}_C\). With \(\rho = 0.7\), variance falls by 49%. This is the same as regression adjustment with a single covariate (ANCOVA), and it generalises to several covariates or to a machine-learned prediction of \(Y\) from pre-period features. Users without pre-period data get \(X = 0\) plus an indicator, or are analysed separately. The small example below halves the standard error.</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def mean(v):
+    return sum(v) / len(v)
+
+def var(v):                                  # sample variance (n - 1)
+    m = mean(v)
+    return sum((x - m) ** 2 for x in v) / (len(v) - 1)
+
+def cov(a, b):
+    ma, mb = mean(a), mean(b)
+    return sum((x - ma) * (y - mb) for x, y in zip(a, b)) / (len(a) - 1)
+
+def cuped(y, x):
+    """Adjust y by the pre-period covariate x: y - theta * (x - mean(x))."""
+    theta = cov(x, y) / var(x)               # the regression slope of y on x
+    mx = mean(x)
+    return [yi - theta * (xi - mx) for xi, yi in zip(x, y)], theta
+
+def se_diff(t, c):                           # standard error of a difference in means
+    return (var(t) / len(t) + var(c) / len(c)) ** 0.5
+
+# Tasks completed per user, last month (pre) and during the test (y). Illustrative.
+pre_c = [2, 9, 4, 15, 6, 1, 11, 7]
+y_c   = [5, 7, 2, 13, 9, 3, 9, 10]
+pre_t = [3, 8, 5, 14, 2, 10, 6, 9]
+y_t   = [4, 12, 9, 15, 6, 10, 6, 13]
+
+adj, theta = cuped(y_c + y_t, pre_c + pre_t)  # pool both arms to estimate theta
+adj_c, adj_t = adj[:8], adj[8:]
+print(f"theta {theta:.3f}")                                               # theta 0.754
+print(f"raw   diff {mean(y_t) - mean(y_c):.3f} se {se_diff(y_t, y_c):.3f}")        # raw   diff 2.125 se 1.896
+print(f"cuped diff {mean(adj_t) - mean(adj_c):.3f} se {se_diff(adj_t, adj_c):.3f}")  # cuped diff 1.937 se 0.986
+print(f"variance kept {var(adj) / var(y_c + y_t):.3f}")                    # variance kept 0.316</code></pre>
+<pre class="code" data-lang="rust"><code>fn mean(v: &amp;[f64]) -&gt; f64 {
+    v.iter().sum::&lt;f64&gt;() / v.len() as f64
+}
+
+fn var(v: &amp;[f64]) -&gt; f64 {
+    // sample variance (n - 1)
+    let m = mean(v);
+    v.iter().map(|x| (x - m).powi(2)).sum::&lt;f64&gt;() / (v.len() as f64 - 1.0)
+}
+
+fn cov(a: &amp;[f64], b: &amp;[f64]) -&gt; f64 {
+    let (ma, mb) = (mean(a), mean(b));
+    a.iter().zip(b).map(|(x, y)| (x - ma) * (y - mb)).sum::&lt;f64&gt;() / (a.len() as f64 - 1.0)
+}
+
+/// Adjust y by the pre-period covariate x: y - theta * (x - mean(x)).
+fn cuped(y: &amp;[f64], x: &amp;[f64]) -&gt; (Vec&lt;f64&gt;, f64) {
+    let theta = cov(x, y) / var(x); // the regression slope of y on x
+    let mx = mean(x);
+    (x.iter().zip(y).map(|(xi, yi)| yi - theta * (xi - mx)).collect(), theta)
+}
+
+fn se_diff(t: &amp;[f64], c: &amp;[f64]) -&gt; f64 {
+    // standard error of a difference in means
+    (var(t) / t.len() as f64 + var(c) / c.len() as f64).sqrt()
+}
+
+fn main() {
+    // Tasks completed per user, last month (pre) and during the test (y). Illustrative.
+    let pre_c = [2.0, 9.0, 4.0, 15.0, 6.0, 1.0, 11.0, 7.0];
+    let y_c = [5.0, 7.0, 2.0, 13.0, 9.0, 3.0, 9.0, 10.0];
+    let pre_t = [3.0, 8.0, 5.0, 14.0, 2.0, 10.0, 6.0, 9.0];
+    let y_t = [4.0, 12.0, 9.0, 15.0, 6.0, 10.0, 6.0, 13.0];
+
+    let y: Vec&lt;f64&gt; = y_c.iter().chain(&amp;y_t).cloned().collect();
+    let x: Vec&lt;f64&gt; = pre_c.iter().chain(&amp;pre_t).cloned().collect();
+    let (adj, theta) = cuped(&amp;y, &amp;x); // pool both arms to estimate theta
+    let (adj_c, adj_t) = adj.split_at(8);
+    println!("theta {:.3}", theta); // theta 0.754
+    println!("raw   diff {:.3} se {:.3}", mean(&amp;y_t) - mean(&amp;y_c), se_diff(&amp;y_t, &amp;y_c)); // raw   diff 2.125 se 1.896
+    println!("cuped diff {:.3} se {:.3}", mean(adj_t) - mean(adj_c), se_diff(adj_t, adj_c)); // cuped diff 1.937 se 0.986
+    println!("variance kept {:.3}", var(&amp;adj) / var(&amp;y)); // variance kept 0.316
+}</code></pre>
+</div>
+</div>
+
+<h3>9. Many metrics, many segments, heterogeneous effects</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Throw enough darts and one hits</span></div>
+  <p>Check 40 numbers and, by luck alone, about two will look "significant" at the 5% level. Slice your users 20 ways (by country, by phone, by age) and some slice will show a dramatic effect that is just noise. That does not mean slices are useless. It means a surprising slice is a question to check in a new test, not a finding.</p>
+  <p>Real differences between groups do exist: a change can help beginners and annoy experts. Spotting those is valuable, as long as you confirm them.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Separate deciding from exploring</span></div>
+  <ul>
+    <li><b>Decide on the pre-registered metrics.</b> The primary and guardrails get their full error budget. Everything else on the scorecard is exploratory.</li>
+    <li><b>Report segments that were planned.</b> A few segments named in the brief (new versus returning, platform, language) are fair. A segment found by browsing 30 cuts needs a follow-up test.</li>
+    <li><b>Ask whether a segment effect is different, or just significant.</b> "Significant in Germany, not in France" does not mean the effect differs between them; the interaction test decides that.</li>
+    <li><b>Act on heterogeneity carefully.</b> Shipping only to the segment where it won bakes in the winner's curse. Confirm first.</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Corrections and interaction tests</span></div>
+  <p>With \(m\) independent tests at level \(\alpha\) and no true effects, the chance of at least one false positive is \(1-(1-\alpha)^m\): 64% at \(m = 20\). The corrections from <a href="#evalstats">statistics for eval sets</a> apply: Holm (or Bonferroni) to control the family-wise error rate for a small set of decision metrics, Benjamini–Hochberg to control the false discovery rate across a large exploratory scorecard.</p>
+  <p>For heterogeneous treatment effects, test the difference directly: \(\hat\Delta_A - \hat\Delta_B\) with standard error \(\sqrt{\mathrm{SE}_A^2 + \mathrm{SE}_B^2}\) for disjoint segments. Segment only on attributes fixed before assignment (country at sign-up, prior usage); segmenting on post-treatment behaviour ("users who used the new feature") conditions on an outcome and reintroduces selection bias. Aggregates can also reverse within segments if the treatment changes the segment mix (Simpson's paradox), which is one more reason to check SRM per segment. Shrinkage estimators (empirical Bayes across segments) give better estimates of per-segment effects than raw segment means.</p>
+</div>
+
+<h3>10. Ramping, holdouts, and Twyman's law</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Dip a toe, then wade in</span></div>
+  <p>You test the water with a toe before jumping in. A <b>ramp</b> does the same with a launch: 1% of users first, to catch crashes, then 5%, then a proper 50/50 test, then everyone. A <b>holdout</b> keeps a small group on the old version for months after launch, so you can still ask "is the new version still better?" long after the novelty wears off.</p>
+  <p>And when a result looks amazing, be suspicious first. A 30% jump from a small change is far more often a bug than a breakthrough.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Stages with different jobs</span></div>
+  <div class="pipeline">
+    <div class="stage"><b>1% canary</b>Catch crashes, errors, latency spikes. Hours to a day.</div>
+    <div class="stage"><b>5 to 10%</b>Check guardrails and SRM with real volume. A few days.</div>
+    <div class="stage"><b>50/50 test</b>Maximum power for the decision. Full planned duration.</div>
+    <div class="stage"><b>100% with holdout</b>Ship, keep 1 to 5% on control for a quarter.</div>
+  </div>
+  <p>Only the 50/50 stage answers the question; early stages are for safety, and their data should not be pooled into the decision analysis because the population and time period differ. Holdouts measure cumulative impact across many launches and catch slow effects like retention or trust. They cost the held-out users the improvement, so keep them small and time-boxed.</p>
+  <p><b>Twyman's law</b>: "Any figure that looks interesting or different is usually wrong." Kohavi and colleagues made it a rule for experimenters. Treat an unexpectedly large win as a bug report until logging, SRM, and the metric definition check out.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">What each stage can and cannot tell you</span></div>
+  <p>At 1% allocation, power for a 1-point effect is negligible, so a "flat" canary means only "no catastrophe". Increasing allocation mid-test changes the mix of early and late entrants per arm; analyse each allocation period separately or only the stable period. For a holdout of fraction \(h\), the standard error of the long-run effect scales with \(\sqrt{1/(hN) + 1/((1-h)N)} \approx 1/\sqrt{hN}\), so a 2% holdout needs about 13 times the users of a 50/50 test for the same precision; that is acceptable because holdouts run for months on the full population. Contamination is the main threat: holdout users who see treated features through shared content or another device.</p>
+</div>
+
+<h3>11. Reading the result: the launch decision table</h3>
+<p>With trust checks done and the analysis run as planned, most outcomes fall into one cell of this table. The table belongs in the brief so the decision is mechanical.</p>
+<div class="tw"><table class="ab-dt">
+  <thead><tr><th>Primary metric</th><th>Guardrails all clear</th><th>A guardrail breached</th><th>Trust check failed (SRM, A/A, logging)</th></tr></thead>
+  <tbody>
+    <tr><td><b>Significant gain</b>, interval above zero</td><td><span class="ship">Ship.</span> Keep a holdout if the change is visible or large.</td><td><span class="think">Trade-off review.</span> Price the breach against the gain; often fix and rerun.</td><td><span class="stop">Do not read.</span> Find the cause, fix, rerun.</td></tr>
+    <tr><td><b>Flat</b>, interval inside ±MDE</td><td><span class="think">Ship only if the change has other value</span> (cost, simplicity, a platform step). Otherwise stop.</td><td><span class="stop">Do not ship.</span></td><td><span class="stop">Do not read.</span></td></tr>
+    <tr><td><b>Inconclusive</b>, interval wider than ±MDE</td><td><span class="think">Underpowered.</span> Extend only if planned (sequential design), or redesign.</td><td><span class="stop">Do not ship.</span></td><td><span class="stop">Do not read.</span></td></tr>
+    <tr><td><b>Significant loss</b></td><td><span class="stop">Do not ship.</span> Learn why from diagnostics.</td><td><span class="stop">Do not ship.</span></td><td><span class="stop">Do not read.</span></td></tr>
+  </tbody>
+</table></div>
+<p>Two common distortions to watch for: shipping a "directionally positive" result from the inconclusive row, and treating a gain in the primary metric as licence to ignore a guardrail that the brief called non-negotiable.</p>
+
+<div class="callout eval"><span class="tag">Eval lens</span><div>An A/B test is an eval run on live traffic, and every lesson from <a href="#evalstats">statistics for eval sets</a> carries over: report intervals, not just p-values; state the MDE beside a null; correct for multiple metrics; match the analysis unit to the randomization unit, as clustering does for multi-turn evals in <a href="#intervals">intervals</a>. The difference is that you cannot rerun the same users. Every trust check (SRM, A/A tests, exposure logging) exists because, unlike a fixed eval set, you cannot inspect the test items directly.</div></div>
+
+<div class="callout ask"><span class="tag">Principal asks</span><div>What decision did the brief commit to before launch, and what would have made us not ship? What is the unit of randomization, and does the analysis unit match it? What was the MDE, and was the test powered for it on the triggered population? Did the SRM check pass overall, per day, and per platform? How many times did someone look, and what stopping rule applied? Is the effect stable by days since first exposure? Which segments were pre-registered? Where is the holdout?</div></div>
+
+<div class="callout warn"><span class="tag">Common mistakes</span><div>Stopping the first day p dips below 0.05. Ignoring an SRM because the result looks great. Randomizing by user but computing standard errors per request. Running five days and calling it a week. Reading a flat result from an underpowered test as "no effect". Picking the primary metric after seeing the scorecard. Shipping to the one segment that won. Applying CUPED with a covariate measured after assignment. Celebrating a huge win before Twyman's law has been satisfied.</div></div>
+</section>

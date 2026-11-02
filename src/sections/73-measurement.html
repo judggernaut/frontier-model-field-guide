@@ -34,6 +34,7 @@
       <circle cx="490" cy="62" r="20" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="490" y="67" text-anchor="middle" font-size="14" font-weight="700" fill="var(--accent)">3rd</text></g>
       <g class="a" style="--d:1" stroke="var(--faint)" stroke-width="1.5" fill="none"><path class="dash" d="M150 84 L97 160"/><path class="dash" d="M320 84 L101 160"/><path class="dash" d="M490 84 L547 160"/></g>
       <line x1="80" y1="170" x2="580" y2="170" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="330" y="160" text-anchor="middle" font-size="12" fill="var(--muted)">actual finishing times</text>
       <g fill="var(--muted)" font-size="12"><text x="80" y="192" text-anchor="middle">2:05:00</text><text x="330" y="192" text-anchor="middle">2:07:30</text><text x="580" y="192" text-anchor="middle">2:10:00</text></g>
       <g class="a" style="--d:2"><circle cx="97" cy="170" r="6" fill="var(--accent)"/><circle cx="101" cy="170" r="6" fill="var(--accent)"/><circle cx="547" cy="170" r="6" fill="var(--accent)"/></g>
       <text class="a" style="--d:3" x="320" y="226" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">1st to 2nd: 2 seconds. 2nd to 3rd: 4 minutes 28 seconds.</text>
@@ -105,7 +106,7 @@
 <h3>The Likert debate: can you average star ratings?</h3>
 <div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Two restaurants, both 3.0 stars</span></div>
   <p>Restaurant A gets three stars from everyone: fine, forgettable. Restaurant B gets five stars from half its diners and one star from the other half: some love it, some got food poisoning. Both average 3.0 stars. The average says they are the same. Anyone who has to pick a restaurant for their in-laws knows they are not.</p>
-  <p>The average is not always wrong for ratings, but it throws away the shape, and the shape is often the story.</p>
+  <p>The average can be fine for ratings. It throws away the shape, though, and the shape is often the story.</p>
 </div>
 <div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">A practical policy</span></div>
   <p>The argument has run for decades. One camp holds that ordinal data must never be averaged (Jamieson, Medical Education, 2004, is a widely cited statement). Another holds that t-tests and means are robust enough that averaging ratings rarely leads you astray in practice (Norman, Advances in Health Sciences Education, 2010). A third line of work shows concrete failure cases: Liddell and Kruschke (Journal of Experimental Social Psychology, 2018) demonstrate that treating ordinal ratings as metric can produce false alarms, missed effects, and even effects in the wrong direction, especially when groups differ in spread or pile up at the top or bottom of the scale.</p>
@@ -191,9 +192,9 @@ fn main() {
   <div class="wtitle">Same mean, different story</div>
   <div class="wsub">Two models rated 1 to 5, with means forced to match. Model A's ratings bunch in the middle; model B delights most users and fails an unhappy minority badly. Move the sliders and compare what a t-test and a rank test conclude.</div>
   <div class="controls">
-    <div class="ctl"><label for="ms-mu">Shared mean: <output id="ms-mu-o">3.60</output></label><input type="range" id="ms-mu" min="2.6" max="3.9" step="0.05" value="3.6"></div>
-    <div class="ctl"><label for="ms-sa">Model A spread: <output id="ms-sa-o">0.70</output></label><input type="range" id="ms-sa" min="0.4" max="2" step="0.05" value="0.7"></div>
-    <div class="ctl"><label for="ms-w">Model B unhappy minority: <output id="ms-w-o">15%</output></label><input type="range" id="ms-w" min="0" max="0.3" step="0.01" value="0.15"></div>
+    <div class="ctl"><label for="ms-mu">Shared mean: <output id="ms-mu-o">3.80</output></label><input type="range" id="ms-mu" min="2.6" max="3.9" step="0.05" value="3.8"></div>
+    <div class="ctl"><label for="ms-sa">Model A spread: <output id="ms-sa-o">0.60</output></label><input type="range" id="ms-sa" min="0.4" max="2" step="0.05" value="0.6"></div>
+    <div class="ctl"><label for="ms-w">Model B unhappy minority: <output id="ms-w-o">25%</output></label><input type="range" id="ms-w" min="0" max="0.3" step="0.01" value="0.25"></div>
     <div class="ctl"><label for="ms-n">Ratings per model: <output id="ms-n-o">200</output></label><input type="range" id="ms-n" min="20" max="1000" step="10" value="200"></div>
   </div>
   <canvas></canvas>
@@ -265,9 +266,9 @@ fn main() {
       <text x="40" y="118" font-size="14" font-weight="600" fill="var(--fg)">Count the other 3 as burned out</text>
       <rect class="grow-x" style="--d:1" x="300" y="102" width="207" height="26" rx="6" fill="var(--warn)"/>
       <text class="a" style="--d:2" x="517" y="120" font-size="14" font-weight="600" fill="var(--fg)">689 h</text>
-      <g class="a" style="--d:3"><rect x="40" y="156" width="560" height="76" rx="12" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5"/>
-      <text x="320" y="186" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Both are too low, and nothing tells you by how much.</text>
-      <text x="320" y="210" text-anchor="middle" font-size="13" fill="var(--muted)">The first throws the toughest bulbs away; the second pretends they died when we stopped looking.</text></g>
+      <g class="a" style="--d:3"><rect x="40" y="152" width="560" height="86" rx="12" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5"/>
+      <text x="320" y="180" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Both are too low, and nothing tells you by how much.</text>
+      <text x="320" y="208" text-anchor="middle" font-size="13" fill="var(--muted)">The first throws the toughest bulbs away.</text><text x="320" y="225" text-anchor="middle" font-size="13" fill="var(--muted)">The second pretends they died when we stopped looking.</text></g>
     </svg>
     <p>The two obvious shortcuts both understate how long bulbs last. Ignoring unfinished bulbs throws away the strongest ones. Counting them as failures at the cut-off pretends the test's end was their end.</p>
   </div>
@@ -279,9 +280,9 @@ fn main() {
       <text x="128" y="30" font-size="12" fill="var(--muted)">share of bulbs still burning</text>
       <path class="a" style="--d:0" d="M120 40 H252 V62.5 H349 V88.75 H388 V115 H463 V141.25 H516 V167.5 H560" stroke="var(--accent)" stroke-width="3" fill="none"/>
       <g class="a" style="--d:1" stroke="var(--accent)" stroke-width="2"><line x1="296" y1="56" x2="296" y2="69"/><line x1="556" y1="161" x2="556" y2="174"/></g>
-      <g class="a" style="--d:2"><text x="262" y="96" font-size="12" fill="var(--fg)">300 h: 8 at risk, 1 fails → × 7/8</text></g>
-      <g class="a" style="--d:3"><text x="360" y="64" font-size="12" fill="var(--fg)">520 h: 6 at risk (bulb 2 left) → × 5/6</text></g>
-      <text class="a" style="--d:4" x="130" y="200" font-size="12" fill="var(--muted)">small ticks = a bulb left the test still burning</text>
+      <g class="a" style="--d:2"><text x="136" y="150" font-size="12" fill="var(--fg)">300 h: 8 at risk, 1 fails → × 7/8</text></g>
+      <g class="a" style="--d:3"><text x="136" y="170" font-size="12" fill="var(--fg)">520 h: 6 at risk (bulb 2 left) → × 5/6</text></g>
+      <text class="a" style="--d:4" x="136" y="200" font-size="12" fill="var(--muted)">small ticks = a bulb left the test still burning</text>
     </svg>
     <p>Kaplan–Meier walks forward in time. At each burnout it asks: of the bulbs still being watched right now, what share failed? It multiplies those survival fractions together. Bulb 2 counts for its first 400 hours and then quietly leaves the "at risk" group, so it is neither thrown away nor counted as a failure.</p>
   </div>
@@ -293,7 +294,7 @@ fn main() {
       <path class="a dash" style="--d:0" d="M120 130 H463 V220" stroke="var(--good)" stroke-width="2" fill="none"/>
       <circle class="a pulse" style="--d:1" cx="463" cy="130" r="6" fill="var(--good)"/>
       <text class="a" style="--d:1" x="463" y="238" text-anchor="middle" font-size="13" font-weight="700" fill="var(--good)">median ≈ 780 h</text>
-      <g class="a" style="--d:2"><text x="150" y="178" font-size="13" fill="var(--fg)">Naive answers: 622 h and 689 h.</text><text x="150" y="198" font-size="12" fill="var(--muted)">If the curve never reached 50%, the honest median is "more than 1,000 h".</text></g>
+      <g class="a" style="--d:2"><text x="136" y="168" font-size="13" fill="var(--fg)">Naive answers: 622 h and 689 h.</text><text x="136" y="190" font-size="12" fill="var(--muted)">Curve never reaching 50%?</text><text x="136" y="206" font-size="12" fill="var(--muted)">Report "more than 1,000 h".</text></g>
     </svg>
     <p>The median lifetime is where the curve drops through 50 percent: about 780 hours, well above both shortcuts. If more bulbs had outlasted the test and the curve stayed above 50 percent, the honest answer would be "median above 1,000 hours", which is still more informative than a wrong number.</p>
   </div>
@@ -403,8 +404,8 @@ fn main() {
       <g class="a" style="--d:1"><circle cx="480" cy="96" r="54" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="480" cy="96" r="18" fill="none" stroke="var(--line-strong)"/><g fill="var(--accent)"><circle cx="512" cy="68" r="4"/><circle cx="518" cy="74" r="4"/><circle cx="508" cy="76" r="4"/><circle cx="516" cy="64" r="4"/></g></g>
       <g class="a" style="--d:2"><circle cx="250" cy="216" r="54" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="250" cy="216" r="18" fill="none" stroke="var(--line-strong)"/><g fill="var(--warn)"><circle cx="222" cy="196" r="4"/><circle cx="280" cy="226" r="4"/><circle cx="244" cy="248" r="4"/><circle cx="262" cy="190" r="4"/></g></g>
       <g class="a" style="--d:3"><circle cx="480" cy="216" r="54" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="480" cy="216" r="18" fill="none" stroke="var(--line-strong)"/><g fill="var(--fp)"><circle cx="500" cy="180" r="4"/><circle cx="526" cy="214" r="4"/><circle cx="490" cy="196" r="4"/><circle cx="514" cy="240" r="4"/></g></g>
-      <text class="a" style="--d:4" x="590" y="100" font-size="12" fill="var(--muted)">the scale</text>
-      <text class="a" style="--d:4" x="590" y="116" font-size="12" fill="var(--muted)">from step 1</text>
+      <text class="a" style="--d:4" x="546" y="100" font-size="12" fill="var(--muted)">the scale</text>
+      <text class="a" style="--d:4" x="546" y="116" font-size="12" fill="var(--muted)">from step 1</text>
     </svg>
     <p>Put together, there are four combinations. Only the top left is what you want. Reliability is necessary for validity, because a measure that disagrees with itself cannot agree with the truth, but it is not enough: the top right is perfectly consistent and wrong.</p>
   </div>
