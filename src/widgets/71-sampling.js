@@ -13,10 +13,10 @@ G.widget('w-sm-poll', function (root) {
   var OPTIN = [0.80, 0.45, 0.25, 0.10].map(function (c) { return [c, c * 1.6]; });
   var ONE = [[1, 1], [1, 1], [1, 1], [1, 1]];
   var M = {
-    email: { r: EMAIL, label: 'email poll' },
-    srs: { r: ONE, label: 'simple random sample' },
-    strat: { r: ONE, label: 'stratified sample', strat: true },
-    optin: { r: OPTIN, label: 'opt-in web link' }
+    email: { r: EMAIL, label: 'An email poll' },
+    srs: { r: ONE, label: 'A simple random sample' },
+    strat: { r: ONE, label: 'A stratified sample', strat: true },
+    optin: { r: OPTIN, label: 'An opt-in web poll' }
   };
   var ps = false;
   G.on(bt, 'click', function () { ps = !ps; bt.setAttribute('aria-pressed', ps); draw(); });
@@ -44,11 +44,11 @@ G.widget('w-sm-poll', function (root) {
     on.textContent = n.toLocaleString('en-US');
     bt.disabled = !!m.strat;
     var d = design(m, n, weight);
-    var narrow = (cv.parentElement.clientWidth || 640) < 560, H = narrow ? 560 : 330;
+    var narrow = (cv.parentElement.clientWidth || 640) < 560, H = narrow ? 650 : 352;
     var c = G.canvas(cv, H), ctx = c.ctx;
 
     // Top or left: the population as dots, grouped by age band.
-    var popW = narrow ? c.w : c.w * 0.5, popH = narrow ? 250 : H - 10;
+    var popW = narrow ? c.w : c.w * 0.5, popH = narrow ? 330 : H - 10;
     var counts = PI.map(function (p) { return Math.round(p * 300); });
     var r = G.rng(71), dots = [], b, i;
     for (b = 0; b < 4; b++) for (i = 0; i < counts[b]; i++) dots.push({ b: b, s: r() < SUP[b] ? 1 : 0, u: r() });
@@ -61,23 +61,25 @@ G.widget('w-sm-poll', function (root) {
       var keys = dots.map(function (o, j) { var w = m.r[o.b][o.s]; return { j: j, key: Math.pow(o.u, 1 / w) }; });
       keys.sort(function (x, y) { return y.key - x.key; }); keys.slice(0, 60).forEach(function (e) { take[e.j] = 1; });
     }
-    var colW = (popW - 20) / 4, x0 = 10, top = 34, cell = Math.max(7, Math.min(12, colW / 9.5));
+    var colW = (popW - 20) / 4, x0 = 10, top = 34, cols = 6, cell = Math.max(7, Math.min(13, (colW - 10) / cols));
+    var maxRows = Math.ceil(Math.max.apply(null, counts) / cols), ly = top + maxRows * cell + 14;
     G.text(ctx, 'the town (each dot ≈ 30 people); ringed dots end up in the poll', x0, 12, P.muted, 'left', 11.5);
     var j = 0;
     for (b = 0; b < 4; b++) {
-      var cols = Math.max(4, Math.floor((colW - 8) / cell)), bx = x0 + b * colW, idx = 0, nIn = 0, nSup = 0;
+      var bx = x0 + b * colW + (colW - cols * cell) / 2 - 4, idx = 0, nIn = 0, nSup = 0;
       for (i = 0; i < counts[b]; i++, j++) {
         var o = dots[j], cx = bx + 4 + (idx % cols) * cell + cell / 2, cy = top + Math.floor(idx / cols) * cell + cell / 2; idx++;
         var col = o.s ? P.good : P.tn;
         if (take[j]) { nIn++; nSup += o.s; G.dot(ctx, cx, cy, cell * 0.36, col, P.fg); }
         else { ctx.globalAlpha = 0.22; G.dot(ctx, cx, cy, cell * 0.36, col); ctx.globalAlpha = 1; }
       }
-      var ly = top + Math.ceil(counts[b] / cols) * cell + 14;
-      G.text(ctx, BANDS[b], bx + colW / 2, ly, P.fg, 'center', 12);
-      G.text(ctx, 'supports ' + G.pct(SUP[b]), bx + colW / 2, ly + 15, P.muted, 'center', 11);
-      G.text(ctx, 'town ' + G.pct(PI[b]) + ' · poll ' + G.pct(d.mix[b]), bx + colW / 2, ly + 30, Math.abs(d.mix[b] - PI[b]) > 0.04 ? P.warn : P.faint, 'center', 10.5);
+      var lx0 = x0 + b * colW + colW / 2, off = Math.abs(d.mix[b] - PI[b]) > 0.04;
+      G.text(ctx, BANDS[b], lx0, ly, P.fg, 'center', 12);
+      G.text(ctx, 'supports ' + G.pct(SUP[b]), lx0, ly + 15, P.muted, 'center', 11);
+      G.text(ctx, 'town ' + G.pct(PI[b]), lx0, ly + 30, P.faint, 'center', 10.5);
+      G.text(ctx, 'poll ' + G.pct(d.mix[b]), lx0, ly + 44, off ? P.warn : P.faint, 'center', 10.5);
     }
-    var lgY = narrow ? popH - 4 : H - 12;
+    var lgY = ly + 64;
     G.dot(ctx, x0 + 6, lgY, 4, P.good); G.text(ctx, 'supports', x0 + 14, lgY, P.muted, 'left', 11);
     G.dot(ctx, x0 + 82, lgY, 4, P.tn); G.text(ctx, 'opposes', x0 + 90, lgY, P.muted, 'left', 11);
 
@@ -113,7 +115,7 @@ G.widget('w-sm-poll', function (root) {
     k('est').textContent = G.pct(got, 1) + ' ± ' + G.fmt(196 * d.se, 1);
     k('bias').textContent = (d.est - TRUTH >= 0 ? '+' : '') + G.fmt((d.est - TRUTH) * 100, 1) + ' pts';
     k('neff').textContent = G.big(Math.round(d.neff));
-    var txt = 'A ' + m.label + (weight ? ', post-stratified by age,' : '') + ' of ' + n.toLocaleString('en-US') + ' people says <b>' + G.pct(got, 1) + '</b> (±' + G.fmt(196 * d.se, 1) + ' points). The truth is ' + G.pct(TRUTH, 1) + '. ';
+    var txt = m.label + (weight ? ', post-stratified by age,' : '') + ' of ' + n.toLocaleString('en-US') + ' people says <b>' + G.pct(got, 1) + '</b> (±' + G.fmt(196 * d.se, 1) + ' points). The truth is ' + G.pct(TRUTH, 1) + '. ';
     if (biased) {
       txt += 'The design is off by <b>' + G.fmt((d.est - TRUTH) * 100, 1) + ' points</b> on average, and that number does not change with n: more people only shrink the band around the wrong value. ' + (hit ? 'This particular interval still covers the truth, by luck and width.' : 'This interval <b>misses the truth</b>.');
       if (key !== 'srs' && !weight) txt += ' Try post-stratifying: it fixes the part of the bias that comes from the wrong age mix.';
@@ -132,9 +134,9 @@ var SM_PLANE = (function () {
   function rect(x0, y0, x1, y1) { return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]; }
   return [
     { name: 'Engines', kill: null, polys: [rect(0.155, 0.34, 0.215, 0.50), rect(0.315, 0.31, 0.375, 0.48), rect(0.625, 0.31, 0.685, 0.48), rect(0.785, 0.34, 0.845, 0.50)] },
-    { name: 'Cockpit', kill: 0.35, polys: [[[0.5, 0.04], [0.545, 0.10], [0.545, 0.19], [0.455, 0.19], [0.455, 0.10]]] },
+    { name: 'Cockpit', kill: 0.45, polys: [[[0.5, 0.04], [0.545, 0.10], [0.545, 0.25], [0.455, 0.25], [0.455, 0.10]]] },
     { name: 'Tail', kill: 0.12, polys: [rect(0.455, 0.80, 0.545, 0.96), [[0.455, 0.84], [0.30, 0.90], [0.30, 0.94], [0.455, 0.93]], [[0.545, 0.84], [0.70, 0.90], [0.70, 0.94], [0.545, 0.93]]] },
-    { name: 'Fuselage', kill: 0.05, polys: [rect(0.455, 0.19, 0.545, 0.80)] },
+    { name: 'Fuselage', kill: 0.05, polys: [rect(0.455, 0.25, 0.545, 0.80)] },
     { name: 'Wings', kill: 0.06, polys: [[[0.455, 0.37], [0.04, 0.47], [0.04, 0.53], [0.455, 0.51]], [[0.545, 0.37], [0.96, 0.47], [0.96, 0.53], [0.545, 0.51]]] }
   ];
 })();
@@ -206,7 +208,7 @@ G.widget('w-sm-planes', function (root) {
     G.line(ctx, [[XB(1), by0 - 4], [XB(1), by0 + 5 * rowH - 6]], P.faint, 1, [3, 3]);
     var lgy = by0 + 5 * rowH + 6;
     G.dot(ctx, bx0 - 74, lgy, 4, P.accent); G.text(ctx, 'came back', bx0 - 66, lgy, P.muted, 'left', 11);
-    if (show) { G.dot(ctx, bx0 + 14, lgy, 4, P.warn); G.text(ctx, 'did not', bx0 + 22, lgy, P.muted, 'left', 11); }
+    if (show) { G.dot(ctx, bx0 + 14, lgy, 4, P.warn); G.text(ctx, 'all planes', bx0 + 22, lgy, P.muted, 'left', 11); }
 
     var worst = 0; dB.forEach(function (v, i) { if (v < dB[worst]) worst = i; });
     k('back').textContent = back + ' of ' + N;
