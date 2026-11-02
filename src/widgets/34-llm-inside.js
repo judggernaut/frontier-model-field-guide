@@ -234,7 +234,7 @@ G.widget('w-li-embed', function (root) {
     return WORDS.map(function (w, i) { return { i: i, c: cos(v, vec(i)), d: Math.hypot(v[0] - w[1], v[1] - w[2]) }; })
       .filter(function (r) { return skip.indexOf(r.i) < 0; }).sort(function (a, b) { return b.c - a.c; });
   }
-  function c3(v) { return G.fmt(v, v > 0.9995 && v < 1 ? 4 : 3); }
+  function c3(v) { return G.fmt(v, v >= 0.99995 ? 5 : v > 0.9995 ? 4 : 3); }   // enough digits that a near-match never reads as exactly 1
 
   function draw() {
     var P = G.pal(), mode = sMode.value, COL = { p: P.accent, g: P.eli5, a: P.lead, n: P.good };
@@ -290,8 +290,11 @@ G.widget('w-li-embed', function (root) {
       var rx = X(res[0]), ry = Y(res[1]);
       ctx.strokeStyle = P.fg; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(rx - 5, ry - 5); ctx.lineTo(rx + 5, ry + 5); ctx.moveTo(rx + 5, ry - 5); ctx.lineTo(rx - 5, ry + 5); ctx.stroke();
-      var lab = q[0] + ' − ' + q[1] + ' + ' + q[2], lw = fs * 0.55 * lab.length, lx = Math.min(rx + 8, W - lw - 4);
-      G.text(ctx, lab, lx, ry - 16, P.fg, 'left', 11.5);
+      var lab = q[0] + ' − ' + q[1] + ' + ' + q[2];
+      ctx.font = '11.5px ' + G.css('--font-body', 'sans-serif');
+      var lw = ctx.measureText(lab).width, lx = Math.max(4, Math.min(W - lw - 4, rx - lw / 2));
+      ctx.fillStyle = P.surface; ctx.globalAlpha = 0.85; ctx.fillRect(lx - 3, ry - 27, lw + 6, 16); ctx.globalAlpha = 1;
+      G.text(ctx, lab, lx, ry - 19, P.fg, 'left', 11.5);
     }
     geom = pts;
 
