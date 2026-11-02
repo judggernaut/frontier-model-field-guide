@@ -12,7 +12,7 @@ G.widget('w-rz-sim', function (root) {
   var sE = G.$(root, '#rz-eff'), sN = G.$(root, '#rz-n'), oE = G.$(root, '#rz-eff-o'), oN = G.$(root, '#rz-n-o');
   var cv = G.$(root, 'canvas'), out = G.$(root, '[data-out]'), bal = G.$(root, '[data-bal]');
   var k = function (n) { return G.$(root, '[data-k2=' + n + ']'); };
-  var NS = [100, 200, 400, 800, 1600, 3200], RUNS = 300, SHIFT = [0.45, 0.15, -0.15, -0.45];
+  var NS = [100, 200, 400, 800, 1600, 3200], RUNS = 300, SHIFT = [0.3, 0.1, -0.1, -0.3];
   var NAMES = { random: 'coin flip', optin: 'opt-in', lowest: 'treat-the-lowest-scorers', region: 'one-region pilot' };
 
   function experiment(r, n, tau, rule) {
@@ -27,7 +27,7 @@ G.widget('w-rz-sim', function (root) {
     for (i = 0; i < n; i++) {
       var t;
       if (rule === 'random') t = r() < 0.5;
-      else if (rule === 'optin') t = r() < G.sigmoid(-0.2 + 1.8 * m[i]);
+      else if (rule === 'optin') t = r() < G.sigmoid(-0.1 + 0.8 * m[i]);
       else if (rule === 'lowest') t = pre[i] < med;
       else t = reg[i] === 0;
       T.push(t ? 1 : 0);
@@ -76,7 +76,7 @@ G.widget('w-rz-sim', function (root) {
     ests.forEach(function (v) { bins[Math.min(NB - 1, Math.floor((v - lo) / bw))]++; });
     var ymax = Math.max.apply(null, bins) * 1.25;
     var c = G.canvas(cv, 250), ctx = c.ctx, pad = { l: 40, r: 16, t: 30, b: 36 };
-    var ax = G.axes(ctx, c.w, c.h, pad, { x: [lo, hi], y: [0, ymax], xt: rzNice(lo, hi, c.w < 500 ? 4 : 7), yt: [], xl: 'estimated effect (score points), one bar = runs landing in that range' });
+    var ax = G.axes(ctx, c.w, c.h, pad, { x: [lo, hi], y: [0, ymax], xt: rzNice(lo, hi, c.w < 500 ? 4 : 7), yt: [], xl: c.w < 520 ? 'estimated effect (score points)' : 'estimated effect (score points), one bar = runs landing in that range' });
     ctx.globalAlpha = 0.8;
     bins.forEach(function (b, i) {
       if (!b) return;
@@ -90,7 +90,7 @@ G.widget('w-rz-sim', function (root) {
     var leftT = ax.X(tau) > c.w - 140, leftA = ax.X(avg) > c.w - 160;
     G.text(ctx, 'true effect ' + G.fmt(tau, 1), ax.X(tau) + (leftT ? -6 : 6), pad.t - 12, P.good, leftT ? 'right' : 'left', 12);
     if (Math.abs(ax.X(avg) - ax.X(tau)) > 4) G.text(ctx, 'average estimate ' + G.fmt(avg, 1), ax.X(avg) + (leftA ? -6 : 6), pad.t + 10, big ? P.fp : P.fg, leftA ? 'right' : 'left', 12);
-    k('true').textContent = G.fmt(tau, 1); k('avg').textContent = G.fmt(avg, 2);
+    k('avg').textContent = G.fmt(avg, 2);
     k('bias').textContent = (bias > 0 ? '+' : '') + G.fmt(bias, 2); k('bias').style.color = big ? 'var(--fp)' : 'var(--good)';
     k('sd').textContent = G.fmt(sd, 2);
     var mr = miss / ests.length; k('miss').textContent = G.pct(mr, 0); k('miss').style.color = mr > 0.1 ? 'var(--fp)' : 'var(--good)';
@@ -107,14 +107,15 @@ G.widget('w-rz-sim', function (root) {
     msg += ', the 300 estimates centre on <b>' + G.fmt(avg, 1) + '</b> against a true effect of <b>' + G.fmt(tau, 1) + '</b>. ';
     if (!big) msg += 'That is unbiased: individual runs scatter by about ±' + G.fmt(1.96 * sd, 1) + ', and more users would tighten the scatter around the truth. ';
     else msg += 'The bias of <b>' + (bias > 0 ? '+' : '') + G.fmt(bias, 1) + '</b> does not shrink with more users; try raising the sample size and watch the spread tighten around the wrong value. ';
-    if (st.rule === 'optin' && st.est === 'after') msg += 'Motivated users opt in, and motivation raises scores on its own. The balance table shows it in the hidden trait, and the pre-period score betrays it too.';
-    else if (st.rule === 'optin' && st.est === 'did') msg += 'Comparing changes removes most of the stable motivation gap, but motivated users also improve faster, so trends are not parallel and some bias remains.';
-    else if (st.rule === 'lowest' && st.est === 'prepost') msg += 'This is regression to the mean: users picked for a low pre-period score were partly unlucky, so they bounce back even without treatment. The shared time trend adds a little more.';
-    else if (st.rule === 'lowest' && st.est === 'did') msg += 'Selecting on the pre-period outcome breaks difference-in-differences: the treated group bounces up and the control group drifts down, both by chance.';
-    else if (st.rule === 'lowest') msg += 'The treated group is the less motivated half, so after treatment it still trails the rest. The effect looks negative or small.';
-    else if (st.rule === 'region') msg += 'The pilot region happens to have more motivated users, and the account-age row stays balanced, which shows a balance table only checks what you measured.';
-    else if (st.est === 'prepost') msg += 'Even with a coin flip, before-versus-after credits the treatment with the shared time trend of 1.5 points plus motivated growth. A control group removes it.';
-    else msg += 'A coin flip balances the hidden trait on average; any single run can be off, and the interval accounts for that. About 5% of 95% intervals should miss.';
+    var R = st.rule, E = st.est;
+    if (R === 'lowest' && E === 'prepost') msg += 'This is regression to the mean: users picked for a low pre-period score were partly unlucky, so they bounce back even without treatment. The shared time trend adds a little more.';
+    else if (R === 'lowest' && E === 'did') msg += 'Selecting on the pre-period outcome breaks difference-in-differences: the treated group bounces up and the control group drifts down, both by chance.';
+    else if (R === 'lowest') msg += 'The treated group is the less motivated half, so after treatment it still trails the rest. The effect looks too small or even negative.';
+    else if (E === 'prepost') msg += 'Before-versus-after has no control group, so it credits the treatment with the shared time trend of 1.5 points plus the faster growth of motivated users. ' + (R === 'random' ? 'Even a coin flip cannot fix a missing comparison.' : '');
+    else if (R === 'optin' && E === 'after') msg += 'Motivated users opt in, and motivation raises scores on its own. The balance table shows it in the hidden trait, and the pre-period score betrays it too.';
+    else if (R === 'region' && E === 'after') msg += 'The pilot region happens to have more motivated users. The account-age row stays balanced, a reminder that a balance table only checks what you measured.';
+    else if (E === 'did' && R !== 'random') msg += 'Comparing changes removes the stable motivation gap, but motivated users also improve faster, so trends are not parallel and a little bias remains.';
+    else msg += 'A coin flip balances the hidden trait on average. Any single run can be off, and the interval accounts for that: about 5% of 95% intervals should miss.';
     out.innerHTML = msg;
   }
   G.$$(root, '[data-k]').forEach(function (g) {
@@ -132,8 +133,8 @@ G.widget('w-rz-did', function (root) {
   var oT = G.$(root, '#rz-did-eff-o'), oG = G.$(root, '#rz-did-g-o'), oS = G.$(root, '#rz-did-s-o');
   var cv = G.$(root, 'canvas'), out = G.$(root, '[data-out]'), k = function (n) { return G.$(root, '[data-k2=' + n + ']'); };
   var W = 10, L = 5;   // weeks, launch after week 5
-  var r = G.rng(7), NC = [], NT = [];
-  for (var i = 0; i < W; i++) { NC.push(1.2 * G.gauss(r)); NT.push(1.2 * G.gauss(r)); }
+  var r = G.rng(22), NC = [], NT = [];
+  for (var i = 0; i < W; i++) { NC.push(0.6 * G.gauss(r)); NT.push(0.6 * G.gauss(r)); }
   function draw() {
     var P = G.pal(), tau = +sT.value, g = +sG.value, sh = +sS.value;
     oT.textContent = tau; oG.textContent = G.fmt(g, 2); oS.textContent = sh;
@@ -151,7 +152,7 @@ G.widget('w-rz-did', function (root) {
     for (i = 0; i < L; i++) { xs.push(i + 1); ys.push(T[i] - C[i]); }
     var mx = G.mean(xs), my = G.mean(ys), sxy = 0, sxx = 0;
     for (i = 0; i < L; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) * (xs[i] - mx); }
-    var slope = sxy / sxx, flagged = Math.abs(slope) > 0.8;
+    var slope = sxy / sxx, flagged = Math.abs(slope) > 0.6;
     // DiD's implied counterfactual: treated pre level plus the control group's change
     var preGap = mean(T, 0, L) - mean(C, 0, L), DC = C.map(function (v) { return v + preGap; });
     var all = C.concat(T, CF, DC), lo = Math.min.apply(null, all) - 4, hi = Math.max.apply(null, all) + 6;

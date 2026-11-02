@@ -177,10 +177,10 @@ G.widget('w-tg-flow', function (root) {
       if (A.waste > 0) msg += ' So far ' + dur(A.waste) + ' went on checks this incident does not need before the cheap ones were done.';
     } else {
       msg = '<b>Verdict: ' + C.verdict + '.</b> ' + C.action + ' You reached it after <b>' + dur(A.verdictAt) + '</b>; the chapter\'s order gets there in ' + dur(A.ref) + '. ';
-      if (A.waste > 0) msg += dur(A.waste) + ' of that went on ' + A.wasted.map(function (i) { return (i + 1) + '. ' + CHECKS[i].n; }).join(', ') + ', which this incident did not need yet. ';
+      if (A.waste > 0) msg += dur(A.waste) + ' of that went on ' + A.wasted.map(function (i) { return 'check ' + (i + 1) + ' (' + CHECKS[i].n + ')'; }).join(', ') + ', which this incident did not need yet. ';
       else msg += 'No time went on checks you did not need. ';
       if (C.m < 6 && !A.done[5] && C.m > 1) msg += 'Before closing, read twenty outputs anyway: the chapter says every time, and it is how you confirm the story.';
-      else if (C.m === 1) msg += 'Most "regressions" end here, inside the noise. The replay alone would have cost ' + dur(CHECKS[4].min) + '.';
+      else if (C.m === 1) msg += 'Most "regressions" end here, inside the noise' + (A.done[4] ? '.' : ', before anyone spends ' + dur(CHECKS[4].min) + ' on a replay.');
       else if (C.m === 6) msg += 'Only a model regression needs all six checks, because every cheaper explanation has to be ruled out first.';
     }
     out.innerHTML = msg;

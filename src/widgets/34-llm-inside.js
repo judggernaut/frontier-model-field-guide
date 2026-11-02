@@ -211,3 +211,120 @@ G.widget('w-li-ngram', function (root) {
   G.on(ts, 'input', draw);
   return draw;
 });
+
+/* A hand-built 2D embedding map (illustrative coordinates, chosen so each group points in its own
+   direction from the origin). Neighbours by cosine; analogies a − b + c with the three inputs excluded. */
+G.widget('w-li-embed', function (root) {
+  var sMode = G.$(root, '#em-mode'), sAn = G.$(root, '#em-an'), cv = G.$(root, 'canvas'), out = G.$(root, '[data-out]');
+  var k = function (n) { return G.$(root, '[data-k=' + n + ']'); };
+  var WORDS = [
+    ['man', 3.17, 1.48, 'p'], ['woman', 1.87, 2.98, 'p'], ['king', 5.37, 2.48, 'p'], ['queen', 4.19, 3.88, 'p'], ['boy', 2.27, 0.58, 'p'], ['girl', 1.02, 2.16, 'p'],
+    ['France', 2.9, -0.78, 'g'], ['Paris', 4.7, -2.58, 'g'], ['Italy', 2.46, -1.72, 'g'], ['Rome', 4.16, -3.37, 'g'],
+    ['Germany', 1.72, -2.46, 'g'], ['Berlin', 3.64, -4.21, 'g'], ['Japan', 0.78, -2.9, 'g'], ['Tokyo', 2.5, -4.76, 'g'],
+    ['dog', -3.9, 2.25, 'a'], ['puppy', -2.9, 2.65, 'a'], ['cat', -2.28, 3.65, 'a'], ['kitten', -1.18, 4.17, 'a'], ['horse', -5.42, 0.96, 'a'], ['lion', -6.12, 2.47, 'a'],
+    ['one', -0.94, -4.09, 'n'], ['two', -1.97, -3.71, 'n'], ['three', -2.86, -3.07, 'n'], ['four', -3.56, -2.23, 'n'], ['five', -4.02, -1.23, 'n']
+  ];
+  var AN = [['king', 'man', 'woman'], ['queen', 'woman', 'man'], ['girl', 'boy', 'man'], ['Paris', 'France', 'Italy'], ['Tokyo', 'Japan', 'Germany'], ['puppy', 'dog', 'cat']];
+  var REL = ['the man → woman arrow', 'the woman → man arrow', 'the boy → man arrow', 'the France → Italy arrow', 'the Japan → Germany arrow', 'the dog → cat arrow'];
+  var idx = {}; WORDS.forEach(function (w, i) { idx[w[0]] = i; });
+  var sel = idx.cat, geom = null;
+  function cos(a, b) { return (a[0] * b[0] + a[1] * b[1]) / (Math.hypot(a[0], a[1]) * Math.hypot(b[0], b[1])); }
+  function vec(i) { return [WORDS[i][1], WORDS[i][2]]; }
+  function ranked(v, skip) {
+    return WORDS.map(function (w, i) { return { i: i, c: cos(v, vec(i)), d: Math.hypot(v[0] - w[1], v[1] - w[2]) }; })
+      .filter(function (r) { return skip.indexOf(r.i) < 0; }).sort(function (a, b) { return b.c - a.c; });
+  }
+  function c3(v) { return G.fmt(v, v > 0.9995 && v < 1 ? 4 : 3); }
+
+  function draw() {
+    var P = G.pal(), mode = sMode.value, COL = { p: P.accent, g: P.eli5, a: P.lead, n: P.good };
+    var W = cv.parentElement.clientWidth || 640, X0 = -7.2, X1 = 6.9, Y0 = -5.6, Y1 = 5.1, m = 10;
+    var H = W >= 600 ? 420 : Math.round((W - 2 * m) / (X1 - X0) * (Y1 - Y0) + 2 * m);
+    var c = G.canvas(cv, H), ctx = c.ctx;
+    var sc = Math.min((W - 2 * m) / (X1 - X0), (H - 2 * m) / (Y1 - Y0));       // one scale for both axes, so angles are true
+    var ox = (W - sc * (X1 - X0)) / 2 - sc * X0, oy = (H - sc * (Y1 - Y0)) / 2 + sc * Y1;
+    function X(v) { return ox + v * sc; } function Y(v) { return oy - v * sc; }
+    var fs = W >= 600 ? 12.5 : 11.5;
+    // faint axes through the origin: cosine measures angles seen from this point
+    G.line(ctx, [[X(X0), Y(0)], [X(X1), Y(0)]], P.line, 1); G.line(ctx, [[X(0), Y(Y0)], [X(0), Y(Y1)]], P.line, 1);
+    G.dot(ctx, X(0), Y(0), 3, P.faint); G.text(ctx, 'origin', X(0) + 6, Y(0) + 10, P.faint, 'left', 11);
+    function ray(v, col, w, dash, ext) {
+      var L = Math.hypot(v[0], v[1]), f = ext ? 9 / L : 1;
+      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+      G.line(ctx, [[X(0), Y(0)], [X(v[0] * f), Y(v[1] * f)]], col, w, dash); ctx.restore();
+    }
+    function arrow(a, b, col, dash) {
+      var A = [X(a[0]), Y(a[1])], B = [X(b[0]), Y(b[1])], ang = Math.atan2(B[1] - A[1], B[0] - A[0]);
+      var Bs = [B[0] - 6 * Math.cos(ang), B[1] - 6 * Math.sin(ang)];
+      G.line(ctx, [A, Bs], col, 2, dash);
+      ctx.beginPath(); ctx.moveTo(B[0], B[1]); ctx.lineTo(B[0] - 10 * Math.cos(ang - 0.4), B[1] - 10 * Math.sin(ang - 0.4));
+      ctx.lineTo(B[0] - 10 * Math.cos(ang + 0.4), B[1] - 10 * Math.sin(ang + 0.4)); ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+    }
+    var ring = {}, bold = {}, res = null, top, msg;
+    if (mode === 'nb') {
+      var R = ranked(vec(sel), [sel]); top = R.slice(0, 3);
+      ray(vec(sel), P.accent, 1.5, [5, 4], true);
+      top.forEach(function (r) { ray(vec(r.i), P.faint, 1, [2, 4], false); ring[r.i] = P.accent; });
+      ring[sel] = P.fg; bold[sel] = true;
+    } else {
+      var q = AN[+sAn.value], a = idx[q[0]], b = idx[q[1]], cc = idx[q[2]];
+      res = [WORDS[a][1] - WORDS[b][1] + WORDS[cc][1], WORDS[a][2] - WORDS[b][2] + WORDS[cc][2]];
+      top = ranked(res, [a, b, cc]);
+      arrow(vec(b), vec(cc), P.fg, null);                 // the offset b → c
+      arrow(vec(a), res, P.fg, [5, 4]);                   // the same offset, starting from a
+      ray(res, P.faint, 1, [2, 4], false); ray(vec(top[0].i), P.faint, 1, [2, 4], false);
+      [a, b, cc].forEach(function (i) { ring[i] = P.muted; }); ring[top[0].i] = P.accent; bold[top[0].i] = true;
+    }
+    // words
+    var pts = [];
+    WORDS.forEach(function (w, i) {
+      var x = X(w[1]), y = Y(w[2]);
+      if (ring[i]) { ctx.strokeStyle = ring[i]; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.stroke(); }
+      G.dot(ctx, x, y, 4.5, COL[w[3]], P.surface);
+      ctx.font = (bold[i] ? '600 ' : '') + fs + 'px ' + G.css('--font-body', 'sans-serif');
+      ctx.fillStyle = ring[i] || bold[i] ? P.fg : P.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(w[0], x + 11, y);
+      pts.push([x, y, ctx.measureText(w[0]).width]);
+    });
+    if (res) {
+      var rx = X(res[0]), ry = Y(res[1]);
+      ctx.strokeStyle = P.fg; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(rx - 5, ry - 5); ctx.lineTo(rx + 5, ry + 5); ctx.moveTo(rx + 5, ry - 5); ctx.lineTo(rx - 5, ry + 5); ctx.stroke();
+      var lab = q[0] + ' − ' + q[1] + ' + ' + q[2], lw = fs * 0.55 * lab.length, lx = Math.min(rx + 8, W - lw - 4);
+      G.text(ctx, lab, lx, ry - 16, P.fg, 'left', 11.5);
+    }
+    geom = pts;
+
+    // cards and readout
+    var best = top[0], name = function (r) { return WORDS[r.i][0]; };
+    if (mode === 'nb') {
+      k('l1').textContent = 'Selected word'; k('v1').textContent = WORDS[sel][0];
+      k('l2').textContent = 'Nearest neighbour'; k('v2').textContent = name(best); k('v3').textContent = c3(best.c);
+      msg = 'Nearest to <b>' + WORDS[sel][0] + '</b> by cosine: ' + top.map(function (r) { return '<b>' + name(r) + '</b> (' + c3(r.c) + ')'; }).join(', ') + '. ' +
+        'Cosine compares directions seen from the origin (the dashed rays) and ignores length, so a word further out along the same direction still counts as close' +
+        (best.c > 0.999 && best.d > 1.5 ? ': here ' + name(best) + ' is ' + G.fmt(best.d, 1) + ' units away yet points almost exactly the same way. ' : '. ') +
+        'Real models use hundreds to thousands of dimensions (4,096 or more in large LLMs), which leaves room for many independent directions of meaning at once: gender, royalty, place, number, tense, topic. On a flat 2D page everything has to share two directions, so some words end up closer than their meanings deserve.';
+    } else {
+      var incl = ranked(res, [])[0];
+      k('l1').textContent = 'Nearest word (answer)'; k('v1').textContent = name(best);
+      k('l2').textContent = 'Distance from the result'; k('v2').textContent = G.fmt(best.d, 2); k('v3').textContent = c3(best.c);
+      msg = '<b>' + q[0] + ' − ' + q[1] + ' + ' + q[2] + '</b>: take ' + REL[+sAn.value] + ' (solid) and attach it to ' + q[0] + ' (dashed). It lands at (' + G.fmt(res[0], 2) + ', ' + G.fmt(res[1], 2) + '), marked ×. ' +
+        'The nearest word by cosine, leaving out the three input words as the standard test does, is <b>' + name(best) + '</b> (cosine ' + c3(best.c) + ', distance ' + G.fmt(best.d, 2) + '). ' +
+        'It lands near the answer, not on it. ' + (incl.i === best.i ? 'On this hand-built map the answer wins even if the inputs are allowed. ' : 'If the inputs were allowed, ' + name(incl) + ' would win. ') +
+        'In real embeddings with thousands of dimensions the trick is approximate: it works for some relations (capitals, gender) and fails for many others, and without the rule that excludes the input words the nearest vector is often one of the inputs (Linzen 2016). Read it as evidence that directions can carry meaning, not as a reasoning engine.';
+    }
+    out.innerHTML = msg;
+  }
+  G.on(sMode, 'change', draw);
+  G.on(sAn, 'change', function () { sMode.value = 'an'; draw(); });
+  cv.addEventListener('click', function (e) {
+    if (!geom) return;
+    var r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, bi = -1, bd = 1e9;
+    geom.forEach(function (p, i) {
+      var inLabel = x >= p[0] - 8 && x <= p[0] + 12 + p[2] && Math.abs(y - p[1]) <= 9, d = Math.hypot(p[0] - x, p[1] - y);
+      if ((inLabel || d < 16) && d < bd) { bd = d; bi = i; }
+    });
+    if (bi >= 0) { sel = bi; sMode.value = 'nb'; draw(); }
+  });
+  return draw;
+});

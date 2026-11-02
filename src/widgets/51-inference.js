@@ -188,16 +188,18 @@ G.widget('w-in-passk', function (root) {
     var corr = {}, sub = {};
     shuffled(n, G.rng(n * 1009 + c * 7 + 1), c).forEach(function (x) { corr[x] = 1; });
     shuffled(n, G.rng(4242 + draws * 31 + n), kk).forEach(function (x) { sub[x] = 1; });
-    var W = cs.parentElement.clientWidth || 600, cell = 18;
+    var W = cs.parentElement.clientWidth || 600, cell = 28;
     while (cell > 7 && Math.ceil(n / Math.floor((W - 4) / cell)) > 4) cell--;
     var cols = Math.floor((W - 4) / cell), rows = Math.ceil(n / cols);
-    var c2 = G.canvas(cs, rows * cell + 30), x2 = c2.ctx, hit = false;
+    var c2 = G.canvas(cs, rows * cell + 46), x2 = c2.ctx, hit = false;
     for (j = 0; j < n; j++) {
-      var cx = 2 + (j % cols) * cell, cy = 22 + Math.floor(j / cols) * cell, sz = cell - 3;
+      var cx = 2 + (j % cols) * cell, cy = 40 + Math.floor(j / cols) * cell, sz = cell - 3;
       x2.fillStyle = corr[j] ? P.tp : P.sunk; x2.fillRect(cx, cy, sz, sz);
+      if (!corr[j] && !sub[j]) { x2.strokeStyle = P.line; x2.lineWidth = 1; x2.strokeRect(cx + 0.5, cy + 0.5, sz - 1, sz - 1); }
       if (sub[j]) { x2.strokeStyle = P.fg; x2.lineWidth = cell > 11 ? 2 : 1.4; x2.strokeRect(cx + 1, cy + 1, sz - 2, sz - 2); if (corr[j]) hit = true; }
     }
-    G.text(c2.ctx, 'Your ' + n + ' samples: green = correct. Outlined: one random subset of ' + kk + (hit ? ', which contains a correct one.' : ', with no correct one.'), 2, 9, hit ? P.tp : P.muted, 'left', 12);
+    G.text(x2, 'Your ' + n + ' samples (green = correct).', 2, 9, P.muted, 'left', 12);
+    G.text(x2, 'Outlined: a random ' + kk + ' of them, ' + (hit ? 'with a correct one.' : 'with no correct one.'), 2, 26, hit ? P.tp : P.fp, 'left', 12);
 
     /* Monte Carlo check of the estimator's meaning: share of random k-subsets containing a correct sample */
     var r = G.rng(99 + n * 13 + c * 17 + kk), good = 0, idx = [];
@@ -215,7 +217,7 @@ G.widget('w-in-passk', function (root) {
     var truth = 1 - Math.pow(1 - p, kk);
 
     k('u').textContent = G.pct(u, 1); k('p').textContent = G.pct(pl, 1);
-    var d = pl - u; k('d').textContent = (d > 0.0005 ? '+' : '') + G.fmt(d * 100, 1) + ' pts';
+    var d = pl - u, dv = G.fmt(Math.abs(d) * 100, 1); k('d').textContent = (dv === '0.0' ? '' : d > 0 ? '+' : '−') + dv + ' pts';
     k('sim').textContent = G.pct(good / 2000, 1);
     var msg = 'With ' + c + ' correct out of ' + n + ', the unbiased estimate asks: if you picked ' + kk + ' of these ' + n + ' samples at random, how often would at least one be correct? Answer <b>' + G.pct(u, 1) +
       '</b> (the random-subset check gives ' + G.pct(good / 2000, 1) + '). The plug-in formula gives <b>' + G.pct(pl, 1) + '</b>. ';

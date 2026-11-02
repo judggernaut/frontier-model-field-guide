@@ -101,6 +101,24 @@
   <p>Attention by itself ignores order: shuffle the inputs and each position computes the same thing. Order is injected with <b>positional information</b>. Most current open models use rotary position embeddings (RoPE), which rotate query and key vectors by an angle proportional to position so that their dot product depends on the distance between tokens.</p>
 </div>
 
+<p>The map below shrinks the idea to two dimensions so you can see it. The coordinates are made up by hand for illustration; no model produced them.</p>
+<div class="widget" id="w-li-embed">
+  <div class="wtitle">An embedding map</div>
+  <div class="wsub">Click any word to see its nearest neighbours by cosine similarity, then switch to analogy mode and pick a puzzle to watch the vector arithmetic land near the answer.</div>
+  <div class="controls">
+    <div class="ctl"><label for="em-mode">Mode</label><select id="em-mode"><option value="nb">Nearest neighbours</option><option value="an">Analogy: a − b + c</option></select></div>
+    <div class="ctl"><label for="em-an">Analogy</label><select id="em-an"><option value="0">king − man + woman</option><option value="1">queen − woman + man</option><option value="2">girl − boy + man</option><option value="3">Paris − France + Italy</option><option value="4">Tokyo − Japan + Germany</option><option value="5">puppy − dog + cat</option></select></div>
+  </div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--accent)"></span>people and royalty</span><span><span class="sw" style="background:var(--eli5)"></span>countries and capitals</span><span><span class="sw" style="background:var(--lead)"></span>animals</span><span><span class="sw" style="background:var(--good)"></span>numbers</span><span>illustrative 2D coordinates</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l" data-k="l1">Selected word</div><div class="v" data-k="v1">—</div></div>
+    <div class="mc"><div class="l" data-k="l2">Nearest neighbour</div><div class="v" data-k="v2">—</div></div>
+    <div class="mc"><div class="l">Cosine similarity</div><div class="v" data-k="v3">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
 <h3>Attention: each position looks back at earlier ones</h3>
 <div class="story" id="st-li-attention">
   <div class="story-head"><div class="story-title">Who is "it"? Attention as a quick look back</div><p class="story-sub">Queries, keys, values and the causal mask, with one sentence.</p></div>

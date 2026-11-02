@@ -237,11 +237,10 @@
   </div>
   <canvas></canvas>
   <div class="cards">
-    <div class="mc"><div class="l">True effect</div><div class="v" data-k2="true">—</div></div>
     <div class="mc"><div class="l">Average estimate</div><div class="v" data-k2="avg">—</div></div>
     <div class="mc"><div class="l">Bias</div><div class="v" data-k2="bias">—</div></div>
-    <div class="mc"><div class="l">Spread (SD of estimates)</div><div class="v" data-k2="sd">—</div></div>
-    <div class="mc"><div class="l">95% intervals missing the truth</div><div class="v" data-k2="miss">—</div></div>
+    <div class="mc"><div class="l">Spread (SD)</div><div class="v" data-k2="sd">—</div></div>
+    <div class="mc"><div class="l">95% intervals that miss</div><div class="v" data-k2="miss">—</div></div>
   </div>
   <div class="tw"><table>
     <thead><tr><th>Balance check, first run</th><th>Treated</th><th>Control</th><th>SMD</th><th>Typical |SMD| over runs</th></tr></thead>
@@ -319,7 +318,7 @@
       <path class="a" style="--d:0" d="M170 192 L470 128" stroke="var(--tn)" stroke-width="3" fill="none"/>
       <circle class="a" style="--d:0" cx="170" cy="192" r="6" fill="var(--tn)"/><circle class="a" style="--d:0" cx="470" cy="128" r="6" fill="var(--tn)"/>
       <text class="a" style="--d:1" x="160" y="208" text-anchor="end" font-size="13" font-weight="600" fill="var(--muted)">Shop B: 180</text>
-      <text class="a" style="--d:1" x="482" y="132" font-size="13" font-weight="600" fill="var(--muted)">220 (+40, no new machine)</text>
+      <text class="a" style="--d:1" x="482" y="132" font-size="13" font-weight="600" fill="var(--muted)">220</text><text class="a" style="--d:1" x="482" y="150" font-size="12" fill="var(--muted)">+40, no new machine</text>
     </svg>
     <p>Shop B, across town, changed nothing. Its sales also rose, from 180 to 220. Summer, tourists, and a warm July lifted both shops. Some of Shop A's 60 cups would have come anyway.</p>
   </div>
@@ -335,9 +334,9 @@
       <text x="160" y="208" text-anchor="end" font-size="13" font-weight="600" fill="var(--muted)">Shop B</text>
       <path class="a dash" style="--d:0" d="M170 160 L470 96" stroke="var(--accent)" stroke-width="2" fill="none"/>
       <circle class="a" style="--d:1" cx="470" cy="96" r="6" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>
-      <text class="a" style="--d:1" x="482" y="100" font-size="13" fill="var(--accent)">240 if A had followed B's +40</text>
+      <text class="a" style="--d:1" x="482" y="104" font-size="13" fill="var(--accent)">240 if A had</text><text class="a" style="--d:1" x="482" y="121" font-size="13" fill="var(--accent)">followed B's +40</text>
       <path class="a" style="--d:2" d="M458 66 L458 94" stroke="var(--good)" stroke-width="3"/>
-      <text class="a" style="--d:2" x="446" y="84" text-anchor="end" font-size="14" font-weight="700" fill="var(--good)">effect ≈ 20</text>
+      <text class="a" style="--d:2" x="482" y="72" font-size="14" font-weight="700" fill="var(--good)">effect ≈ 20</text>
       <text class="a" style="--d:3" x="320" y="24" text-anchor="middle" font-size="13" fill="var(--fg)">(260 − 200) − (220 − 180) = 60 − 40 = 20 cups a day</text>
     </svg>
     <p>Difference-in-differences borrows Shop B's change as Shop A's "what would have happened". Shop A was expected to reach 240 without the machine, so the machine gets credit for 20 cups a day, a third of the naive number.</p>
@@ -349,6 +348,7 @@
       <line x1="450" y1="30" x2="450" y2="225" stroke="var(--line)" stroke-dasharray="4 4"/>
       <path class="a" style="--d:0" d="M100 176 L170 172 L240 170 L310 166 L380 160 L520 64" stroke="var(--accent)" stroke-width="3" fill="none"/>
       <path class="a" style="--d:0" d="M100 208 L170 204 L240 202 L310 198 L380 192 L520 128" stroke="var(--tn)" stroke-width="3" fill="none"/>
+      <text x="92" y="180" text-anchor="end" font-size="12" font-weight="600" fill="var(--accent)">A</text><text x="92" y="212" text-anchor="end" font-size="12" font-weight="600" fill="var(--muted)">B</text>
       <g class="a" style="--d:1"><rect x="90" y="40" width="300" height="56" rx="10" fill="var(--good-soft)" stroke="var(--good)"/><text x="240" y="64" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Five months moving in step:</text><text x="240" y="84" text-anchor="middle" font-size="13" fill="var(--fg)">the parallel-trends check passes</text></g>
       <g class="a" style="--d:2"><text x="470" y="186" font-size="12" fill="var(--muted)">It cannot rule out a shock</text><text x="470" y="204" font-size="12" fill="var(--muted)">that hit only A in June</text></g>
     </svg>
@@ -369,7 +369,7 @@
     <div class="mc"><div class="l">True effect</div><div class="v" data-k2="true">—</div></div>
     <div class="mc"><div class="l">DiD estimate</div><div class="v" data-k2="did">—</div></div>
     <div class="mc"><div class="l">Bias</div><div class="v" data-k2="bias">—</div></div>
-    <div class="mc"><div class="l">Pre-trend check (gap slope)</div><div class="v" data-k2="pre">—</div></div>
+    <div class="mc"><div class="l">Pre-trend slope gap</div><div class="v" data-k2="pre">—</div></div>
   </div>
   <div class="readout" data-out></div>
 </div>
@@ -505,7 +505,7 @@ def srm_check(n_treat, n_control, planned_share=0.5):
 chi2, p = srm_check(50_421, 49_579)       # planned 50/50, observed 50.4/49.6
 print(f"{chi2:.2f} {p:.4f}")              # 7.09 0.0078  small skew, but n is large: investigate
 chi2, p = srm_check(5_042, 4_958)
-print(f"{chi2:.2f} {p:.4f}")              # 0.71 0.4013  same 50.4/49.6 skew, consistent with chance</code></pre>
+print(f"{chi2:.2f} {p:.4f}")              # 0.71 0.4009  same 50.4/49.6 skew, consistent with chance</code></pre>
 <pre class="code" data-lang="rust"><code>// erfc via the Numerical Recipes rational approximation (relative error below 1.2e-7),
 // accurate enough to match Python's math.erfc to the printed digits here.
 fn erfc(x: f64) -&gt; f64 {
@@ -530,7 +530,7 @@ fn main() {
     let (chi2, p) = srm_check(50_421.0, 49_579.0, 0.5); // planned 50/50, observed 50.4/49.6
     println!("{:.2} {:.4}", chi2, p);                   // 7.09 0.0078  small skew, but n is large: investigate
     let (chi2, p) = srm_check(5_042.0, 4_958.0, 0.5);
-    println!("{:.2} {:.4}", chi2, p);                   // 0.71 0.4013  same 50.4/49.6 skew, consistent with chance
+    println!("{:.2} {:.4}", chi2, p);                   // 0.71 0.4009  same 50.4/49.6 skew, consistent with chance
 }</code></pre>
   </div>
 </div>

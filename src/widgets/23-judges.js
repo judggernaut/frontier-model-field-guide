@@ -60,8 +60,9 @@ G.widget('w-jd-kappa', function (root) {
     G.on(b, 'click', function () { var v = presets[b.dataset.preset]; sh.value = v[0]; sj.value = v[1]; so.value = v[2]; press(b.dataset.preset); draw(); });
   });
   function r2(x) { return Math.round(x * 100) / 100; }
+  function sf(x, d) { return G.fmt(x, d).replace(/^-/, '−'); }   // typographic minus
   function label(kap) {   // Landis and Koch (1977) descriptive bands
-    if (kap < 0) return 'worse than luck';
+    if (kap < 0) return 'poor';
     if (kap <= 0.2) return 'slight';
     if (kap <= 0.4) return 'fair';
     if (kap <= 0.6) return 'moderate';
@@ -93,7 +94,8 @@ G.widget('w-jd-kappa', function (root) {
     if (po >= pe) { ctx.fillStyle = P.accent; ctx.fillRect(X(pe), y1, X(po) - X(pe), bh); }
     else { ctx.fillStyle = P.fp; ctx.globalAlpha = 0.8; ctx.fillRect(X(po), y1, X(pe) - X(po), bh); ctx.globalAlpha = 1; }
     function clampX(x, half) { return Math.min(c.w - R - half, Math.max(L + half, x)); }
-    if (X(pe) - X(0) > 96) G.text(ctx, 'luck ' + G.pct(pe, 1), X(pe) - 6, y1 + bh / 2, P.fg, 'right', 11.5);
+    var lx0 = Math.min(X(pe), X(po)) - 8;
+    if (lx0 - X(0) > 80) G.text(ctx, 'luck ' + G.pct(pe, 1), lx0, y1 + bh / 2, P.fg, 'right', 11.5);
     // observed agreement marker, labelled above the bar
     ctx.strokeStyle = P.fg; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(X(po), y1 - 5); ctx.lineTo(X(po), y1 + bh + 3); ctx.stroke();
@@ -115,7 +117,7 @@ G.widget('w-jd-kappa', function (root) {
     if (kap >= 0) { ctx.fillStyle = P.accent; ctx.fillRect(X(0), y2, W * Math.min(1, kap), bh); }
     else { ctx.fillStyle = P.fp; ctx.globalAlpha = 0.8; ctx.fillRect(X(0), y2, W * Math.min(1, -kap), bh); ctx.globalAlpha = 1; }
     [0.2, 0.4, 0.6, 0.8].forEach(function (t) { ctx.strokeStyle = P.surface; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X(t), y2); ctx.lineTo(X(t), y2 + bh); ctx.stroke(); });
-    var kt = kap >= 0 ? 'κ = ' + G.fmt(kap, 2) + ': covers ' + G.pct(Math.max(0, kap)) + ' of the room' : 'κ = ' + G.fmt(kap, 2) + ': agrees less than luck would';
+    var kt = kap >= 0 ? 'κ = ' + sf(kap, 2) + ': covers ' + G.pct(Math.max(0, kap)) + ' of the room' : 'κ = ' + sf(kap, 2) + ': agrees less than luck would';
     var inside = Math.abs(kap) > 0.55;
     G.text(ctx, kt, inside ? X(0) + 8 : X(Math.min(1, Math.abs(kap))) + 8, y2 + bh / 2, inside ? P.surface : P.fg, 'left', 12);
     var lx = L, ly = y2 + bh + 22;
@@ -126,11 +128,11 @@ G.widget('w-jd-kappa', function (root) {
     });
 
     k('po').textContent = G.pct(po); k('pe').textContent = G.pct(pe, 1);
-    k('kappa').textContent = G.fmt(kap, 2); k('kappa').style.color = kap < 0.2 ? 'var(--fp)' : kap > 0.6 ? 'var(--tp)' : '';
-    var gap = j - h; k('gap').textContent = (gap > 0 ? '+' : '') + G.fmt(gap * 100, 0) + ' pts';
+    k('kappa').textContent = sf(kap, 2); k('kappa').style.color = kap < 0.2 ? 'var(--fp)' : kap > 0.6 ? 'var(--tp)' : '';
+    var gap = j - h; k('gap').textContent = (gap > 0.004 ? '+' : '') + sf(gap * 100, 0) + ' pts';
     var s = 'Luck alone: people pass ' + G.pct(h) + ' of items and the judge passes ' + G.pct(j) + ', so two raters who ignored the content would still agree on ' +
       G.fmt(h, 2) + ' × ' + G.fmt(j, 2) + ' + ' + G.fmt(1 - h, 2) + ' × ' + G.fmt(1 - j, 2) + ' = <b>' + G.pct(pe, 1) + '</b> of items. ' +
-      'Kappa only credits the agreement above that: (' + G.fmt(po, 2) + ' − ' + G.fmt(pe, 3) + ') / (1 − ' + G.fmt(pe, 3) + ') = <b>' + G.fmt(kap, 2) + '</b>, ' + label(kap) + ' on the Landis and Koch (1977) scale. ';
+      'Kappa only credits the agreement above that: (' + G.fmt(po, 2) + ' − ' + G.fmt(pe, 3) + ') / (1 − ' + G.fmt(pe, 3) + ') = <b>' + sf(kap, 2) + '</b>, ' + label(kap) + ' on the Landis and Koch (1977) scale. ';
     if (Math.abs(kap) < 0.005 && j >= 0.995) s += 'This judge never looks at the answer. Its ' + G.pct(po) + ' agreement is exactly the share of items people pass, so it tells you nothing about which ones deserve to pass.';
     else if (Math.abs(kap) < 0.05) s += 'The judge agrees about as often as a coin weighted to its pass rate would. The raw ' + G.pct(po) + ' is almost all luck.';
     else if (kap < 0) s += 'The judge is systematically wrong: it agrees less often than random labelling at the same rates.';
