@@ -1,0 +1,492 @@
+<section id="architecture" data-title="Designing a network: depth, width, and why not infinite layers">
+<h2>Designing a network: depth, width, and why not infinite layers</h2>
+<p>A fair question from anyone who has seen a neural network diagram: who decides how many layers there are, how wide each one is, and what kind of layer goes where? And if more layers make a model smarter, why not stack a thousand, or an infinite number? This chapter answers both. The short version: an architecture is a bet about the structure of your data, more depth stops paying for six concrete reasons, and labs choose shapes by running cheap experiments and fitting curves, not by inspiration. It builds on <a href="#neural-nets">neural networks</a> and <a href="#learning">how networks learn</a>, and feeds into <a href="#scaling">scaling laws</a>.</p>
+
+<div class="story" id="st-ar-whisper">
+  <div class="story-head"><div class="story-title">The whisper chain</div><p class="story-sub">Why stacking more layers breaks training, and the two fixes that made deep networks work, told as a message passed down a line of people.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Ten people in a line; the message gets quieter at each hand-off, ending at 35 percent">
+      <text x="320" y="28" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Each person passes on 90% of what they heard</text>
+      <g class="a" style="--d:0" font-size="12" fill="var(--fg)" text-anchor="middle">
+        <circle cx="50" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="50" y="76">1</text>
+        <circle cx="110" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="110" y="76">2</text>
+        <circle cx="170" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="170" y="76">3</text>
+        <circle cx="230" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="230" y="76">4</text>
+        <circle cx="290" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="290" y="76">5</text>
+        <circle cx="350" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="350" y="76">6</text>
+        <circle cx="410" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="410" y="76">7</text>
+        <circle cx="470" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="470" y="76">8</text>
+        <circle cx="530" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="530" y="76">9</text>
+        <circle cx="590" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="590" y="76">10</text>
+      </g>
+      <path class="dash" d="M590 100 L50 100" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+      <rect class="a" style="--d:4" x="36" y="190.1" width="28" height="34.9" rx="3" fill="var(--fp)"/><text class="a" style="--d:4" x="50" y="183.1" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">35%</text>
+      <rect class="a" style="--d:3" x="96" y="186.3" width="28" height="38.7" rx="3" fill="var(--fp)"/><text class="a" style="--d:3" x="110" y="179.3" text-anchor="middle" font-size="12" fill="var(--fg)">39%</text>
+      <rect class="a" style="--d:3" x="156" y="182.0" width="28" height="43.0" rx="3" fill="var(--fp)"/><text class="a" style="--d:3" x="170" y="175.0" text-anchor="middle" font-size="12" fill="var(--fg)">43%</text>
+      <rect class="a" style="--d:3" x="216" y="177.2" width="28" height="47.8" rx="3" fill="var(--fp)"/><text class="a" style="--d:3" x="230" y="170.2" text-anchor="middle" font-size="12" fill="var(--fg)">48%</text>
+      <rect class="a" style="--d:2" x="276" y="171.9" width="28" height="53.1" rx="3" fill="var(--fp)"/><text class="a" style="--d:2" x="290" y="164.9" text-anchor="middle" font-size="12" fill="var(--fg)">53%</text>
+      <rect class="a" style="--d:2" x="336" y="166.0" width="28" height="59.0" rx="3" fill="var(--fp)"/><text class="a" style="--d:2" x="350" y="159.0" text-anchor="middle" font-size="12" fill="var(--fg)">59%</text>
+      <rect class="a" style="--d:2" x="396" y="159.4" width="28" height="65.6" rx="3" fill="var(--fp)"/><text class="a" style="--d:2" x="410" y="152.4" text-anchor="middle" font-size="12" fill="var(--fg)">66%</text>
+      <rect class="a" style="--d:1" x="456" y="152.1" width="28" height="72.9" rx="3" fill="var(--fp)"/><text class="a" style="--d:1" x="470" y="145.1" text-anchor="middle" font-size="12" fill="var(--fg)">73%</text>
+      <rect class="a" style="--d:1" x="516" y="144.0" width="28" height="81.0" rx="3" fill="var(--fp)"/><text class="a" style="--d:1" x="530" y="137.0" text-anchor="middle" font-size="12" fill="var(--fg)">81%</text>
+      <rect class="a" style="--d:1" x="576" y="135.0" width="28" height="90.0" rx="3" fill="var(--fp)"/><text class="a" style="--d:1" x="590" y="128.0" text-anchor="middle" font-size="12" fill="var(--fg)">90%</text>
+      <line x1="20" y1="225" x2="620" y2="225" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="50" y="246" text-anchor="middle" font-size="12" fill="var(--muted)">first layer</text>
+      <text x="590" y="246" text-anchor="middle" font-size="12" fill="var(--muted)">last layer</text>
+      <text x="320" y="246" text-anchor="middle" font-size="12" fill="var(--muted)">← the correction travels backwards from the output</text>
+    </svg>
+    <p>Training works by sending a correction signal (the gradient) backwards from the output, through every layer in turn. If each layer passes on 90% of the signal it received, the first of ten layers hears only 35% of it.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Two charts over 50 layers: shrinking by 10 percent per layer ends near zero, growing by 10 percent per layer ends at 117 times">
+      <line x1="50" y1="210" x2="300" y2="210" stroke="var(--line-strong)" stroke-width="1.5"/><line x1="50" y1="50" x2="50" y2="210" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <line x1="350" y1="210" x2="600" y2="210" stroke="var(--line-strong)" stroke-width="1.5"/><line x1="350" y1="50" x2="350" y2="210" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="175" y="30" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fp)">×0.9 per layer</text>
+      <text x="475" y="30" text-anchor="middle" font-size="14" font-weight="600" fill="var(--warn)">×1.1 per layer</text>
+      <polyline class="a" style="--d:1" points="50.0,60.0 60.0,88.5 70.0,111.6 80.0,130.3 90.0,145.4 100.0,157.7 110.0,167.6 120.0,175.7 130.0,182.2 140.0,187.5 150.0,191.8 160.0,195.2 170.0,198.0 180.0,200.3 190.0,202.1 200.0,203.6 210.0,204.8 220.0,205.8 230.0,206.6 240.0,207.3 250.0,207.8 260.0,208.2 270.0,208.5 280.0,208.8 290.0,209.0 300.0,209.2" fill="none" stroke="var(--fp)" stroke-width="3"/>
+      <polyline class="a" style="--d:2" points="350.0,208.7 360.0,208.5 370.0,208.1 380.0,207.7 390.0,207.3 400.0,206.7 410.0,206.0 420.0,205.1 430.0,204.1 440.0,202.9 450.0,201.4 460.0,199.6 470.0,197.4 480.0,194.8 490.0,191.6 500.0,187.7 510.0,183.0 520.0,177.4 530.0,170.5 540.0,162.2 550.0,152.2 560.0,140.0 570.0,125.3 580.0,107.5 590.0,86.0 600.0,60.0" fill="none" stroke="var(--warn)" stroke-width="3"/>
+      <text class="a" style="--d:1" x="290" y="186" text-anchor="end" font-size="13" font-weight="600" fill="var(--fp)">after 50 layers: 0.5%</text>
+      <text class="a" style="--d:1" x="62" y="56" font-size="12" fill="var(--muted)">100%</text>
+      <text class="a" style="--d:2" x="545" y="62" text-anchor="end" font-size="13" font-weight="600" fill="var(--warn)">after 50 layers: 117×</text>
+      <text x="175" y="232" text-anchor="middle" font-size="12" fill="var(--muted)">layers travelled back (0 to 50)</text>
+      <text x="475" y="232" text-anchor="middle" font-size="12" fill="var(--muted)">layers travelled back (0 to 50)</text>
+      <text class="a" style="--d:3" x="320" y="254" text-anchor="middle" font-size="13" fill="var(--fg)">vanishing gradient (left)   ·   exploding gradient (right)</text>
+    </svg>
+    <p>The trouble is multiplication. Fifty hand-offs at 90% leave half a percent: the early layers stop learning (a <b>vanishing gradient</b>). Fifty at 110% amplify it 117 times: updates blow up and training diverges (an <b>exploding gradient</b>). Only a gain of exactly 1 is safe, and no real layer holds it exactly.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="An express lane line runs above the people; the signal stays the same order of size at every person">
+      <path class="a" style="--d:0" d="M600 40 L46 40" stroke="var(--accent)" stroke-width="4" fill="none"/>
+      <path class="a" style="--d:0" d="M46 40 l10 -6 l0 12 z" fill="var(--accent)"/>
+      <text class="a" style="--d:0" x="320" y="24" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">express lane: the signal skips straight back (residual connection)</text>
+      <g class="a" style="--d:1" stroke="var(--accent)" stroke-width="1.2" stroke-opacity=".6"><line x1="50" y1="42" x2="50" y2="57"/><line x1="110" y1="42" x2="110" y2="57"/><line x1="170" y1="42" x2="170" y2="57"/><line x1="230" y1="42" x2="230" y2="57"/><line x1="290" y1="42" x2="290" y2="57"/><line x1="350" y1="42" x2="350" y2="57"/><line x1="410" y1="42" x2="410" y2="57"/><line x1="470" y1="42" x2="470" y2="57"/><line x1="530" y1="42" x2="530" y2="57"/><line x1="590" y1="42" x2="590" y2="57"/></g>
+      <g font-size="12" fill="var(--fg)" text-anchor="middle">
+        <circle cx="50" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="50" y="76">1</text>
+        <circle cx="110" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="110" y="76">2</text>
+        <circle cx="170" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="170" y="76">3</text>
+        <circle cx="230" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="230" y="76">4</text>
+        <circle cx="290" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="290" y="76">5</text>
+        <circle cx="350" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="350" y="76">6</text>
+        <circle cx="410" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="410" y="76">7</text>
+        <circle cx="470" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="470" y="76">8</text>
+        <circle cx="530" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="530" y="76">9</text>
+        <circle cx="590" cy="72" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="590" y="76">10</text>
+      </g>
+      <rect class="a" style="--d:5" x="36" y="125.1" width="28" height="99.9" rx="3" fill="var(--good)"/><text class="a" style="--d:5" x="50" y="118.1" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">161%</text>
+      <rect class="a" style="--d:4" x="96" y="129.8" width="28" height="95.2" rx="3" fill="var(--good)"/><text class="a" style="--d:4" x="110" y="122.8" text-anchor="middle" font-size="12" fill="var(--fg)">154%</text>
+      <rect class="a" style="--d:4" x="156" y="134.2" width="28" height="90.8" rx="3" fill="var(--good)"/><text class="a" style="--d:4" x="170" y="127.2" text-anchor="middle" font-size="12" fill="var(--fg)">146%</text>
+      <rect class="a" style="--d:4" x="216" y="138.5" width="28" height="86.5" rx="3" fill="var(--good)"/><text class="a" style="--d:4" x="230" y="131.5" text-anchor="middle" font-size="12" fill="var(--fg)">140%</text>
+      <rect class="a" style="--d:3" x="276" y="142.5" width="28" height="82.5" rx="3" fill="var(--good)"/><text class="a" style="--d:3" x="290" y="135.5" text-anchor="middle" font-size="12" fill="var(--fg)">133%</text>
+      <rect class="a" style="--d:3" x="336" y="146.3" width="28" height="78.7" rx="3" fill="var(--good)"/><text class="a" style="--d:3" x="350" y="139.3" text-anchor="middle" font-size="12" fill="var(--fg)">127%</text>
+      <rect class="a" style="--d:3" x="396" y="150.0" width="28" height="75.0" rx="3" fill="var(--good)"/><text class="a" style="--d:3" x="410" y="143.0" text-anchor="middle" font-size="12" fill="var(--fg)">121%</text>
+      <rect class="a" style="--d:2" x="456" y="153.5" width="28" height="71.5" rx="3" fill="var(--good)"/><text class="a" style="--d:2" x="470" y="146.5" text-anchor="middle" font-size="12" fill="var(--fg)">115%</text>
+      <rect class="a" style="--d:2" x="516" y="156.8" width="28" height="68.2" rx="3" fill="var(--good)"/><text class="a" style="--d:2" x="530" y="149.8" text-anchor="middle" font-size="12" fill="var(--fg)">110%</text>
+      <rect class="a" style="--d:2" x="576" y="160.0" width="28" height="65.0" rx="3" fill="var(--good)"/><text class="a" style="--d:2" x="590" y="153.0" text-anchor="middle" font-size="12" fill="var(--fg)">105%</text>
+      <line x1="20" y1="225" x2="620" y2="225" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="320" y="246" text-anchor="middle" font-size="12" fill="var(--muted)">each person adds a small correction on top of what came through the lane</text>
+    </svg>
+    <p>The fix that made very deep networks trainable: give the signal an express lane. Each layer adds a small correction on top of its input instead of replacing it, so the signal always has a direct path back. This is a <b>residual connection</b>. With small corrections, ten layers keep the signal between 100% and 161%: nothing vanishes.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Bars of very different heights enter a normalise box and leave at the same height">
+      <text x="140" y="36" text-anchor="middle" font-size="13" font-weight="600" fill="var(--muted)">what arrives</text>
+      <text x="500" y="36" text-anchor="middle" font-size="13" font-weight="600" fill="var(--muted)">what each person works with</text>
+      <g class="a" style="--d:0">
+        <rect x="60" y="196" width="22" height="14" rx="3" fill="var(--fp)"/>
+        <rect x="95" y="70" width="22" height="140" rx="3" fill="var(--warn)"/>
+        <rect x="130" y="160" width="22" height="50" rx="3" fill="var(--fn)"/>
+        <rect x="165" y="110" width="22" height="100" rx="3" fill="var(--warn)"/>
+        <rect x="200" y="204" width="22" height="6" rx="3" fill="var(--fp)"/>
+      </g>
+      <line x1="40" y1="210" x2="240" y2="210" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <path class="dash" d="M252 140 L300 140" stroke="var(--muted)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:1"><rect x="306" y="105" width="110" height="70" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="361" y="136" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">normalise</text>
+        <text x="361" y="155" text-anchor="middle" font-size="12" fill="var(--muted)">reset the volume</text></g>
+      <path class="dash" d="M422 140 L440 140" stroke="var(--muted)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:2">
+        <rect x="450" y="130" width="22" height="80" rx="3" fill="var(--good)"/>
+        <rect x="485" y="130" width="22" height="80" rx="3" fill="var(--good)"/>
+        <rect x="520" y="130" width="22" height="80" rx="3" fill="var(--good)"/>
+        <rect x="555" y="130" width="22" height="80" rx="3" fill="var(--good)"/>
+        <rect x="590" y="130" width="22" height="80" rx="3" fill="var(--good)"/>
+      </g>
+      <line x1="440" y1="210" x2="620" y2="210" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text class="a" style="--d:3" x="320" y="240" text-anchor="middle" font-size="13" fill="var(--fg)">whispers and shouts both come out at normal speaking volume</text>
+    </svg>
+    <p>The second fix: before each person works on the message, they reset it to normal speaking volume. Whether it arrived as a whisper or a shout, the work starts from a standard size. This is <b>normalisation</b> (LayerNorm in transformers). Residual connections plus normalisation are why a 126-layer model trains at all.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Deep stack: eight blocks one after another; wide stack: two steps with four blocks side by side">
+      <text x="60" y="40" font-size="13" font-weight="600" fill="var(--fg)">Deep: 8 layers, each waits for the one before</text>
+      <g class="a" style="--d:0" fill="var(--accent)">
+        <rect x="60" y="52" width="56" height="26" rx="4"/><rect x="120" y="52" width="56" height="26" rx="4"/><rect x="180" y="52" width="56" height="26" rx="4"/><rect x="240" y="52" width="56" height="26" rx="4"/>
+        <rect x="300" y="52" width="56" height="26" rx="4"/><rect x="360" y="52" width="56" height="26" rx="4"/><rect x="420" y="52" width="56" height="26" rx="4"/><rect x="480" y="52" width="56" height="26" rx="4"/>
+      </g>
+      <text class="a" style="--d:1" x="548" y="70" font-size="12" fill="var(--muted)">8 steps</text>
+      <text x="60" y="122" font-size="13" font-weight="600" fill="var(--fg)">Wide: work inside a layer splits across chips at once</text>
+      <g class="a" style="--d:2" fill="var(--good)">
+        <rect x="60" y="134" width="56" height="14" rx="3"/><rect x="60" y="152" width="56" height="14" rx="3"/><rect x="60" y="170" width="56" height="14" rx="3"/><rect x="60" y="188" width="56" height="14" rx="3"/>
+        <rect x="120" y="134" width="56" height="14" rx="3"/><rect x="120" y="152" width="56" height="14" rx="3"/><rect x="120" y="170" width="56" height="14" rx="3"/><rect x="120" y="188" width="56" height="14" rx="3"/>
+      </g>
+      <text class="a" style="--d:3" x="188" y="172" font-size="12" fill="var(--muted)">2 steps, 4 chips each (plus the cost of talking between chips)</text>
+      <line x1="60" y1="222" x2="600" y2="222" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="600" y="244" text-anchor="end" font-size="12" fill="var(--muted)">time to produce one token →</text>
+    </svg>
+    <p>Even with both fixes, depth has a price you cannot parallelise away. Person 6 cannot speak before person 5 finishes. Every generated token must pass through every layer in order, so a model twice as deep takes roughly twice as long per token. Work inside one wide layer can be split across many chips at the same time.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Four tiles summarising why depth cannot grow without limit">
+      <g class="a" style="--d:0"><rect x="20" y="20" width="292" height="100" rx="10" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/>
+        <text x="36" y="48" font-size="14" font-weight="600" fill="var(--fg)">Gradients</text>
+        <text x="36" y="72" font-size="12.5" fill="var(--fg)">vanish or explode as a product;</text>
+        <text x="36" y="92" font-size="12.5" fill="var(--fg)">fixed by residuals + normalisation</text></g>
+      <g class="a" style="--d:1"><rect x="328" y="20" width="292" height="100" rx="10" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5"/>
+        <text x="344" y="48" font-size="14" font-weight="600" fill="var(--fg)">Compute and memory</text>
+        <text x="344" y="72" font-size="12.5" fill="var(--fg)">every layer adds parameters, FLOPs,</text>
+        <text x="344" y="92" font-size="12.5" fill="var(--fg)">stored activations and KV cache</text></g>
+      <g class="a" style="--d:2"><rect x="20" y="136" width="292" height="100" rx="10" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5"/>
+        <text x="36" y="164" font-size="14" font-weight="600" fill="var(--fg)">Latency</text>
+        <text x="36" y="188" font-size="12.5" fill="var(--fg)">layers run one after another,</text>
+        <text x="36" y="208" font-size="12.5" fill="var(--fg)">for every token you generate</text></g>
+      <g class="a" style="--d:3"><rect x="328" y="136" width="292" height="100" rx="10" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5"/>
+        <text x="344" y="164" font-size="14" font-weight="600" fill="var(--fg)">Data and returns</text>
+        <text x="344" y="188" font-size="12.5" fill="var(--fg)">more capacity needs more data,</text>
+        <text x="344" y="208" font-size="12.5" fill="var(--fg)">and each doubling buys less</text></g>
+    </svg>
+    <p>So "why not infinite layers?" has six answers, in three groups. The two gradient problems are solved well enough by residuals and normalisation. The other four are permanent: compute and memory, latency on every token, data to fill the extra capacity, and diminishing returns.</p>
+  </div>
+</div>
+
+<h3>An architecture is a bet about the data</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The right tool assumes something</span></div>
+  <p>A colander assumes you want to keep the solids and drop the liquid. An egg carton assumes eggs are roughly the same size. Each tool is useful because it builds in an assumption about what it will hold. If the assumption is right, the tool saves you effort. If it is wrong, the tool gets in the way.</p>
+  <p>Network layers are tools with built-in assumptions. A <b>convolution</b> layer assumes that a cat's ear looks the same in the top corner of a photo as in the bottom corner, so it reuses one small detector everywhere. A <b>recurrent</b> layer assumes data arrives in order, one step after another. An <b>attention</b> layer assumes almost nothing: any word may matter to any other word. The built-in assumption is called the <b>inductive bias</b>. Picking an architecture means picking which assumptions to bake in.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Strong assumptions buy data efficiency, weak ones buy headroom</span></div>
+  <p>A strong inductive bias is a loan against the future: it learns faster from little data, but it caps what the model can represent if the assumption is wrong. A weak bias needs more data and compute before it gets good, then keeps improving after the strongly biased model plateaus. Transformers sit at the weak end, which is why they dominate when data and compute are abundant (language, code, and increasingly images and audio), while convolutions and graph networks still win where data is scarce or the structure is known and fixed. Rich Sutton's essay "The Bitter Lesson" (2019) states the pattern bluntly: across decades, general methods that scale with compute have beaten methods that encode human knowledge about the domain.</p>
+  <p>For a frontier lab the practical consequence is that the architecture question is mostly settled at the top level (a decoder-only transformer, see <a href="#llm-inside">inside an LLM</a>) and the live decisions are second-order: depth versus width, attention variants, normalisation placement, mixture-of-experts routing, and context length. Those decisions are made by measurement, covered below.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Bias as a restricted hypothesis class</span></div>
+  <p>Formally, an architecture restricts the set of functions the network can express, and the parameterisation sets a prior over that set. A convolution enforces <b>translation equivariance</b>: shift the input and the output shifts the same way, \(f(T_s x) = T_s f(x)\). The saving is enormous. A fully connected layer mapping a 224×224×3 image to a same-sized output needs \((224\cdot224\cdot3)^2 \approx 2.3\times10^{10}\) weights. A 3×3 convolution from 3 channels to 64 channels needs \(3\cdot3\cdot3\cdot64 = 1{,}728\) weights, reused at every position. The convolution cannot represent most of what the dense layer can, and that is the point: it rules out functions that would be wrong for images anyway.</p>
+  <p>A transformer's attention is <b>permutation equivariant</b> over tokens: without position information it treats a sentence as a bag of words. Positional encodings (sinusoidal, learned, or rotary) add back exactly as much order information as the designers choose. Chapter <a href="#family">the family tree</a> walks through each architecture's bias in turn.</p>
+</div>
+
+<h3>Depth and width: what each buys</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Stations on an assembly line</span></div>
+  <p>Picture a car factory. <b>Depth</b> is the number of stations the car passes through: frame, then engine, then wiring, then paint. Each station builds on what the last one did, so more stations let you build more complicated things in more steps. <b>Width</b> is how many workers stand at each station. More workers per station means each step can handle more detail at once, but it does not add steps.</p>
+  <p>In a network, early layers find simple patterns (edges, common word pieces), middle layers combine them (shapes, phrases), and later layers combine those again (objects, meaning). Depth lets the network build ideas out of ideas. Width lets each layer keep track of more things at the same time.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Shape matters less than size, until it hits a system constraint</span></div>
+  <p>The most useful single fact: at a fixed parameter count, transformer loss depends only weakly on the exact depth-to-width ratio over a wide range. Kaplan et al. (2020) found that varying shape over a broad range changed loss by only a few percent, while changing total size moved it a lot. So shape is usually chosen for <b>system</b> reasons, not modelling ones:</p>
+  <ul>
+    <li><b>Depth costs latency.</b> Layers run in sequence for every generated token. A deeper model at the same size is slower to serve.</li>
+    <li><b>Width must fit the hardware.</b> Hidden sizes are usually multiples of 64 or 128 so matrix multiplies tile cleanly on accelerators, and wide layers are what tensor parallelism splits across chips (see <a href="#optimization">optimisation and infrastructure</a>).</li>
+    <li><b>Depth sets pipeline stages.</b> Layer count is chosen to divide evenly across pipeline-parallel stages.</li>
+    <li><b>Very shallow or very narrow both hurt.</b> Too shallow limits how many steps of composition the model can do per token; too narrow starves each layer of room, and attention heads get too small.</li>
+  </ul>
+  <p>The dense decoders in the table sit around 100 to 130 hidden units per layer of depth (recent MoE models vary more widely: Qwen3-235B has 94 layers at width 4,096, about 44 per layer):</p>
+  <div class="tw"><table>
+    <thead><tr><th>Model (source)</th><th>Parameters</th><th>Layers</th><th>Width d</th><th>Heads (KV heads)</th><th>d / layers</th></tr></thead>
+    <tbody>
+      <tr><td>GPT-2 XL (Radford et al. 2019)</td><td class="n">1.5B</td><td class="n">48</td><td class="n">1,600</td><td class="n">25</td><td class="n">33</td></tr>
+      <tr><td>GPT-3 (Brown et al. 2020)</td><td class="n">175B</td><td class="n">96</td><td class="n">12,288</td><td class="n">96</td><td class="n">128</td></tr>
+      <tr><td>Llama 2 70B (Touvron et al. 2023)</td><td class="n">70B</td><td class="n">80</td><td class="n">8,192</td><td class="n">64 (8)</td><td class="n">102</td></tr>
+      <tr><td>Llama 3 405B (Llama Team 2024)</td><td class="n">405B</td><td class="n">126</td><td class="n">16,384</td><td class="n">128 (8)</td><td class="n">130</td></tr>
+    </tbody>
+  </table></div>
+  <p>Notice what does not happen: nobody goes from 126 layers to 1,000. Going from 70B to 405B parameters, Llama roughly doubled the width and added about half again as many layers.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Counting parameters and FLOPs, and what theory says about depth</span></div>
+  <p>A standard decoder block has attention projections (\(4d^2\) weights for Q, K, V and output) and an MLP with hidden size \(4d\) (\(8d^2\) weights). So</p>
+  <div class="eq">\[ N \approx 12\, L\, d^2, \qquad \text{FLOPs per token (forward)} \approx 2N \]<span class="eqcap">\(L\) layers, width \(d\); embeddings excluded. GPT-3: \(12 \times 96 \times 12288^2 \approx 1.74\times10^{11}\), matching its 175B. Training costs about three times the forward pass, \(\approx 6N\) per token.</span></div>
+  <p>Parameters grow linearly in depth but quadratically in width. Doubling \(L\) doubles \(N\); doubling \(d\) quadruples it. Variants change the constants: Llama uses a SwiGLU MLP with three matrices (hidden size about \(3d\) to \(3.5d\) in Llama 3), and grouped-query attention shrinks the K and V projections. Llama 3 405B works out to about \(11.9\,L\,d^2\) plus embeddings, which reproduces its 405B.</p>
+  <p>Theory says depth is genuinely powerful, not just convenient. One hidden layer can approximate any continuous function on a bounded domain (Cybenko 1989; Hornik 1991), but may need an astronomical number of units to do it. Telgarsky (2016) constructed functions that a deep ReLU network computes with few units per layer while any much shallower network needs exponentially many units. Composition is cheap with depth and expensive without it. For transformers, each layer is one round of "look around, then think", so a fixed-depth model has a fixed budget of sequential steps per token. That is one reason generating intermediate reasoning tokens helps on multi-step problems: it buys more serial computation (see <a href="#inference">inference and test-time compute</a>).</p>
+</div>
+
+<div class="pipeline">
+  <div class="stage"><b>Embed</b>token → vector of size d</div>
+  <div class="stage"><b>Norm → Attention → add</b>mix information across tokens</div>
+  <div class="stage"><b>Norm → MLP → add</b>think about each token</div>
+  <div class="stage"><b>× L layers</b>the residual stream runs through all of them</div>
+  <div class="stage"><b>Norm → Unembed</b>vector → next-token scores</div>
+</div>
+
+<h3>Why not infinite layers? Wall 1: the gradient is a product</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A photocopy of a photocopy</span></div>
+  <p>Photocopy a page, then photocopy the copy, and keep going. Each copy is a little lighter. After 50 rounds the page is blank. If your copier instead darkened each copy slightly, after 50 rounds the page would be solid black. Either way the message is gone.</p>
+  <p>Training a network sends a correction backwards through every layer, and each layer scales it a little. Too little each time and the first layers never get the message. Too much and the corrections become wild. More layers means more copies, so the problem gets worse with depth.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What it looks like in a run</span></div>
+  <p>Vanishing gradients look like a run where the loss plateaus early and the first layers' weights barely move. Exploding gradients look like loss spikes and NaNs. Modern recipes rarely hit either at initialisation, because of careful initialisation, residual connections, and normalisation. They still appear mid-run as instabilities, especially at large scale and high learning rates, which is why teams log per-layer gradient norms and clip gradients (see <a href="#optimization">optimisation</a>).</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>A new architecture idea that "trains fine" at 12 layers can diverge at 100. Instability often appears only at depth, width, or learning rates near the production configuration. Ask for per-layer gradient and activation norms from the largest run tried, not just the loss curve, and ask whether the idea was tested at the target depth.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The chain rule multiplies Jacobians</span></div>
+  <p>For a plain stack \(h_{l+1} = f_l(h_l)\), the gradient of the loss with respect to an early layer's activations is a product of Jacobians:</p>
+  <div class="eq">\[ \frac{\partial \mathcal{L}}{\partial h_l} = \frac{\partial \mathcal{L}}{\partial h_L}\, \prod_{k=l}^{L-1} J_k, \qquad J_k = \frac{\partial h_{k+1}}{\partial h_k} \]<span class="eqcap">If each \(J_k\) scales vectors by about \(g\), the gradient at layer \(l\) scales by \(g^{L-l}\). With \(g = 0.9\) and 50 layers that is \(0.005\); with \(g = 1.1\) it is \(117\).</span></div>
+  <p>The fix at initialisation is to choose weight scales so that \(g \approx 1\): Glorot and Bengio (2010) for tanh-like units, He et al. (2015) for ReLU, which uses variance \(2/n_{\text{in}}\) to compensate for ReLU zeroing half its inputs. But \(g = 1\) on average still lets fluctuations compound over hundreds of layers, and training moves the weights away from the careful initial scale. Recurrent networks have the same problem through time instead of through depth, which motivated the LSTM (see <a href="#family">the family tree</a>).</p>
+  <p>The residual form changes the product. With \(h_{l+1} = h_l + F_l(h_l)\), each factor becomes \(I + \partial F_l / \partial h_l\). The identity term means the gradient always has a direct path. If the branch contributes a part uncorrelated with that path, squared sizes add, and each layer scales the gradient by \(\sqrt{1 + s^2 g^2}\) where \(s\) is the branch scale. Unscaled (\(s = 1\)) that still compounds; with \(s = 1/\sqrt{L}\) the total stays below \(e^{g^2/2}\) at any depth. GPT-2 used exactly this trick, scaling residual-branch weights at initialisation by \(1/\sqrt{N}\) for \(N\) residual layers (Radford et al. 2019).</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
+
+def sci(x):
+    # short scientific notation, e.g. 5.15e-3 (same format in the Rust twin)
+    e = math.floor(math.log10(abs(x)))
+    m = x / 10 ** e
+    if round(m, 2) &gt;= 10:            # 9.999 rounds up: shift the exponent
+        m, e = m / 10, e + 1
+    return f"{m:.2f}e{e}"
+
+def grad_through(L, g, residual=False, branch_scale=1.0):
+    """Size of the gradient after flowing back through L layers.
+    Plain layer: the gradient is multiplied by the layer's gain g.
+    Residual layer: an identity path plus a branch whose contribution is
+    uncorrelated with it, so squared sizes add: factor sqrt(1 + (s*g)^2)."""
+    grad = 1.0
+    for _ in range(L):
+        if residual:
+            grad *= math.sqrt(1 + (branch_scale * g) ** 2)
+        else:
+            grad *= g
+    return grad
+
+for L in (10, 50, 200):
+    vanish = grad_through(L, 0.9)                     # each layer shrinks it 10%
+    explode = grad_through(L, 1.1)                    # each layer grows it 10%
+    res_raw = grad_through(L, 1.0, residual=True)     # residual, branch not scaled
+    res_scaled = grad_through(L, 1.0, residual=True, branch_scale=1 / math.sqrt(L))
+    print(L, sci(vanish), sci(explode), sci(res_raw), f"{res_scaled:.3f}")
+# 10 3.49e-1 2.59e0 3.20e1 1.611
+# 50 5.15e-3 1.17e2 3.36e7 1.641
+# 200 7.06e-10 1.90e8 1.27e30 1.647   scaled residual stays below e^0.5 = 1.649</code></pre>
+<pre class="code" data-lang="rust"><code>fn sci(x: f64) -&gt; String {
+    // short scientific notation, e.g. 5.15e-3 (same format as the Python)
+    let mut e = x.abs().log10().floor() as i32;
+    let mut m = x / 10f64.powi(e);
+    if (m * 100.0).round() / 100.0 &gt;= 10.0 { // 9.999 rounds up: shift the exponent
+        m /= 10.0;
+        e += 1;
+    }
+    format!("{:.2}e{}", m, e)
+}
+
+/// Size of the gradient after flowing back through l layers.
+/// Plain layer: the gradient is multiplied by the layer's gain g.
+/// Residual layer: an identity path plus a branch whose contribution is
+/// uncorrelated with it, so squared sizes add: factor sqrt(1 + (s*g)^2).
+fn grad_through(l: usize, g: f64, residual: bool, branch_scale: f64) -&gt; f64 {
+    let mut grad = 1.0;
+    for _ in 0..l {
+        if residual {
+            grad *= (1.0 + (branch_scale * g).powi(2)).sqrt();
+        } else {
+            grad *= g;
+        }
+    }
+    grad
+}
+
+fn main() {
+    for l in [10usize, 50, 200] {
+        let vanish = grad_through(l, 0.9, false, 1.0);  // each layer shrinks it 10%
+        let explode = grad_through(l, 1.1, false, 1.0); // each layer grows it 10%
+        let res_raw = grad_through(l, 1.0, true, 1.0);  // residual, branch not scaled
+        let res_scaled = grad_through(l, 1.0, true, 1.0 / (l as f64).sqrt());
+        println!("{} {} {} {} {:.3}", l, sci(vanish), sci(explode), sci(res_raw), res_scaled);
+    }
+    // 10 3.49e-1 2.59e0 3.20e1 1.611
+    // 50 5.15e-3 1.17e2 3.36e7 1.641
+    // 200 7.06e-10 1.90e8 1.27e30 1.647   scaled residual stays below e^0.5 = 1.649
+}</code></pre>
+  </div>
+</div>
+
+<div class="widget" id="w-ar-grad">
+  <div class="wtitle">Gradient flow through a deep stack</div>
+  <div class="wsub">A real 48-wide ReLU network with random weights. A gradient enters at the output (right edge) and flows back to layer 0 (left edge). Move the gain off 1.00 to see vanishing or exploding, then turn on residual connections and normalisation. Dashed lines show the other three layouts for comparison.</div>
+  <div class="controls">
+    <div class="ctl"><label for="ar-L">Depth (layers): <output id="ar-L-o">60</output></label><input type="range" id="ar-L" min="1" max="200" step="1" value="60"></div>
+    <div class="ctl"><label for="ar-g">Per-layer gain: <output id="ar-g-o">0.90</output></label><input type="range" id="ar-g" min="0.5" max="1.5" step="0.01" value="0.9"></div>
+  </div>
+  <div class="btnrow"><button class="b" type="button" data-res aria-pressed="false">Residual connections</button><button class="b" type="button" data-norm aria-pressed="false">Normalisation (pre-norm)</button></div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--fp)"></span>plain</span><span><span class="sw" style="background:var(--fn)"></span>plain + normalisation</span><span><span class="sw" style="background:var(--eli5)"></span>residual</span><span><span class="sw" style="background:var(--good)"></span>residual + normalisation</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Gradient at layer 0 (output = 1)</div><div class="v" data-k="first">—</div></div>
+    <div class="mc"><div class="l">Average factor per layer</div><div class="v" data-k="per">—</div></div>
+    <div class="mc"><div class="l">Forward signal size at output</div><div class="v" data-k="fwd">—</div></div>
+    <div class="mc"><div class="l">Verdict</div><div class="v" data-k="ver">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>Wall 2: deeper plain networks train worse, and the residual fix</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Tracked changes instead of rewrites</span></div>
+  <p>Imagine twenty editors improving a document. In one office, each editor rewrites the whole document from scratch based on the previous version. One bad editor can destroy everything, and the result after twenty rewrites is unpredictable. In the other office, each editor only adds tracked changes on top. If an editor has nothing useful to add, they add nothing, and the document passes through untouched.</p>
+  <p>A <b>residual connection</b> turns every layer into the second kind of editor. The layer's output is its input plus a correction. A layer that is not helping can learn a correction of zero, so adding more layers can never make things much worse.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The single most important architectural trick of the last decade</span></div>
+  <p>Before 2015, networks deeper than about 20 to 30 layers were hard to train even with good initialisation and normalisation. He et al. (2015) introduced residual networks (ResNets) and trained a 152-layer model that won the ImageNet classification challenge that year. Every transformer since is built around a residual stream: each attention and MLP block reads from the stream and writes a correction back into it.</p>
+  <p>The business lesson generalises. Depth was not limited by a lack of data or compute. It was limited by an optimisation problem, and one structural change unlocked an order of magnitude more depth. When a team says "we tried a bigger model and it got worse", the first question is whether the training setup, not the size, is the bottleneck.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Degradation is not overfitting</span></div>
+  <p>He et al. (2015) showed that on CIFAR-10 a 56-layer plain network had higher <b>training</b> error than a 20-layer one, and the same held on ImageNet for 34 versus 18 layers. A deeper network could in principle copy the shallow one and set the extra layers to the identity, so it should never be worse on training data. That it was worse shows an optimisation failure, which they called <b>degradation</b>. The plain networks used batch normalisation, and the authors reported that gradients did not vanish, so this is a separate wall from vanishing gradients: plain layers find it hard to learn the identity.</p>
+  <div class="eq">\[ h_{l+1} = h_l + F_l(h_l; \theta_l), \qquad \frac{\partial h_{L}}{\partial h_l} = \prod_{k=l}^{L-1} \Big(I + \frac{\partial F_k}{\partial h_k}\Big) \]<span class="eqcap">Setting \(F_l = 0\) gives the identity for free. Expanding the product gives a sum over all subsets of blocks, one reason Veit et al. (2016) described residual networks as behaving like ensembles of many shallower paths.</span></div>
+  <p>Residual networks still have limits. On CIFAR-10, He et al. trained a 1,202-layer ResNet without optimisation trouble, but it tested worse than their 110-layer model, which they attributed to overfitting on a small dataset. Depth stopped being an optimisation wall and became a data and compute question, which is where the remaining walls take over.</p>
+</div>
+
+<h3>Normalisation: resetting the volume</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Same volume in, whatever came before</span></div>
+  <p>A sound engineer sets every microphone so that a whisper and a shout reach the mixing desk at a similar level. Without that, one loud singer drowns out everything downstream. A <b>normalisation</b> layer does the same for numbers inside a network: before a layer works on its input, the input is rescaled to a standard size, so no layer is fed something enormous or tiny.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Placement is a stability decision</span></div>
+  <p>The original transformer (Vaswani et al. 2017) put normalisation <b>after</b> each residual addition ("post-norm"). It trains well but needs a learning-rate warmup and gets fragile with depth. Almost every large model now uses <b>pre-norm</b>: normalise the input to each block and leave the residual stream itself untouched. Xiong et al. (2020) showed pre-norm transformers have well-behaved gradients at initialisation and can train without warmup. Llama-family models use RMSNorm (Zhang and Sennrich 2019), a cheaper variant that skips mean subtraction. These choices rarely make a headline, but they decide whether a large run survives its first loss spike.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">BatchNorm, LayerNorm, RMSNorm</span></div>
+  <div class="eq">\[ \mathrm{LN}(x) = \gamma \odot \frac{x - \mu(x)}{\sqrt{\sigma^2(x) + \epsilon}} + \beta, \qquad \mathrm{RMSNorm}(x) = \gamma \odot \frac{x}{\sqrt{\tfrac{1}{d}\sum_i x_i^2 + \epsilon}} \]<span class="eqcap">\(\mu, \sigma^2\) are the mean and variance over the \(d\) features of one token's vector; \(\gamma, \beta\) are learned per-feature scale and shift.</span></div>
+  <p><b>BatchNorm</b> (Ioffe and Szegedy 2015) computes statistics over the batch for each feature. It was central to CNNs but is awkward for language models: statistics depend on what else is in the batch, behaviour differs between training and inference, and small or variable-length batches make the estimates noisy. <b>LayerNorm</b> (Ba, Kiros and Hinton 2016) normalises over the features of each example independently, so it behaves identically at training and inference and for any batch size.</p>
+  <p>Normalisation and residuals work as a pair. In a pre-norm block \(h_{l+1} = h_l + F(\mathrm{LN}(h_l))\), each branch receives a fixed-size input and adds a bounded contribution, so the stream grows slowly (roughly like \(\sqrt{l}\)) and later layers' branches are relatively smaller. De and Smith (2020) made the related point for BatchNorm in ResNets: it downscales residual branches relative to the skip path, which biases deep networks toward the identity at initialisation. In the widget above, normalisation alone fixes the forward scale of a plain stack but not its backward gradient; the combination is what stays flat. Yang et al. (2019) found a similar gradient explosion at initialisation in deep plain networks with batch normalisation.</p>
+</div>
+
+<h3>Walls 3 and 4: compute, memory, and the queue</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Every station costs rent, and the car waits at each one</span></div>
+  <p>Each extra station on the assembly line costs floor space, workers, and electricity, and every car must stop at every station. Adding stations makes better cars only up to the point where the factory becomes too slow and too expensive to run. A network is the same: every layer adds memory and arithmetic, and every word the model writes has to pass through every layer, one after another.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Depth is paid for on every token, forever</span></div>
+  <p>Training cost is paid once. Serving cost is paid on every token for the life of the model. Depth hits serving directly:</p>
+  <ul>
+    <li><b>Latency per token</b> scales with layer count, because layers cannot run in parallel for the same token. Wider layers can be split across chips (tensor parallelism), at the price of communication between them.</li>
+    <li><b>KV cache memory</b> scales with layer count: each layer stores keys and values for every token in context. That memory caps how many users fit on a server and how long the context can be (see <a href="#inference">inference</a>).</li>
+    <li><b>Training memory</b> for activations grows with depth, which forces activation checkpointing (recomputing instead of storing) and deeper pipeline parallelism, which adds idle "bubbles".</li>
+  </ul>
+  <p>Published models have not gone far beyond about 130 layers, even at 405B parameters, which is consistent with these costs.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The arithmetic of depth at inference</span></div>
+  <div class="eq">\[ t_{\text{token}} \approx L \cdot t_{\text{layer}}, \qquad \text{KV bytes per token} = 2 \cdot L \cdot n_{kv} \cdot d_{\text{head}} \cdot b \]<span class="eqcap">\(n_{kv}\) key-value heads, \(d_{\text{head}}\) head size, \(b\) bytes per number, factor 2 for keys and values. Decoding is usually limited by memory bandwidth, so \(t_{\text{layer}}\) is roughly the time to read that layer's weights.</span></div>
+  <p>Llama 3 405B: \(2 \times 126 \times 8 \times 128 \times 2\) bytes \(= 516{,}096\) bytes, about 0.5 MB of cache per token in bf16. A 100,000-token context therefore needs about 52 GB of cache for a single sequence, before any weights. Without grouped-query attention (128 KV heads instead of 8) it would be 16 times larger. Every added layer adds its share to both numbers.</p>
+</div>
+
+<h3>Walls 5 and 6: data limits and diminishing returns</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A bigger notebook does not help without more lessons</span></div>
+  <p>Give a student a notebook with ten times as many pages and no extra lessons, and they will either leave the pages blank or fill them with memorised answers to the practice questions. Extra capacity helps only when there is more to learn. And even with plenty of lessons, each doubling of effort brings a smaller improvement than the last.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Capacity has to be fed and paid for</span></div>
+  <p>Adding layers adds parameters. Scaling laws (see <a href="#scaling">scaling laws</a>) say loss falls as a power law in parameters <i>and</i> data, and the compute-optimal recipe grows both together. A model made deeper without more data or compute sits off the optimal frontier: it underfits its compute budget or overfits its data. And the curve flattens: every doubling of parameters removes a fixed fraction (about 21%) of the parameter-limited part of the loss, not a fixed amount.</p>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>Architecture comparisons are only meaningful when <b>compute-matched</b>: same training FLOPs (or same tokens and parameters), same data, same tuning effort, several seeds. A deeper model trained for the same steps uses more compute, so it "wins" for the wrong reason. Separate the sources of a benchmark gain: a new model generation usually changes data, compute, and architecture at once, and the data and compute changes typically dominate. Ask for an ablation that changes only the architecture, run at two or more scales, and check whether the gain holds or shrinks as the models get bigger.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The power law in numbers</span></div>
+  <div class="eq">\[ L(N, D) = E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}} \]<span class="eqcap">Hoffmann et al. (2022) fit \(E \approx 1.69\), \(A \approx 406\), \(B \approx 411\), \(\alpha \approx 0.34\), \(\beta \approx 0.28\). \(E\) is the irreducible loss; the other terms shrink with parameters \(N\) and tokens \(D\).</span></div>
+  <p>With \(\alpha \approx 0.34\), doubling \(N\) multiplies the parameter term by \(2^{-0.34} \approx 0.79\): a 21% cut in that term, the same fraction every time. If the data term already dominates, adding parameters barely moves the total. Depth is one way to add parameters, so it inherits all of this. The marginal question a lab asks is never "would more layers help?" but "is this the best use of the next unit of compute?"</p>
+</div>
+
+<h3>How labs actually choose an architecture</h3>
+<div class="story" id="st-ar-kitchen">
+  <div class="story-head"><div class="story-title">Test kitchen before the banquet</div><p class="story-sub">How a frontier lab settles an architecture question without betting the big run, told as a chef planning a 10,000-plate dinner.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A proven recipe card on the left and three sticky notes with ideas on the right">
+      <g class="a" style="--d:0"><rect x="40" y="36" width="270" height="190" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/>
+        <text x="60" y="66" font-size="14" font-weight="600" fill="var(--fg)">Proven recipe</text>
+        <line x1="60" y1="78" x2="290" y2="78" stroke="var(--line)" stroke-width="1"/>
+        <text x="60" y="104" font-size="13" fill="var(--fg)">decoder-only transformer</text>
+        <text x="60" y="130" font-size="13" fill="var(--fg)">pre-norm, residual stream</text>
+        <text x="60" y="156" font-size="13" fill="var(--fg)">attention + MLP blocks</text>
+        <text x="60" y="182" font-size="13" fill="var(--fg)">AdamW, warmup, decay</text>
+        <text x="60" y="208" font-size="12" fill="var(--muted)">known to scale</text></g>
+      <g class="a" style="--d:1"><rect x="370" y="40" width="210" height="44" rx="6" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="1.2"/><text x="475" y="67" text-anchor="middle" font-size="13" fill="var(--fg)">idea A: new attention variant</text></g>
+      <g class="a" style="--d:2"><rect x="370" y="108" width="210" height="44" rx="6" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="1.2"/><text x="475" y="135" text-anchor="middle" font-size="13" fill="var(--fg)">idea B: deeper and narrower</text></g>
+      <g class="a" style="--d:3"><rect x="370" y="176" width="210" height="44" rx="6" fill="var(--lead-soft)" stroke="var(--lead)" stroke-width="1.2"/><text x="475" y="203" text-anchor="middle" font-size="13" fill="var(--fg)">and a dozen more ideas</text></g>
+    </svg>
+    <p>Nobody designs a frontier model from a blank page. The chef starts from a recipe that is known to work at scale and treats every change as a hypothesis to test. Most architecture work is choosing which few changes earn a place.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Validation loss bars for baseline, idea A and idea B, each with three seed dots">
+      <text x="320" y="30" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Small pots, same budget: validation loss (lower is better)</text>
+      <text x="40" y="84" font-size="13" fill="var(--fg)">baseline</text>
+      <text x="40" y="134" font-size="13" fill="var(--fg)">idea A</text>
+      <text x="40" y="184" font-size="13" fill="var(--fg)">idea B</text>
+      <rect class="grow-x" style="--d:0" x="140" y="68" width="300" height="24" rx="5" fill="var(--tn)"/>
+      <rect class="grow-x" style="--d:1" x="140" y="118" width="270" height="24" rx="5" fill="var(--accent)"/>
+      <rect class="grow-x" style="--d:2" x="140" y="168" width="260" height="24" rx="5" fill="var(--lead)"/>
+      <g class="a" style="--d:3" fill="var(--fg)"><circle cx="432" cy="80" r="3.5"/><circle cx="440" cy="80" r="3.5"/><circle cx="447" cy="80" r="3.5"/><circle cx="403" cy="130" r="3.5"/><circle cx="410" cy="130" r="3.5"/><circle cx="418" cy="130" r="3.5"/><circle cx="392" cy="180" r="3.5"/><circle cx="400" cy="180" r="3.5"/><circle cx="409" cy="180" r="3.5"/></g>
+      <g font-size="13" font-weight="600" fill="var(--fg)"><text class="a" style="--d:0" x="474" y="85">3.10</text><text class="a" style="--d:1" x="444" y="135">3.07</text><text class="a" style="--d:2" x="434" y="185">3.06</text></g>
+      <text class="a" style="--d:3" x="320" y="232" text-anchor="middle" font-size="12.5" fill="var(--muted)">same FLOPs, same data, three seeds each (dots); illustrative numbers</text>
+    </svg>
+    <p>Cook small pots first. Each idea gets the same compute, the same data, and several random seeds, so a gain has to beat the seed-to-seed wobble. Here both ideas look better than the baseline at small scale.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Loss against compute at four sizes; idea A keeps its gap, idea B converges to the baseline">
+      <line x1="70" y1="215" x2="600" y2="215" stroke="var(--line-strong)" stroke-width="1.5"/><line x1="70" y1="30" x2="70" y2="215" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="335" y="244" text-anchor="middle" font-size="12" fill="var(--muted)">training compute (log scale): 4 model sizes, each 10× the last</text>
+      <text x="78" y="40" font-size="12" fill="var(--muted)">loss</text>
+      <line class="a" style="--d:0" x1="110" y1="70" x2="560" y2="180" stroke="var(--tn)" stroke-width="2.5"/>
+      <g class="a" style="--d:0" fill="var(--tn)"><circle cx="110" cy="70" r="5"/><circle cx="260" cy="106.7" r="5"/><circle cx="410" cy="143.3" r="5"/><circle cx="560" cy="180" r="5"/></g>
+      <line class="a" style="--d:1" x1="110" y1="84" x2="560" y2="194" stroke="var(--accent)" stroke-width="2.5"/>
+      <g class="a" style="--d:1" fill="var(--accent)"><circle cx="110" cy="84" r="5"/><circle cx="260" cy="120.7" r="5"/><circle cx="410" cy="157.3" r="5"/><circle cx="560" cy="194" r="5"/></g>
+      <path class="a" style="--d:2" d="M110 88 C 260 118, 400 148, 560 180" stroke="var(--lead)" stroke-width="2.5" fill="none" stroke-dasharray="6 4"/>
+      <text class="a" style="--d:1" x="220" y="178" font-size="13" font-weight="600" fill="var(--accent)">idea A: gap holds</text>
+      <text class="a" style="--d:2" x="390" y="112" font-size="13" font-weight="600" fill="var(--lead)">idea B: gap fades</text>
+      <text class="a" style="--d:0" x="150" y="58" font-size="12.5" fill="var(--muted)">baseline</text>
+    </svg>
+    <p>Then taste at several sizes. Plot each idea's loss against compute and look at the trend, not one point. Idea A keeps its advantage as models grow. Idea B's advantage shrinks to nothing: it was a small-model trick. Many published improvements behave like idea B.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Two panels of loss against learning rate: without a scaling rule the best rate shifts with size; with muP it stays put">
+      <text x="175" y="30" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">standard setup</text>
+      <text x="470" y="30" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">with a scaling rule (muP)</text>
+      <line x1="40" y1="210" x2="300" y2="210" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <line x1="340" y1="210" x2="600" y2="210" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <path class="a" style="--d:0" d="M120 60 Q 200 250 280 60" stroke="var(--tn)" stroke-width="2.5" fill="none"/>
+      <path class="a" style="--d:1" d="M50 70 Q 110 290 170 70" stroke="var(--accent)" stroke-width="2.5" fill="none"/>
+      <line class="a" style="--d:2" x1="200" y1="155" x2="200" y2="205" stroke="var(--tn)" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <line class="a" style="--d:2" x1="110" y1="180" x2="110" y2="205" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <path class="a" style="--d:0" d="M390 60 Q 470 250 550 60" stroke="var(--tn)" stroke-width="2.5" fill="none"/>
+      <path class="a" style="--d:1" d="M390 70 Q 470 290 550 70" stroke="var(--accent)" stroke-width="2.5" fill="none"/>
+      <line class="a" style="--d:2" x1="470" y1="180" x2="470" y2="205" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text class="a" style="--d:0" x="250" y="56" font-size="12.5" fill="var(--tn)">small</text>
+      <text class="a" style="--d:1" x="40" y="60" font-size="12.5" fill="var(--accent)">large</text>
+      <text class="a" style="--d:0" x="560" y="56" font-size="12.5" fill="var(--tn)">small</text>
+      <text class="a" style="--d:1" x="560" y="80" font-size="12.5" fill="var(--accent)">large</text>
+      <text x="170" y="232" text-anchor="middle" font-size="12" fill="var(--muted)">learning rate (log) → best rate moves</text>
+      <text x="470" y="232" text-anchor="middle" font-size="12" fill="var(--muted)">learning rate (log) → best rate stays</text>
+    </svg>
+    <p>Settings must scale too. A chef who doubles a recipe does not double the salt blindly. In a standard setup the best learning rate drifts as the model widens, so settings tuned on a small model are wrong for the big one. Scaling rules such as muP (Yang et al. 2022) reparameterise the network so the best settings stay put, and can be tuned once on a small proxy.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Small runs on a line; the line extended predicts the big run, which lands on it">
+      <line x1="70" y1="215" x2="600" y2="215" stroke="var(--line-strong)" stroke-width="1.5"/><line x1="70" y1="30" x2="70" y2="215" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="335" y="244" text-anchor="middle" font-size="12" fill="var(--muted)">training compute (log scale)</text>
+      <text x="78" y="40" font-size="12" fill="var(--muted)">loss</text>
+      <g class="a" style="--d:0" fill="var(--accent)"><circle cx="110" cy="70" r="5"/><circle cx="170" cy="86" r="5"/><circle cx="230" cy="101" r="5"/><circle cx="290" cy="117" r="5"/></g>
+      <line class="a" style="--d:1" x1="110" y1="70" x2="290" y2="117" stroke="var(--accent)" stroke-width="2.5"/>
+      <line class="a" style="--d:1" x1="290" y1="117" x2="545" y2="183.5" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 5"/>
+      <text class="a" style="--d:1" x="130" y="52" font-size="12.5" fill="var(--muted)">small test runs</text>
+      <text class="a" style="--d:2" x="400" y="128" font-size="12.5" fill="var(--muted)">predicted</text>
+      <circle class="a pulse" style="--d:3" cx="545" cy="184" r="9" fill="var(--good)"/>
+      <text class="a" style="--d:3" x="600" y="156" text-anchor="end" font-size="13" font-weight="600" fill="var(--good)">the one big run</text>
+    </svg>
+    <p>Finally, cook the banquet once. Fit a curve through the small runs, predict the big run's loss before starting it, and launch only the configuration that survived. If the big run lands on the predicted line, the recipe scaled. If it lands above, something broke at scale, and the team finds out early by watching the curve.</p>
+  </div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Small experiments, then one big bet</span></div>
+  <p>Labs do not guess how many layers to use. They copy a design that already works, try small changes on small models, keep only the changes that still help as the models get bigger, and then train one huge model using the winning design. It is the same as a chef testing a recipe in small pots before cooking for ten thousand people.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The decision process, and why automated search is rare</span></div>
+  <ol class="steps">
+    <li><div><b>Start from a proven recipe.</b> The previous generation's architecture, or a well-documented open one. Changes need to justify their risk.</div></li>
+    <li><div><b>Ablate at small scale, compute-matched.</b> Change one thing at a time, multiple seeds, same data and FLOPs. Typical proxy models are tens of millions to a few billion parameters.</div></li>
+    <li><div><b>Fit scaling curves.</b> Run the baseline and each surviving change at three to five sizes and compare the fitted curves. Keep changes whose advantage holds or grows with scale (see <a href="#scaling">scaling laws</a>).</div></li>
+    <li><div><b>Transfer hyperparameters.</b> Use a parameterisation such as muP, or fitted scaling rules for learning rate and batch size, so the small-scale tuning carries over.</div></li>
+    <li><div><b>De-risk, then commit.</b> Run an intermediate-size model end to end, check stability, then launch the full run and compare it against the prediction as it trains.</div></li>
+  </ol>
+  <p><b>Neural architecture search</b> (NAS), where an algorithm proposes and tests architectures automatically, produced strong image models at small scale; Zoph and Le (2017) used hundreds of GPUs to search over small image and language models. At frontier scale it is rare for three reasons: each candidate must be trained to be judged, and a frontier training run cannot be repeated thousands of times; what wins at small scale often fails to transfer (idea B in the story); and the search space is dominated by known-good transformer blocks, so the expected gain is small. Searches that did target transformers, such as Primer (So et al. 2021), mostly found small modifications (for example squared ReLU activations) that humans then adopted by hand.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>Was the comparison compute-matched, and at how many scales? Does the gain grow, hold, or shrink with size, and what does the fitted curve predict at the target scale? How many seeds, and what is the seed-to-seed spread compared with the gain? Were hyperparameters retuned for the baseline as carefully as for the new idea? What does the change cost at inference: latency per token, KV cache, and memory?</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Hyperparameter transfer with muP</span></div>
+  <p>Under standard parameterisation, as width \(d\) grows the updates to hidden weights grow relative to the weights themselves, so the optimal learning rate shrinks with width and must be re-searched at each size. Yang et al. (2022, "Tensor Programs V") derived the <b>maximal update parameterisation</b> (muP): scale initialisation variances, per-layer learning rates, and the output multiplier with width so that every layer's update stays the same order of size as width grows. For Adam, the key rule is that hidden-layer learning rates scale like \(1/d\) and the output logits are multiplied by \(1/d\) relative to a base width.</p>
+  <p>The payoff is <b>zero-shot hyperparameter transfer</b>: tune on a narrow proxy, copy the settings to the wide model. Yang et al. reported outperforming the published BERT-large numbers by transferring from a 13M-parameter proxy, and the published 6.7B GPT-3 numbers by transferring from a 40M-parameter proxy. The original muP covers width; transfer across depth needs extra rules, such as scaling residual branches by \(1/\sqrt{L}\), studied in later work. Many labs instead fit empirical power laws for the optimal learning rate and batch size against model size and data, which serves the same purpose.</p>
+  <p>A clean ablation reports, for each variant: training FLOPs, parameters (total and active), tokens, the loss curve, the final loss with a seed spread, a few downstream evals, and inference cost. Comparing at equal parameters can mislead when a change alters FLOPs per parameter (mixture-of-experts, weight sharing, longer context); equal training FLOPs is the usual standard, with inference cost reported alongside.</p>
+</div>
+
+<div class="callout key"><span class="tag">Key idea</span><div>There is no formula that outputs "use 96 layers". Labs start from a proven transformer recipe, choose depth and width mainly for hardware and latency reasons within the broad range where shape barely matters, and accept any other change only if it wins compute-matched experiments at several scales. Infinite depth fails on optimisation (solved by residuals and normalisation), on cost and latency (permanent), and on data and diminishing returns (permanent). For how the chosen shape is then trained, see <a href="#pretraining">pretraining</a>; for how these choices show up in team decisions, see <a href="#leading">leading</a>.</div></div>
+</section>

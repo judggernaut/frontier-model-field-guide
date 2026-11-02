@@ -320,6 +320,29 @@ fn main() {
 </div>
 </div>
 
+<p>Here is the archer from the plain-words tab, ready to shoot. Each arrow lands with the same scatter, but the average of a volley wobbles much less, and you can watch by how much.</p>
+<div class="widget" id="w-se-archer">
+  <div class="wtitle">Archer's target: scatter vs wobble</div>
+  <div class="wsub">Shoot 20 volleys, then move "arrows per volley" from 20 to 80: the wide circle for single arrows stays put while the cloud of volley averages, and its circle, shrinks by half.</div>
+  <div class="controls">
+    <div class="ctl"><label for="sea-n">Arrows per volley n <output id="sea-n-o"></output></label><input type="range" id="sea-n" min="0" max="7" step="1" value="4"></div>
+    <div class="ctl"><label for="sea-s">Archer spread σ (units) <output id="sea-s-o"></output></label><input type="range" id="sea-s" min="0.4" max="2" step="0.1" value="1.2"></div>
+  </div>
+  <div class="btnrow"><button class="b" data-one>Shoot a volley</button><button class="b" data-many>Shoot 20 volleys</button><button class="b" data-reset>Reset</button></div>
+  <canvas></canvas>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--accent)"></span>arrows of the latest volley, and the ±1 SD circle (σ)</span>
+    <span><span class="sw" style="background:var(--lead)"></span>volley averages, and the ±1 SE circle (σ/√n)</span>
+  </div>
+  <div class="cards">
+    <div class="mc"><div class="l">Arrow spread SD σ</div><div class="v" data-k="sd"></div></div>
+    <div class="mc"><div class="l">SD within the latest volley</div><div class="v" data-k="sdv"></div></div>
+    <div class="mc"><div class="l">SE = σ/√n</div><div class="v" data-k="se"></div></div>
+    <div class="mc"><div class="l">Observed spread of averages</div><div class="v" data-k="obs"></div></div>
+    <div class="mc"><div class="l">Volleys shot</div><div class="v" data-k="nv"></div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
 
 <div class="widget" id="w-se-compare">
   <div class="wtitle">Standard deviation vs standard error</div>
@@ -334,6 +357,30 @@ fn main() {
     <div class="mc"><div class="l">SE by formula σ/√n</div><div class="v" data-k="se"></div></div>
     <div class="mc"><div class="l">SD of the 200 averages</div><div class="v" data-k="obs"></div></div>
     <div class="mc"><div class="l">Variance of the mean σ²/n</div><div class="v" data-k="vm"></div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<p>A small standard error means your estimate is <b>precise</b>: repeat the study and you land in nearly the same place. It does not mean the estimate is <b>accurate</b>, because a measurement can be precisely wrong. Statisticians call the systematic miss <b>bias</b> and the scatter <b>variance</b>, and the average squared error is exactly the sum of the two: \(\text{MSE} = \text{bias}^2 + \text{variance}\). Here "precision" is the measurement sense (how repeatable a result is), not the classification metric of the same name in <a href="#classification">the classification chapter</a>.</p>
+<div class="widget" id="w-bv-dartboard">
+  <div class="wtitle">Accuracy vs precision (bias vs variance)</div>
+  <div class="wsub">Press the four corner presets, then drag bias up with spread low: the throws stay tight but the whole cluster drifts, and the bias part of the error bar takes over.</div>
+  <div class="controls">
+    <div class="ctl"><label for="bvd-b">Bias: centre of throws to bullseye <output id="bvd-b-o"></output></label><input type="range" id="bvd-b" min="0" max="2.5" step="0.05" value="1.5"></div>
+    <div class="ctl"><label for="bvd-s">Spread around their own centre <output id="bvd-s-o"></output></label><input type="range" id="bvd-s" min="0.15" max="1.8" step="0.05" value="0.4"></div>
+  </div>
+  <div class="btnrow"><button class="b" data-q="0.1,0.3">Accurate and precise</button><button class="b" data-q="1.8,0.3">Precise, not accurate</button><button class="b" data-q="0.1,1.5">Accurate, not precise</button><button class="b" data-q="1.8,1.5">Neither</button></div>
+  <canvas></canvas>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--accent)"></span>throws and their spread circle</span>
+    <span><span class="sw" style="background:var(--lead)"></span>mean point, and the bias arrow from the bullseye</span>
+    <span><span class="sw" style="background:var(--eli5)"></span>variance share of the error</span>
+  </div>
+  <div class="cards">
+    <div class="mc"><div class="l">Bias (distance)</div><div class="v" data-k="b"></div></div>
+    <div class="mc"><div class="l">Bias²</div><div class="v" data-k="b2"></div></div>
+    <div class="mc"><div class="l">Variance (spread²)</div><div class="v" data-k="v"></div></div>
+    <div class="mc"><div class="l">Mean squared error</div><div class="v" data-k="mse"></div></div>
   </div>
   <div class="readout" data-out></div>
 </div>
@@ -435,6 +482,30 @@ fn main() {
   <li>p = 0.06 is <b>not</b> "no effect". It is slightly weaker evidence than p = 0.04. The 0.05 line is a convention, not a law of nature.</li>
 </ul>
 <div class="callout key"><span class="tag">Key idea</span><div>Always report the effect size next to the p value. "Model B is better, p = 0.003" is nearly useless on its own. "Model B passes 4.2 points more, 95% CI [1.1, 7.3], p = 0.003" tells someone whether to ship.</div></div>
+<p>The p value is easiest to understand by building one. Pretend the two models are identical, rerun the eval thousands of times on paper, and count how often chance alone produces a gap as big as yours.</p>
+<div class="widget" id="w-pv-sim">
+  <div class="wtitle">Where a p value comes from</div>
+  <div class="wsub">Leave the gap at 10 points and drag tasks per model from 200 to 800: the same gap moves from "borderline" to "very surprising under no difference", because the no-difference histogram narrows. Then press "Add a true effect" to see how often a real edge actually reaches p &lt; 0.05.</div>
+  <div class="controls">
+    <div class="ctl"><label for="pvs-d">Observed gap B − A (points) <output id="pvs-d-o"></output></label><input type="range" id="pvs-d" min="0" max="20" step="0.5" value="10"></div>
+    <div class="ctl"><label for="pvs-n">Tasks per model n <output id="pvs-n-o"></output></label><input type="range" id="pvs-n" min="0" max="5" step="1" value="2"></div>
+    <div class="ctl"><label for="pvs-e">True edge of B (points) <output id="pvs-e-o"></output></label><input type="range" id="pvs-e" min="1" max="15" step="1" value="5"></div>
+  </div>
+  <div class="btnrow"><button class="b" data-eff aria-pressed="false">Add a true effect</button></div>
+  <canvas></canvas>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--accent)"></span>gaps from 10,000 reruns where both models truly pass 60%</span>
+    <span><span class="sw" style="background:var(--warn)"></span>reruns at least as extreme as yours, either direction: their share is p</span>
+    <span data-altleg><span class="sw" style="background:var(--eli5)"></span>gaps from 10,000 reruns where B is truly better (outline)</span>
+  </div>
+  <div class="cards">
+    <div class="mc"><div class="l">p value (two-sided)</div><div class="v" data-k="p"></div></div>
+    <div class="mc"><div class="l">Reruns as extreme</div><div class="v" data-k="cnt"></div></div>
+    <div class="mc"><div class="l">Gap needed for p &lt; 0.05</div><div class="v" data-k="crit"></div></div>
+    <div class="mc"><div class="l">Power at p &lt; 0.05</div><div class="v" data-k="pow"></div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A useless effect becomes "significant" with enough data</span></div>
   <div class="codetabs">
 <pre class="code" data-lang="python"><code>import numpy as np

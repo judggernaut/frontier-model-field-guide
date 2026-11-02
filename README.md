@@ -6,8 +6,9 @@ Statistics, evaluation, and training for large language models, each topic layer
 
 - **Part I, Statistical foundations**: distributions, sampling, standard error, intervals, p values, reading a shape, heavy tails.
 - **Part II, Evaluating models**: pass-rate intervals, paired comparisons, power, multiple comparisons, classification metrics through ROC and PR AUC, LLM judges, the offline to online gap, contamination, harness engineering, regression triage, choosing a metric.
-- **Part III, Training models**: the pipeline, pretraining, optimisation, scaling laws, SFT, LoRA and PEFT, distillation and synthetic data, reward models, RLHF and PPO, DPO and its relatives, GRPO and RL with verifiable rewards, inference and test-time compute, safety training.
-- **Part IV, Leading the work**: connecting training and evaluation, reviewer checklists, red flags, and a glossary.
+- **Part III, How neural networks and LLMs work**: neurons and layers, gradient descent, architecture design, the family tree through transformers and GNNs, next-token prediction, assistants, reasoning modes, one-pass decision models, and decision framing.
+- **Part IV, Training models**: the pipeline, pretraining, optimisation, scaling laws, SFT, LoRA and PEFT, distillation and synthetic data, reward models, RLHF and PPO, DPO and its relatives, GRPO and RL with verifiable rewards, inference and test-time compute, safety training.
+- **Part V, Leading the work**: connecting training and evaluation, reviewer checklists, red flags, and a glossary.
 
 Every chapter has three layers (Plain words, For leaders, Under the hood) and most have interactive widgets. A switch in the top bar shows one layer at a time.
 

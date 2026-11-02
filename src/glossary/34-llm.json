@@ -1,0 +1,182 @@
+[
+ {
+  "term": "Next-token prediction",
+  "def": "The single task a language model is trained on and performs: given a sequence of tokens, output a probability for every possible next token. Generation repeats it in a loop.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Embedding",
+  "def": "The vector a token is turned into by looking up its row in a learned table \\(E \\in \\mathbb{R}^{V \\times d}\\). Tokens used in similar ways end up with nearby vectors.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Vocabulary",
+  "def": "The fixed set of tokens a model can read and write, typically 50,000 to 250,000 entries, set by the tokenizer before pretraining.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Transformer block",
+  "def": "The repeated unit of a transformer: an attention sublayer then an MLP sublayer, each adding its output to the residual stream. Large models stack 32 to over 100 of them.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Self-attention",
+  "def": "The mechanism that lets each position gather information from other positions: it scores its query against every key, softmaxes the scores, and takes the weighted sum of values.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Query, key, value",
+  "def": "Three learned projections of each position's vector. The query says what a position is looking for, the key what it offers as a match, the value what it hands over when attended to.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Scaled dot-product attention",
+  "def": "\\(\\mathrm{softmax}(QK^\\top/\\sqrt{d_k} + M)V\\). Dividing by \\(\\sqrt{d_k}\\) keeps scores from growing with vector width.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Causal mask",
+  "def": "The matrix that sets attention scores to future positions to \\(-\\infty\\), so each token can only attend to itself and earlier tokens. It lets one training pass make a prediction at every position.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Attention head",
+  "def": "One of several attention computations run in parallel with their own projections. Heads specialise, for example copying the previous token or linking a pronoun to its noun.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Induction head",
+  "def": "An attention head pattern that finds an earlier occurrence of the current token and predicts the token that followed it, completing repeated sequences (Olsson et al. 2022).",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Attention sink",
+  "def": "The tendency of many heads to put most of their weight on the first token when nothing else is relevant, effectively a no-op option (Xiao et al. 2023).",
+  "see": "llm-inside"
+ },
+ {
+  "term": "MLP (feed-forward) layer",
+  "def": "The per-position sublayer \\(W_2\\,\\phi(W_1 x)\\) in each transformer block. It holds about two thirds of a dense model's parameters and behaves partly like a key-value memory of associations.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Residual stream",
+  "def": "The running vector at each position that every sublayer reads from and adds to. Nothing overwrites it, so later layers can read what earlier layers wrote.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Layer normalisation",
+  "def": "Rescaling a vector to a standard size before each sublayer (often RMSNorm in current models), which keeps training stable in deep stacks.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Rotary position embedding (RoPE)",
+  "def": "A way to give attention a sense of order by rotating query and key vectors by an angle proportional to position, so their dot product depends on relative distance.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Unembedding",
+  "def": "The final matrix \\(W_U\\) that maps the last residual vector to one logit per vocabulary token.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Autoregressive generation",
+  "def": "Producing text one token at a time, each conditioned on all tokens so far: predict, pick, append, repeat. One forward pass per generated token.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Forward pass",
+  "def": "One run of the network from input tokens to output logits. A dense model with \\(N\\) parameters costs about \\(2N\\) floating-point operations per token.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Reversal curse",
+  "def": "The finding that models trained on \"A is B\" often fail to answer \"what is B?\" with A (Berglund et al. 2023): stored knowledge is directional.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Likelihood scoring",
+  "def": "Evaluating by comparing the log-probabilities a model assigns to fixed answer options, instead of grading text the model generates.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Base model",
+  "def": "A model after pretraining only. It continues any document in whatever style the document suggests and has no built-in notion of answering a user.",
+  "see": "assistant"
+ },
+ {
+  "term": "Instruct / chat model",
+  "def": "A base model further trained (SFT, then preference training such as RLHF or DPO) to continue conversation-formatted documents in the role of a helpful assistant.",
+  "see": "assistant"
+ },
+ {
+  "term": "System prompt",
+  "def": "Text placed at the start of a chat, in its own role, that sets instructions, persona or context. To the model it is ordinary tokens that training taught it to weight heavily.",
+  "see": "assistant"
+ },
+ {
+  "term": "Few-shot prompting",
+  "def": "Putting a handful of worked examples in the prompt so that the most likely continuation follows the same pattern. Works on base models without any fine-tuning.",
+  "see": "assistant"
+ },
+ {
+  "term": "Hallucination",
+  "def": "Fluent, plausible output that is false or unsupported, such as an invented citation or a wrong date stated confidently.",
+  "see": "assistant"
+ },
+ {
+  "term": "Abstention",
+  "def": "Declining to answer, or saying \"I don't know\", when confidence is too low. Useful only if the grading or reward gives it more credit than a likely-wrong guess.",
+  "see": "assistant"
+ },
+ {
+  "term": "Verbalized confidence",
+  "def": "A confidence the model states in words (\"I'm about 70% sure\"), as opposed to one read from its token probabilities. Both can be checked for calibration.",
+  "see": "assistant"
+ },
+ {
+  "term": "Confidence target",
+  "def": "A grading rule that tells the model the threshold at which answering pays off, for example \"answer only if more than t confident; wrong answers cost t/(1−t) points\" (Kalai et al. 2025).",
+  "see": "assistant"
+ },
+ {
+  "term": "Self-correction",
+  "def": "Asking a model to review and fix its own answer. Without new external information it often fails to improve reasoning answers and can make them worse (Huang et al. 2023).",
+  "see": "assistant"
+ },
+ {
+  "term": "Persona",
+  "def": "The character a chat model is trained to play (the assistant). It is a learned pattern of text, not a separate agent with goals.",
+  "see": "assistant"
+ },
+ {
+  "term": "Token",
+  "def": "A piece of text (a word, part of a word, or punctuation) with an ID in the model's vocabulary; the unit the model reads and predicts.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Logits",
+  "def": "The raw score the model outputs for every vocabulary token before softmax; higher means more likely next.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Softmax",
+  "def": "Turns logits into probabilities that sum to 1 by exponentiating and normalising; it depends only on differences between logits.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Chat template",
+  "def": "The text format, with special role tokens, that turns a list of chat messages into the single document the model continues.",
+  "see": "assistant"
+ },
+ {
+  "term": "Sycophancy",
+  "def": "Telling users what they seem to want to hear: agreeing with wrong claims, caving when challenged, praising weak work.",
+  "see": "assistant"
+ },
+ {
+  "term": "Calibration",
+  "def": "Whether stated confidence matches accuracy: answers given at 80% confidence should be right about 80% of the time.",
+  "see": "assistant"
+ }
+]

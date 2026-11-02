@@ -172,6 +172,23 @@ fn main() {
 <tr><td>Is the reward or verifier being exploited?</td><td>RL finds loopholes faster than people do.</td><td><a href="#reward-models">Reward models</a>, <a href="#grpo">GRPO</a></td></tr>
 </tbody></table></div>
 
+<p>Practise on a slide. The three results below are invented, but each is modelled on a kind of report reviewers see often.</p>
+<div class="widget" id="w-ld-review">
+  <div class="wtitle">Review a result</div>
+  <div class="wsub">Pick a slide, tick every checklist question the slide actually answers, then press "Check against the reviewer's key" to see what you missed.</div>
+  <div class="btnrow" data-presets></div>
+  <div data-slide></div>
+  <div class="controls" data-list style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px 20px"></div>
+  <div class="btnrow"><button class="b" type="button" data-key aria-pressed="false">Check against the reviewer's key</button><button class="b" type="button" data-clear>Clear ticks</button></div>
+  <svg data-meter viewBox="0 0 640 74" role="img" aria-label="Confidence meter" style="width:100%;height:auto;display:block"></svg>
+  <div class="cards">
+    <div class="mc"><div class="l">Questions answered</div><div class="v" data-k="n">—</div></div>
+    <div class="mc"><div class="l">Confidence (weighted)</div><div class="v" data-k="conf">—</div></div>
+    <div class="mc"><div class="l">Verdict</div><div class="v" data-k="verdict" style="font-size:18px">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
 <h3>Red flags, and what they usually mean</h3>
 <div class="tw"><table>
 <thead><tr><th>You see</th><th>Likely cause</th><th>Ask</th></tr></thead>

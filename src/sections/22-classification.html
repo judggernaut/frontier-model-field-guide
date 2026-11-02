@@ -534,6 +534,28 @@ fn average_precision(y_true: &amp;[u8], scores: &amp;[f64]) -&gt; f64 {
 
 <h3>Better single numbers: MCC, balanced accuracy, kappa</h3>
 <p>If you must report one number, these are better choices than F1. Each still has a catch.</p>
+<div class="widget" id="w-cl-mcc">
+  <div class="wtitle">One confusion matrix, many scores</div>
+  <div class="wsub">Press "Always say negative on 2% prevalence": accuracy reads 98% while MCC and kappa sit at zero. Then raise sensitivity a little and watch which scores notice.</div>
+  <div class="controls">
+    <div class="ctl"><label for="clm-p">Prevalence (truly positive) <output id="clm-p-o"></output></label><input type="range" id="clm-p" min="0.5" max="50" step="0.5" value="5"></div>
+    <div class="ctl"><label for="clm-se">Sensitivity (recall on positives) <output id="clm-se-o"></output></label><input type="range" id="clm-se" min="0" max="100" step="1" value="70"></div>
+    <div class="ctl"><label for="clm-sp">Specificity (right on negatives) <output id="clm-sp-o"></output></label><input type="range" id="clm-sp" min="0" max="100" step="1" value="95"></div>
+  </div>
+  <div class="btnrow"><button class="b" data-pre="2,0,100">Always say negative on 2% prevalence</button><button class="b" data-pre="2,80,95">Decent model, 2% prevalence</button><button class="b" data-pre="50,80,80">Balanced classes</button></div>
+  <div class="cl-split">
+    <div><div class="cl-ch">Confusion matrix, 1,000 cases</div><div class="cl-mx" data-mx></div></div>
+    <div><div class="cl-ch">All five scores on one −1 to +1 axis. The upright tick is what a model with no skill gets; an orange bar does no better than its tick.</div><canvas></canvas><div class="cl-ch">No-skill ticks: accuracy, always predict the majority class; balanced accuracy, 0.5; F1, always predict positive, 2π/(1+π) at prevalence π; MCC and kappa, 0.</div></div>
+  </div>
+  <div class="cards">
+    <div class="mc"><div class="l">Accuracy</div><div class="v" data-k="acc"></div></div>
+    <div class="mc"><div class="l">Balanced accuracy</div><div class="v" data-k="ba"></div></div>
+    <div class="mc"><div class="l">F1</div><div class="v" data-k="f1"></div></div>
+    <div class="mc"><div class="l">MCC</div><div class="v" data-k="mcc"></div></div>
+    <div class="mc"><div class="l">Cohen's kappa</div><div class="v" data-k="kap"></div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
 <div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Which single number for which audience</span></div>
   <div class="tw"><table>
     <thead><tr><th>Number</th><th>Reads as</th><th>Best for</th><th>Catch</th></tr></thead>

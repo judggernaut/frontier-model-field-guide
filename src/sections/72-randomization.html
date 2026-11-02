@@ -1,0 +1,556 @@
+<section id="randomization" data-title="Assigning treatment: randomization and its alternatives">
+<h2>Assigning treatment: randomization and its alternatives</h2>
+<p>Every experiment answers one question: what would have happened to the same people without the change? You can never watch both versions of the world, so you build a comparison group that stands in for the missing one. How you decide who gets the change is the single biggest factor in whether that stand-in is honest. This chapter covers why a coin flip works, the four common ways assignment goes wrong, the quasi-experimental toolkit for when you cannot flip a coin, and the design choices (strata, units, spillover, balance checks) that decide whether a randomized test is as good as it looks.</p>
+
+<div class="story" id="st-rz-tutoring">
+  <div class="story-head"><div class="story-title">The tutoring club that looked like magic</div><p class="story-sub">Why letting people choose ruins the comparison, and how a coin fixes it.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Sixteen students, eight of them highly motivated">
+      <g class="a" style="--d:0">
+        <circle cx="124" cy="80" r="17" fill="var(--lead)"/><circle cx="180" cy="80" r="17" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="236" cy="80" r="17" fill="var(--lead)"/><circle cx="292" cy="80" r="17" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="348" cy="80" r="17" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="404" cy="80" r="17" fill="var(--lead)"/><circle cx="460" cy="80" r="17" fill="var(--lead)"/><circle cx="516" cy="80" r="17" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="124" cy="136" r="17" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="180" cy="136" r="17" fill="var(--lead)"/><circle cx="236" cy="136" r="17" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="292" cy="136" r="17" fill="var(--lead)"/><circle cx="348" cy="136" r="17" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="404" cy="136" r="17" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="460" cy="136" r="17" fill="var(--lead)"/><circle cx="516" cy="136" r="17" fill="var(--lead)"/>
+      </g>
+      <g class="a" style="--d:1"><circle cx="190" cy="204" r="9" fill="var(--lead)"/><text x="206" y="209" font-size="13" fill="var(--fg)">highly motivated: grades rise 7 points a term on their own</text></g>
+      <g class="a" style="--d:2"><circle cx="190" cy="232" r="9" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="206" y="237" font-size="13" fill="var(--fg)">less motivated: grades rise 1 point a term</text></g>
+      <text class="a" style="--d:1" x="320" y="34" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">16 students. Motivation is invisible to the school.</text>
+    </svg>
+    <p>A school starts an after-school tutoring club. Every student carries a trait the school cannot see: motivation. Motivated students improve faster with or without help. In this made-up school the club truly adds 4 points.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Students who sign up are mostly the motivated ones">
+      <rect x="40" y="40" width="260" height="150" rx="14" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="170" y="66" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Signed up for the club</text>
+      <rect x="340" y="40" width="260" height="150" rx="14" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="470" y="66" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Did not sign up</text>
+      <g class="a" style="--d:1">
+        <circle cx="95" cy="105" r="15" fill="var(--lead)"/><circle cx="145" cy="105" r="15" fill="var(--lead)"/><circle cx="195" cy="105" r="15" fill="var(--lead)"/><circle cx="245" cy="105" r="15" fill="var(--lead)"/>
+        <circle cx="95" cy="152" r="15" fill="var(--lead)"/><circle cx="145" cy="152" r="15" fill="var(--lead)"/><circle cx="195" cy="152" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="245" cy="152" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      </g>
+      <g class="a" style="--d:2">
+        <circle cx="395" cy="105" r="15" fill="var(--lead)"/><circle cx="445" cy="105" r="15" fill="var(--lead)"/><circle cx="495" cy="105" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="545" cy="105" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="395" cy="152" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="445" cy="152" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="495" cy="152" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="545" cy="152" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+      </g>
+      <text class="a" style="--d:3" x="170" y="222" text-anchor="middle" font-size="13" fill="var(--muted)">6 of 8 motivated</text>
+      <text class="a" style="--d:3" x="470" y="222" text-anchor="middle" font-size="13" fill="var(--muted)">2 of 8 motivated</text>
+    </svg>
+    <p>The club is optional, so students choose. The keen ones sign up. The two groups now differ in two ways at once: the club, and who they are.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Club students gained 9.5 points, others 2.5, a gap of 7 against a true effect of 4">
+      <text x="40" y="62" font-size="14" font-weight="600" fill="var(--fg)">Club</text>
+      <rect class="grow-x" style="--d:0" x="150" y="44" width="266" height="28" rx="6" fill="var(--accent)"/>
+      <text class="a" style="--d:1" x="426" y="63" font-size="14" font-weight="600" fill="var(--fg)">+9.5 points</text>
+      <text x="40" y="118" font-size="14" font-weight="600" fill="var(--fg)">No club</text>
+      <rect class="grow-x" style="--d:1" x="150" y="100" width="70" height="28" rx="6" fill="var(--tn)"/>
+      <text class="a" style="--d:2" x="230" y="119" font-size="14" font-weight="600" fill="var(--fg)">+2.5 points</text>
+      <g class="a" style="--d:3">
+        <rect x="40" y="160" width="560" height="74" rx="12" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5"/>
+        <text x="320" y="190" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Apparent effect 7 points = 4 from tutoring + 3 from who signed up</text>
+        <text x="320" y="216" text-anchor="middle" font-size="13" fill="var(--muted)">the extra 3 is selection bias, and no amount of data removes it</text>
+      </g>
+    </svg>
+    <p>Compare the groups and the club looks like it adds 7 points. Three of those points come from the students, not the club. Doubling the school's size would give the same wrong answer with a smaller error bar.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A coin flip splits motivated students evenly between the groups">
+      <rect x="40" y="40" width="260" height="150" rx="14" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="170" y="66" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent)">Heads: club</text>
+      <rect x="340" y="40" width="260" height="150" rx="14" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="470" y="66" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Tails: no club</text>
+      <g class="a" style="--d:1">
+        <circle cx="95" cy="105" r="15" fill="var(--lead)"/><circle cx="145" cy="105" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="195" cy="105" r="15" fill="var(--lead)"/><circle cx="245" cy="105" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="95" cy="152" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="145" cy="152" r="15" fill="var(--lead)"/><circle cx="195" cy="152" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="245" cy="152" r="15" fill="var(--lead)"/>
+      </g>
+      <g class="a" style="--d:2">
+        <circle cx="395" cy="105" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="445" cy="105" r="15" fill="var(--lead)"/><circle cx="495" cy="105" r="15" fill="var(--lead)"/><circle cx="545" cy="105" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="395" cy="152" r="15" fill="var(--lead)"/><circle cx="445" cy="152" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="495" cy="152" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><circle cx="545" cy="152" r="15" fill="var(--lead)"/>
+      </g>
+      <text class="a" style="--d:3" x="170" y="222" text-anchor="middle" font-size="13" fill="var(--muted)">4 of 8 motivated</text>
+      <text class="a" style="--d:3" x="470" y="222" text-anchor="middle" font-size="13" fill="var(--muted)">4 of 8 motivated</text>
+    </svg>
+    <p>Now a coin decides. The coin cannot see motivation, so it splits motivated students roughly evenly. It also splits everything else nobody thought to measure: sleep, home help, a good teacher last year.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="With random assignment the gap equals the true effect of 4 points">
+      <text x="40" y="62" font-size="14" font-weight="600" fill="var(--fg)">Club</text>
+      <rect class="grow-x" style="--d:0" x="150" y="44" width="224" height="28" rx="6" fill="var(--accent)"/>
+      <text class="a" style="--d:1" x="384" y="63" font-size="14" font-weight="600" fill="var(--fg)">+8.0 points</text>
+      <text x="40" y="118" font-size="14" font-weight="600" fill="var(--fg)">No club</text>
+      <rect class="grow-x" style="--d:1" x="150" y="100" width="112" height="28" rx="6" fill="var(--tn)"/>
+      <text class="a" style="--d:2" x="272" y="119" font-size="14" font-weight="600" fill="var(--fg)">+4.0 points</text>
+      <g class="a" style="--d:3">
+        <rect x="40" y="160" width="560" height="74" rx="12" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/>
+        <text x="320" y="190" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Gap 4 points = the true effect of tutoring</text>
+        <text x="320" y="216" text-anchor="middle" font-size="13" fill="var(--muted)">the coin balanced what nobody measured, so the only systematic difference is the club</text>
+      </g>
+    </svg>
+    <p>The gap is now 4 points, the club's real effect. Any one coin flip can still be unlucky, which is what error bars are for. On average across possible flips the comparison is fair, and that guarantee covers traits nobody thought to measure.</p>
+  </div>
+</div>
+
+<h3>Why a coin flip works</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The coin cannot play favourites</span></div>
+  <p>To learn whether something works, you compare people who got it with people who did not. The comparison is only fair if the two groups were alike before the change. The trouble is that people differ in countless ways you cannot see.</p>
+  <p>A coin flip solves this without you knowing any of those ways. The coin does not know who is motivated, rich, tired, or a power user, so each kind of person lands in each group about equally often. Any remaining difference between the groups after the change comes from the change itself or from luck, and statistics can measure luck.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What randomization buys and what it costs</span></div>
+  <p>Randomization is the only assignment method that protects against confounders nobody has thought of. Every alternative in this chapter works only if an assumption holds, and those assumptions cannot be fully checked from the data. That is why a randomized result usually settles an argument and an observational one usually starts a new one.</p>
+  <ul>
+    <li><b>What it guarantees.</b> No systematic difference between groups, so the estimate is unbiased. It does not guarantee a precise estimate; small experiments still have wide intervals (see <a href="#bigideas">the standard error</a>).</li>
+    <li><b>What it costs.</b> Engineering for assignment and logging, holding some users back from a change you believe is good, and the patience to wait for enough data. At a lab, the expensive part is usually the infrastructure to assign consistently and log exposure correctly, built once and reused.</li>
+    <li><b>What breaks it.</b> Anything that lets a human or the system influence who ends up in which group after the coin lands: opt-outs, filters applied after assignment, crashes that hit one arm more, or users in one arm affecting users in the other.</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Potential outcomes and the selection-bias term</span></div>
+  <p>Give each unit two potential outcomes: \(Y_i(1)\) if treated and \(Y_i(0)\) if not. The effect for unit \(i\) is \(Y_i(1)-Y_i(0)\), and we only ever see one of the two. The naive comparison of group means splits into the effect plus a bias term:</p>
+  <div class="eq">\[ \underbrace{E[Y\mid T{=}1]-E[Y\mid T{=}0]}_{\text{what you compute}} = \underbrace{E[Y(1)-Y(0)\mid T{=}1]}_{\text{effect on the treated}} + \underbrace{E[Y(0)\mid T{=}1]-E[Y(0)\mid T{=}0]}_{\text{selection bias}} \]<span class="eqcap">\(T\) is the treatment indicator. The selection-bias term asks: would the treated group have done differently from the control group even without treatment? In the tutoring story it is 3 points.</span></div>
+  <p>Random assignment makes \(T\) independent of \((Y(0), Y(1))\), written \((Y(0),Y(1)) \perp T\). Then \(E[Y(0)\mid T{=}1]=E[Y(0)\mid T{=}0]\), the bias term is zero, and the difference in means estimates the average treatment effect. Fisher argued this in <i>The Design of Experiments</i> (1935): randomization is what licenses the significance test, because it makes the assignment mechanism known.</p>
+  <p>The balance is in expectation. In one realised experiment, any covariate \(X\) differs between arms by chance, with a standard deviation of about \(2\sigma_X/\sqrt{n}\) for a 50/50 split of \(n\) units. That chance imbalance is already inside the standard error of the effect estimate, which is why you should not "re-roll" a randomization until the balance table looks nice unless you also account for it in the analysis (re-randomization with a fixed rule is a valid design; ad hoc re-rolling is not).</p>
+</div>
+
+<h3>Four ways assignment goes wrong</h3>
+<p>Each of these produces a comparison group that differs from the treated group before the treatment does anything. All four show up in AI labs every quarter.</p>
+<div class="four">
+  <div class="tile"><h4>Self-selection</h4><p>Users opt in to a beta of a new coding agent. Opt-in users already write more code, use the product daily, and forgive rough edges. The beta "raises engagement by 40 percent", and most of that gap existed before the beta.</p></div>
+  <div class="tile"><h4>Convenience</h4><p>The new model is served in one region, to one team, or during off-peak hours because that is where capacity was free. Region, team, and time of day each come with their own users, languages, and load, so the effect is tangled with the place.</p></div>
+  <div class="tile"><h4>The worst performers</h4><p>A team takes the 200 prompts where the model scored worst, rewrites the system prompt, and re-runs them. Scores jump 15 points. Part of that jump would have happened anyway, because items picked for a bad score were partly unlucky. This is regression to the mean.</p></div>
+  <div class="tile"><h4>Analyst choice</h4><p>A product lead hand-picks 20 "friendly" enterprise customers for a pilot, or an analyst drops users who "did not really see" the feature after looking at the data. Each choice correlates with the outcome, so the groups stop being comparable.</p></div>
+</div>
+
+<div class="story" id="st-rz-peptalk">
+  <div class="story-head"><div class="story-title">The pep talk that seemed to work</div><p class="story-sub">Regression to the mean, with ten students and two quizzes.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Monday quiz scores for ten students on a vertical scale">
+      <line x1="120" y1="30" x2="120" y2="230" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="110" y="34" text-anchor="end" font-size="12" fill="var(--muted)">90</text><text x="110" y="134" text-anchor="end" font-size="12" fill="var(--muted)">70</text><text x="110" y="234" text-anchor="end" font-size="12" fill="var(--muted)">50</text>
+      <line x1="120" y1="135" x2="560" y2="135" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <text x="200" y="252" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Monday</text>
+      <g class="a" style="--d:1">
+        <circle cx="200" cy="210" r="7" fill="var(--tn)"/><circle cx="200" cy="175" r="7" fill="var(--tn)"/><circle cx="200" cy="190" r="7" fill="var(--tn)"/><circle cx="200" cy="165" r="7" fill="var(--tn)"/><circle cx="200" cy="100" r="7" fill="var(--tn)"/>
+        <circle cx="200" cy="70" r="7" fill="var(--tn)"/><circle cx="200" cy="170" r="7" fill="var(--tn)"/><circle cx="200" cy="70" r="7" fill="var(--tn)"/><circle cx="200" cy="160" r="7" fill="var(--tn)"/><circle cx="200" cy="45" r="7" fill="var(--tn)"/>
+      </g>
+      <g class="a" style="--d:2">
+        <text x="300" y="70" font-size="14" fill="var(--fg)">Each score = skill + luck on the day.</text>
+        <text x="300" y="96" font-size="13" fill="var(--muted)">Average skill in this class: 69 (dashed line).</text>
+        <text x="300" y="122" font-size="13" fill="var(--muted)">Luck adds or removes up to 12 points.</text>
+      </g>
+    </svg>
+    <p>Ten students take a Monday quiz. Every score is part skill and part luck: a good night's sleep, a lucky guess, a question they happened to revise.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The five lowest Monday scorers are highlighted">
+      <line x1="120" y1="30" x2="120" y2="230" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="110" y="34" text-anchor="end" font-size="12" fill="var(--muted)">90</text><text x="110" y="134" text-anchor="end" font-size="12" fill="var(--muted)">70</text><text x="110" y="234" text-anchor="end" font-size="12" fill="var(--muted)">50</text>
+      <line x1="120" y1="135" x2="560" y2="135" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <text x="200" y="252" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Monday</text>
+      <circle cx="200" cy="100" r="7" fill="var(--tn)"/><circle cx="200" cy="70" r="7" fill="var(--tn)"/><circle cx="200" cy="70" r="7" fill="var(--tn)"/><circle cx="200" cy="160" r="7" fill="var(--tn)"/><circle cx="200" cy="45" r="7" fill="var(--tn)"/>
+      <g class="a" style="--d:1">
+        <circle cx="200" cy="210" r="7" fill="var(--warn)"/><circle cx="200" cy="175" r="7" fill="var(--warn)"/><circle cx="200" cy="190" r="7" fill="var(--warn)"/><circle cx="200" cy="165" r="7" fill="var(--warn)"/><circle cx="200" cy="170" r="7" fill="var(--warn)"/>
+      </g>
+      <g class="a" style="--d:2">
+        <text x="300" y="168" font-size="14" font-weight="600" fill="var(--warn)">Bottom five: average 59.6</text>
+        <text x="300" y="194" font-size="13" fill="var(--muted)">Mostly students who had a bad day,</text>
+        <text x="300" y="214" font-size="13" fill="var(--muted)">not mostly the least skilled.</text>
+      </g>
+    </svg>
+    <p>The teacher gives the five lowest scorers a pep talk. Picking by a low score picks people who are a bit less skilled and also people who were unlucky on Monday. Luck does not carry over to Friday.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Friday: the bottom five rise to 68.4 and the top five fall to 68.4">
+      <line x1="120" y1="30" x2="120" y2="230" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="110" y="34" text-anchor="end" font-size="12" fill="var(--muted)">90</text><text x="110" y="134" text-anchor="end" font-size="12" fill="var(--muted)">70</text><text x="110" y="234" text-anchor="end" font-size="12" fill="var(--muted)">50</text>
+      <line x1="120" y1="135" x2="430" y2="135" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <text x="200" y="252" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Monday</text>
+      <text x="380" y="252" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Friday</text>
+      <g class="a" style="--d:1" stroke-width="2" fill="none">
+        <path d="M200 210 L380 135" stroke="var(--warn)"/><path d="M200 175 L380 140" stroke="var(--warn)"/><path d="M200 190 L380 145" stroke="var(--warn)"/><path d="M200 165 L380 105" stroke="var(--warn)"/><path d="M200 170 L380 165" stroke="var(--warn)"/>
+        <path d="M200 100 L380 170" stroke="var(--tn)"/><path d="M200 70 L380 110" stroke="var(--tn)"/><path d="M200 70 L380 125" stroke="var(--tn)"/><path d="M200 160 L380 180" stroke="var(--tn)"/><path d="M200 45 L380 105" stroke="var(--tn)"/>
+      </g>
+      <g class="a" style="--d:1">
+        <circle cx="200" cy="210" r="6" fill="var(--warn)"/><circle cx="200" cy="175" r="6" fill="var(--warn)"/><circle cx="200" cy="190" r="6" fill="var(--warn)"/><circle cx="200" cy="165" r="6" fill="var(--warn)"/><circle cx="200" cy="170" r="6" fill="var(--warn)"/>
+        <circle cx="200" cy="100" r="6" fill="var(--tn)"/><circle cx="200" cy="70" r="6" fill="var(--tn)"/><circle cx="200" cy="160" r="6" fill="var(--tn)"/><circle cx="200" cy="45" r="6" fill="var(--tn)"/>
+        <circle cx="380" cy="170" r="6" fill="var(--tn)"/><circle cx="380" cy="110" r="6" fill="var(--tn)"/><circle cx="380" cy="125" r="6" fill="var(--tn)"/><circle cx="380" cy="180" r="6" fill="var(--tn)"/><circle cx="380" cy="105" r="6" fill="var(--tn)"/>
+        <circle cx="380" cy="135" r="6" fill="var(--warn)"/><circle cx="380" cy="140" r="6" fill="var(--warn)"/><circle cx="380" cy="145" r="6" fill="var(--warn)"/><circle cx="380" cy="105" r="6" fill="var(--warn)"/><circle cx="380" cy="165" r="6" fill="var(--warn)"/>
+      </g>
+      <g class="a" style="--d:2">
+        <text x="450" y="96" font-size="13" font-weight="600" fill="var(--warn)">Pep-talk group</text>
+        <text x="450" y="116" font-size="13" fill="var(--fg)">59.6 → 68.4 (+8.8)</text>
+        <text x="450" y="160" font-size="13" font-weight="600" fill="var(--muted)">Everyone else</text>
+        <text x="450" y="180" font-size="13" fill="var(--fg)">78.2 → 68.4 (−9.8)</text>
+      </g>
+    </svg>
+    <p>On Friday the pep-talk group gains almost 9 points. The top five, who got nothing, drop almost 10. Both groups slid back toward the class average because Monday's luck did not repeat. The pep talk may have done nothing at all.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="With a coin flip among low scorers, both halves rise by about the same amount">
+      <text x="320" y="34" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Bigger school: 40 lowest scorers, coin decides who gets the pep talk</text>
+      <text x="40" y="92" font-size="14" font-weight="600" fill="var(--fg)">Pep talk</text>
+      <rect class="grow-x" style="--d:0" x="170" y="74" width="270" height="28" rx="6" fill="var(--warn)"/>
+      <text class="a" style="--d:1" x="450" y="93" font-size="14" font-weight="600" fill="var(--fg)">+9 points</text>
+      <text x="40" y="146" font-size="14" font-weight="600" fill="var(--fg)">No pep talk</text>
+      <rect class="grow-x" style="--d:1" x="170" y="128" width="240" height="28" rx="6" fill="var(--tn)"/>
+      <text class="a" style="--d:2" x="420" y="147" font-size="14" font-weight="600" fill="var(--fg)">+8 points</text>
+      <g class="a" style="--d:3">
+        <rect x="40" y="182" width="560" height="58" rx="12" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/>
+        <text x="320" y="216" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Effect of the pep talk ≈ 1 point, not 9 (illustrative numbers)</text>
+      </g>
+    </svg>
+    <p>The fix is a control group drawn from the same low scorers. Both halves bounce back by about 8 points; the pep talk adds about 1. Whenever you select on a bad measurement, randomize inside the selected group or the bounce will be credited to your fix.</p>
+  </div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Why "fixing the worst" always looks like it worked</span></div>
+  <p>A golfer has a terrible round and buys a new putter. The next round is better. Was it the putter? Probably not much: a terrible round is partly bad luck, and bad luck rarely strikes twice in a row. Anything you do right after an unusually bad result will look like it helped. Anything you do right after an unusually good result will look like it hurt.</p>
+  <p>Daniel Kahneman tells a story about flight instructors that makes the same point. The instructors believed praise made trainee pilots worse and shouting made them better, because praise followed unusually good landings and shouting followed unusually bad ones. Both were followed by more ordinary landings regardless.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Spotting a broken assignment in a review</span></div>
+  <p>When a result arrives, ask how units got into the treated group before you look at the effect size. The pattern behind each failure is the same: something that predicts the outcome also predicted treatment.</p>
+  <div class="tw"><table>
+    <thead><tr><th>You hear</th><th>What it usually means</th><th>Direction of the error</th></tr></thead>
+    <tbody>
+      <tr><td>"Users who turned on the feature retain 30% better"</td><td>Self-selection; engaged users try features</td><td>Overstates the effect</td></tr>
+      <tr><td>"We tested it in Japan first and saw a lift"</td><td>Convenience; region, language, and season move with treatment</td><td>Either way, unknown</td></tr>
+      <tr><td>"The worst prompts improved after the fix"</td><td>Regression to the mean on a noisy eval</td><td>Overstates the effect</td></tr>
+      <tr><td>"We excluded users who churned in week one"</td><td>Filtering on something the treatment may have caused</td><td>Either way, often large</td></tr>
+      <tr><td>"Pilot customers love it"</td><td>Hand-picked friendly accounts</td><td>Overstates the effect</td></tr>
+    </tbody>
+  </table></div>
+  <p>The default fix costs little: assign by a hash of the user ID, decide the analysis population before launch, and analyse everyone as assigned (intention to treat), including people who never used the feature. Report the "users who actually used it" number as a secondary view and label it.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">How big regression to the mean is</span></div>
+  <p>Let a measurement be \(X = \mu_i + \varepsilon\), true level plus noise, with population mean \(\mu\) and test–retest correlation \(\rho\) (the share of variance that is real). If both measurements are standardised the same way, the expected second measurement given the first is</p>
+  <div class="eq">\[ E[X_2 \mid X_1 = x] = \mu + \rho\,(x-\mu), \qquad \text{expected bounce} = (1-\rho)\,(\mu - x) \]<span class="eqcap">\(\rho\) is the correlation between repeated measurements. With \(\rho = 0.5\), a group selected 20 points below average is expected to come back 10 points with no intervention at all.</span></div>
+  <p>Two places this bites in eval work. First, "hard subsets" chosen by a model's low score on one run: re-run the same model and the subset gets easier. Pick hard subsets with a different model, a different seed, or human labels, or compare both models on the subset with the same selection. Second, selecting on the pre-period outcome breaks difference-in-differences, because the treated group's pre-period was low partly by chance (economists call the job-training version the Ashenfelter dip).</p>
+  <p>On the analyst-choice failure: filtering on a post-treatment variable (for example, keeping only users who sent at least one message after assignment) conditions on something the treatment can change, which reintroduces selection bias even in a perfectly randomized test. Intention-to-treat analysis avoids it. If you need the effect on users who actually engaged, estimate it with the assignment as an instrument (see below) instead of filtering.</p>
+</div>
+
+<div class="widget" id="w-rz-sim">
+  <div class="wtitle">Assignment simulator</div>
+  <div class="wsub">Each run builds 400 users with a hidden motivation that raises their score, assigns treatment with the rule you pick, and estimates the effect. The chart shows 300 runs. A fair design centres on the true effect; a broken one centres somewhere else, no matter how many runs you add.</div>
+  <div class="controls">
+    <div class="ctl" style="flex-basis:100%"><label>Assignment rule</label><div class="btnrow" data-k="rule">
+      <button class="b" data-v="random" aria-pressed="false">Coin flip</button><button class="b" data-v="optin" aria-pressed="true">Users opt in</button><button class="b" data-v="lowest" aria-pressed="false">Treat the lowest scorers</button><button class="b" data-v="region" aria-pressed="false">Pilot in one region</button></div></div>
+    <div class="ctl" style="flex-basis:100%"><label>How the effect is estimated</label><div class="btnrow" data-k="est">
+      <button class="b" data-v="after" aria-pressed="true">Treated vs control, after</button><button class="b" data-v="prepost" aria-pressed="false">Treated, before vs after</button><button class="b" data-v="did" aria-pressed="false">Change vs change (DiD)</button></div></div>
+    <div class="ctl"><label for="rz-eff">True effect: <output id="rz-eff-o">2.0</output></label><input type="range" id="rz-eff" min="-4" max="8" step="0.5" value="2"></div>
+    <div class="ctl"><label for="rz-n">Users per experiment: <output id="rz-n-o">400</output></label><input type="range" id="rz-n" min="0" max="5" step="1" value="2"></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Average estimate</div><div class="v" data-k2="avg">—</div></div>
+    <div class="mc"><div class="l">Bias</div><div class="v" data-k2="bias">—</div></div>
+    <div class="mc"><div class="l">Spread (SD)</div><div class="v" data-k2="sd">—</div></div>
+    <div class="mc"><div class="l">95% intervals that miss</div><div class="v" data-k2="miss">—</div></div>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>Balance check, first run</th><th>Treated</th><th>Control</th><th>SMD</th><th>Typical |SMD| over runs</th></tr></thead>
+    <tbody data-bal></tbody>
+  </table></div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="callout eval"><span class="tag">Eval lens</span><div>Offline evals have assignment problems too, they are just less visible. Randomize which response is shown first to a pairwise judge (position bias is a confounder; see <a href="#judges">LLM as judge</a>). Randomize which annotator sees which model's outputs, or every annotator sees both. Interleave runs of the two models over time so a provider outage or a judge-model update does not land on one arm. Never build a "hard subset" from the very run you are evaluating. And when a fix is tested on the worst items, compare it against the old model re-run on the same items, so regression to the mean shows up in both arms.</div></div>
+
+<h3>When you cannot randomize</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Finding a fair comparison that nature made</span></div>
+  <p>Sometimes a coin flip is off the table. You cannot randomly make people smoke. You cannot charge half a country one price and half another. You cannot give half of one company's employees a new model when they share the same documents and talk to each other all day.</p>
+  <p>Then you hunt for a situation where the world did something close to a coin flip for you: a rule with a sharp cutoff, a lottery, a launch that happened in one place but not a similar one. These designs are called <b>quasi-experiments</b>. Each one swaps the coin for an assumption, and the whole game is checking how believable that assumption is.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">When non-random assignment is acceptable</span></div>
+  <p>Non-random assignment is a legitimate choice when one of these holds:</p>
+  <ul>
+    <li><b>Ethics.</b> Withholding a safety fix or a protection from a random half of users is not acceptable. Ship it, and measure with a design that does not need a held-back group.</li>
+    <li><b>Cost or reach.</b> The change is a pricing tier, a contract, a data-centre migration, or a model swap for a whole enterprise tenant. The unit is so large there are only a handful of them.</li>
+    <li><b>Rollouts that cannot be split.</b> A tokenizer change, a new safety classifier on the shared serving path, a policy update announced publicly. Everyone gets it at once.</li>
+    <li><b>Network effects.</b> Users interact, so splitting them contaminates the comparison (see interference below). The honest unit becomes a whole community or market, and you may only have a few.</li>
+  </ul>
+  <p>What changes is the burden of proof. A quasi-experiment needs a named assumption, a check of that assumption (pre-trends, balance, placebo tests), and a sentence in the readout on what would make the result wrong. Budget analyst time for that, and expect a reviewer to discount the result by more than its confidence interval suggests.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>Why could this not be randomized, and was a partial randomization possible (randomize timing across regions, randomize an encouragement)? What is the identifying assumption in one sentence? What check would have caught a violation, and did you run it? Is there a placebo outcome or placebo date where the method should find nothing, and does it?</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The quasi-experimental toolkit</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Method</th><th>Intuition</th><th>Key assumption</th><th>How it fails</th><th>Lab example</th></tr></thead>
+    <tbody>
+      <tr><td>Difference-in-differences</td><td>Compare the change in the treated group with the change in an untreated group</td><td>Parallel trends: without treatment both would have changed by the same amount</td><td>Groups were already diverging; another shock hits one group at launch</td><td>A safety filter ships to EU traffic first; compare the EU change in complaint rate with the US change</td></tr>
+      <tr><td>Regression discontinuity</td><td>Units just above and just below a cutoff are nearly identical except for treatment</td><td>No precise control over the running variable near the cutoff; outcome would be smooth through it</td><td>Bunching just over the cutoff; effect only valid near the cutoff</td><td>Requests with difficulty score above 0.7 are routed to the large model; compare outcomes at 0.69 and 0.71</td></tr>
+      <tr><td>Matching and propensity scores</td><td>Compare each treated unit with untreated units that looked the same beforehand</td><td>No unmeasured confounders given the matched variables, and overlap (every treated unit has look-alikes)</td><td>A hidden trait such as motivation drives both choice and outcome</td><td>Users who enabled memory compared with look-alike users who did not</td></tr>
+      <tr><td>Instrumental variables</td><td>Find something random that nudges treatment but touches the outcome only through treatment</td><td>Relevance, as-good-as-random instrument, and exclusion (no other path to the outcome)</td><td>Weak instrument; the nudge has a direct effect</td><td>A random banner invites some users to try agent mode; use the banner to estimate agent mode's effect on users it persuaded</td></tr>
+      <tr><td>Interrupted time series</td><td>Forecast the metric from its pre-launch trend and compare with what happened</td><td>The pre-trend would have continued; nothing else changed at the same moment</td><td>Seasonality, a marketing push, or a competitor launch on the same week</td><td>Daily success rate before and after a model launch on one date</td></tr>
+      <tr><td>Synthetic control</td><td>Build a weighted blend of untreated units that tracks the treated unit before launch</td><td>The blend would have kept tracking it; donors are untouched by the treatment</td><td>Poor pre-period fit; donors affected by spillover</td><td>One large customer gets a custom fine-tune; build a "synthetic customer" from a weighted mix of similar tenants</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>Difference-in-differences</b> (the New Jersey minimum-wage study by Card and Krueger, 1994, is the textbook case) estimates</p>
+  <div class="eq">\[ \hat\delta = \big(\bar Y_{T,\text{post}} - \bar Y_{T,\text{pre}}\big) - \big(\bar Y_{C,\text{post}} - \bar Y_{C,\text{pre}}\big) \;\equiv\; \hat\delta \text{ in } Y = \alpha + \beta\,\text{Treat} + \gamma\,\text{Post} + \delta\,\text{Treat}\times\text{Post} + \varepsilon \]<span class="eqcap">\(T\) treated group, \(C\) comparison group. The regression form gives the same number and lets you add covariates and cluster standard errors by group. Stable differences between groups cancel; differences in trend do not.</span></div>
+  <p><b>Regression discontinuity</b> (Thistlethwaite and Campbell, 1960, studied Certificates of Merit, public recognition awarded above a test-score cutoff) estimates the jump \(\tau = \lim_{x\downarrow c}E[Y\mid X=x]-\lim_{x\uparrow c}E[Y\mid X=x]\) with local linear fits on each side, inside a bandwidth chosen by a data-driven rule. Always plot it, and check the density of \(X\) at the cutoff for bunching.</p>
+  <p><b>Propensity scores</b> (Rosenbaum and Rubin, 1983) compress many covariates into \(e(x)=P(T=1\mid X=x)\). Matching or weighting by \(1/e(x)\) balances the measured covariates; nothing balances the unmeasured ones. Trim units with \(e(x)\) near 0 or 1, where there are no comparable counterparts, and run a sensitivity analysis that asks how strong a hidden confounder would need to be to erase the effect.</p>
+  <p><b>Instrumental variables</b> (Angrist, 1990, used the Vietnam draft lottery as a random nudge into military service) give the Wald estimator \(\hat\beta = \dfrac{E[Y\mid Z=1]-E[Y\mid Z=0]}{E[T\mid Z=1]-E[T\mid Z=0]}\). It estimates the effect for compliers, the units the instrument actually moved, which may differ from the average user. A randomized encouragement is the cleanest instrument a product team can build.</p>
+  <p><b>Interrupted time series</b> fits the pre-period (trend plus seasonality) and measures the post-period gap. It is the weakest design here, because anything else that changed on the same day is indistinguishable from the treatment. <b>Synthetic control</b> (Abadie, Diamond and Hainmueller, 2010, built a "synthetic California" to study a 1988 tobacco-control law) improves on it by learning donor weights \(w_j \ge 0,\ \sum w_j = 1\) that reproduce the treated unit's pre-period path. Inference uses placebo runs: pretend each donor was treated and see whether the real gap is unusual.</p>
+</div>
+
+<div class="story" id="st-rz-coffee">
+  <div class="story-head"><div class="story-title">Two coffee shops and a new espresso machine</div><p class="story-sub">Difference-in-differences, and the assumption it rests on.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Shop A sales rose from 200 to 260 cups a day after a new machine">
+      <line x1="90" y1="225" x2="600" y2="225" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="170" y="246" text-anchor="middle" font-size="13" fill="var(--muted)">May (before)</text>
+      <text x="470" y="246" text-anchor="middle" font-size="13" fill="var(--muted)">July (after)</text>
+      <line x1="320" y1="30" x2="320" y2="225" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <text x="320" y="24" text-anchor="middle" font-size="12" fill="var(--muted)">new machine in June</text>
+      <path class="a" style="--d:0" d="M170 160 L470 64" stroke="var(--accent)" stroke-width="3" fill="none"/>
+      <circle class="a" style="--d:0" cx="170" cy="160" r="6" fill="var(--accent)"/><circle class="a" style="--d:0" cx="470" cy="64" r="6" fill="var(--accent)"/>
+      <text class="a" style="--d:1" x="160" y="146" text-anchor="end" font-size="13" font-weight="600" fill="var(--accent)">Shop A: 200</text>
+      <text class="a" style="--d:1" x="482" y="62" font-size="13" font-weight="600" fill="var(--accent)">260 cups/day</text>
+      <text class="a" style="--d:2" x="520" y="150" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">+60. The machine</text>
+      <text class="a" style="--d:2" x="520" y="172" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">sold 60 more cups?</text>
+    </svg>
+    <p>Shop A installs a fancy espresso machine in June. Daily sales rise from 200 cups in May to 260 in July. A before-and-after comparison credits the machine with 60 cups a day.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Shop B without a new machine rose from 180 to 220">
+      <line x1="90" y1="225" x2="600" y2="225" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="170" y="246" text-anchor="middle" font-size="13" fill="var(--muted)">May (before)</text>
+      <text x="470" y="246" text-anchor="middle" font-size="13" fill="var(--muted)">July (after)</text>
+      <line x1="320" y1="30" x2="320" y2="225" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <path d="M170 160 L470 64" stroke="var(--accent)" stroke-width="3" fill="none"/>
+      <circle cx="170" cy="160" r="6" fill="var(--accent)"/><circle cx="470" cy="64" r="6" fill="var(--accent)"/>
+      <text x="160" y="146" text-anchor="end" font-size="13" font-weight="600" fill="var(--accent)">Shop A: 200</text>
+      <text x="482" y="62" font-size="13" font-weight="600" fill="var(--accent)">260</text>
+      <path class="a" style="--d:0" d="M170 192 L470 128" stroke="var(--tn)" stroke-width="3" fill="none"/>
+      <circle class="a" style="--d:0" cx="170" cy="192" r="6" fill="var(--tn)"/><circle class="a" style="--d:0" cx="470" cy="128" r="6" fill="var(--tn)"/>
+      <text class="a" style="--d:1" x="160" y="208" text-anchor="end" font-size="13" font-weight="600" fill="var(--muted)">Shop B: 180</text>
+      <text class="a" style="--d:1" x="482" y="132" font-size="13" font-weight="600" fill="var(--muted)">220</text><text class="a" style="--d:1" x="482" y="150" font-size="12" fill="var(--muted)">+40, no new machine</text>
+    </svg>
+    <p>Shop B, across town, changed nothing. Its sales also rose, from 180 to 220. Summer, tourists, and a warm July lifted both shops. Some of Shop A's 60 cups would have come anyway.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Dashed line shows Shop A's expected path at 240, leaving a 20 cup effect">
+      <line x1="90" y1="225" x2="600" y2="225" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="170" y="246" text-anchor="middle" font-size="13" fill="var(--muted)">May (before)</text>
+      <text x="470" y="246" text-anchor="middle" font-size="13" fill="var(--muted)">July (after)</text>
+      <path d="M170 160 L470 64" stroke="var(--accent)" stroke-width="3" fill="none"/>
+      <path d="M170 192 L470 128" stroke="var(--tn)" stroke-width="3" fill="none"/>
+      <circle cx="170" cy="160" r="6" fill="var(--accent)"/><circle cx="470" cy="64" r="6" fill="var(--accent)"/><circle cx="170" cy="192" r="6" fill="var(--tn)"/><circle cx="470" cy="128" r="6" fill="var(--tn)"/>
+      <text x="160" y="146" text-anchor="end" font-size="13" font-weight="600" fill="var(--accent)">Shop A</text>
+      <text x="160" y="208" text-anchor="end" font-size="13" font-weight="600" fill="var(--muted)">Shop B</text>
+      <path class="a dash" style="--d:0" d="M170 160 L470 96" stroke="var(--accent)" stroke-width="2" fill="none"/>
+      <circle class="a" style="--d:1" cx="470" cy="96" r="6" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>
+      <text class="a" style="--d:1" x="482" y="104" font-size="13" fill="var(--accent)">240 if A had</text><text class="a" style="--d:1" x="482" y="121" font-size="13" fill="var(--accent)">followed B's +40</text>
+      <path class="a" style="--d:2" d="M458 66 L458 94" stroke="var(--good)" stroke-width="3"/>
+      <text class="a" style="--d:2" x="482" y="72" font-size="14" font-weight="700" fill="var(--good)">effect ≈ 20</text>
+      <text class="a" style="--d:3" x="320" y="24" text-anchor="middle" font-size="13" fill="var(--fg)">(260 − 200) − (220 − 180) = 60 − 40 = 20 cups a day</text>
+    </svg>
+    <p>Difference-in-differences borrows Shop B's change as Shop A's "what would have happened". Shop A was expected to reach 240 without the machine, so the machine gets credit for 20 cups a day, a third of the naive number.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Before launch the two shops moved in parallel for months, which makes the assumption believable">
+      <line x1="60" y1="225" x2="600" y2="225" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <text x="100" y="246" text-anchor="middle" font-size="12" fill="var(--muted)">Jan</text><text x="170" y="246" text-anchor="middle" font-size="12" fill="var(--muted)">Feb</text><text x="240" y="246" text-anchor="middle" font-size="12" fill="var(--muted)">Mar</text><text x="310" y="246" text-anchor="middle" font-size="12" fill="var(--muted)">Apr</text><text x="380" y="246" text-anchor="middle" font-size="12" fill="var(--muted)">May</text><text x="520" y="246" text-anchor="middle" font-size="12" fill="var(--muted)">Jul</text>
+      <line x1="450" y1="30" x2="450" y2="225" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <path class="a" style="--d:0" d="M100 176 L170 172 L240 170 L310 166 L380 160 L520 64" stroke="var(--accent)" stroke-width="3" fill="none"/>
+      <path class="a" style="--d:0" d="M100 208 L170 204 L240 202 L310 198 L380 192 L520 128" stroke="var(--tn)" stroke-width="3" fill="none"/>
+      <text x="92" y="180" text-anchor="end" font-size="12" font-weight="600" fill="var(--accent)">A</text><text x="92" y="212" text-anchor="end" font-size="12" font-weight="600" fill="var(--muted)">B</text>
+      <g class="a" style="--d:1"><rect x="90" y="40" width="300" height="56" rx="10" fill="var(--good-soft)" stroke="var(--good)"/><text x="240" y="64" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">Five months moving in step:</text><text x="240" y="84" text-anchor="middle" font-size="13" fill="var(--fg)">the parallel-trends check passes</text></g>
+      <g class="a" style="--d:2"><text x="470" y="186" font-size="12" fill="var(--muted)">It cannot rule out a shock</text><text x="470" y="204" font-size="12" fill="var(--muted)">that hit only A in June</text></g>
+    </svg>
+    <p>The method rests on one assumption: without the machine, both shops would have moved in parallel. You cannot check that for July, but you can check it for the months before. If the lines ran in step for months, the assumption is believable. A new office opening next to Shop A in June would still fool it.</p>
+  </div>
+</div>
+
+<div class="widget" id="w-rz-did">
+  <div class="wtitle">Difference-in-differences and parallel trends</div>
+  <div class="wsub">Two groups over ten weeks, launch after week 5. Add a pre-existing trend gap or a launch-week shock that only hits the treated group, and compare the DiD estimate with the truth. The pre-trend check catches one of the two violations and is blind to the other.</div>
+  <div class="controls">
+    <div class="ctl"><label for="rz-did-eff">True effect: <output id="rz-did-eff-o">8</output></label><input type="range" id="rz-did-eff" min="0" max="20" step="1" value="8"></div>
+    <div class="ctl"><label for="rz-did-g">Trend gap before launch (per week): <output id="rz-did-g-o">0.0</output></label><input type="range" id="rz-did-g" min="-3" max="3" step="0.25" value="0"></div>
+    <div class="ctl"><label for="rz-did-s">Shock at launch, treated only: <output id="rz-did-s-o">0</output></label><input type="range" id="rz-did-s" min="-12" max="12" step="1" value="0"></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">True effect</div><div class="v" data-k2="true">—</div></div>
+    <div class="mc"><div class="l">DiD estimate</div><div class="v" data-k2="did">—</div></div>
+    <div class="mc"><div class="l">Bias</div><div class="v" data-k2="bias">—</div></div>
+    <div class="mc"><div class="l">Pre-trend slope gap</div><div class="v" data-k2="pre">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A difference-in-differences estimate in code</span></div>
+  <p>The coffee-shop numbers as five days per cell. The three comparisons give three different answers, and only the last removes both the stable gap between shops and the shared summer trend.</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>def mean(xs):
+    return sum(xs) / len(xs)
+
+# Daily cups sold, five days per cell (illustrative numbers)
+a_before = [198, 203, 197, 201, 201]   # Shop A, May
+a_after  = [262, 258, 259, 263, 258]   # Shop A, July (new machine in June)
+b_before = [181, 178, 182, 179, 180]   # Shop B, May
+b_after  = [219, 222, 218, 221, 220]   # Shop B, July (no change)
+
+before_after = mean(a_after) - mean(a_before)        # mixes the machine with summer
+a_vs_b       = mean(a_after) - mean(b_after)         # mixes the machine with the shops' stable gap
+did = (mean(a_after) - mean(a_before)) - (mean(b_after) - mean(b_before))
+
+print(f"{before_after:.1f}")   # 60.0
+print(f"{a_vs_b:.1f}")         # 40.0
+print(f"{did:.1f}")            # 20.0  the only one that removes both</code></pre>
+<pre class="code" data-lang="rust"><code>fn mean(xs: &amp;[f64]) -&gt; f64 {
+    xs.iter().sum::&lt;f64&gt;() / xs.len() as f64
+}
+
+fn main() {
+    // Daily cups sold, five days per cell (illustrative numbers)
+    let a_before = [198.0, 203.0, 197.0, 201.0, 201.0]; // Shop A, May
+    let a_after = [262.0, 258.0, 259.0, 263.0, 258.0];  // Shop A, July (new machine in June)
+    let b_before = [181.0, 178.0, 182.0, 179.0, 180.0]; // Shop B, May
+    let b_after = [219.0, 222.0, 218.0, 221.0, 220.0];  // Shop B, July (no change)
+
+    let before_after = mean(&amp;a_after) - mean(&amp;a_before); // mixes the machine with summer
+    let a_vs_b = mean(&amp;a_after) - mean(&amp;b_after);        // mixes the machine with the shops' stable gap
+    let did = (mean(&amp;a_after) - mean(&amp;a_before)) - (mean(&amp;b_after) - mean(&amp;b_before));
+
+    println!("{:.1}", before_after); // 60.0
+    println!("{:.1}", a_vs_b);       // 40.0
+    println!("{:.1}", did);          // 20.0  the only one that removes both
+}</code></pre>
+  </div>
+  <p>In a real analysis you would fit the regression form with one row per shop-day, cluster standard errors by shop, and, with only two shops, admit that the standard error is barely identified. With one treated and one control unit, DiD is an anecdote with arithmetic. Many groups, or staggered launch dates across groups, make it a test; with staggered timing use the newer estimators that avoid comparing late-treated groups against already-treated ones (Callaway and Sant'Anna, 2021, is a common choice).</p>
+</div>
+
+<h3>Stratified and blocked randomization</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Deal the cards fairly within each suit</span></div>
+  <p>Suppose you split a class into two teams by coin flip, and by bad luck one team gets most of the tall kids. On average coin flips are fair, but any single split can be lopsided. If you already know height matters, line the kids up by height, take them two at a time, and flip a coin for each pair. Now each team gets one of every pair, and height can never be lopsided.</p>
+  <p>That is <b>blocking</b> (also called stratifying): group similar units first, then randomize inside each group. It removes bad luck on the things you blocked on, which makes the result more precise with the same number of people.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Cheap precision</span></div>
+  <p>Blocking costs almost nothing and buys precision, so it is the default whenever a strong predictor of the outcome is known before assignment. Typical blocks at a lab: customer tier, language, platform (API versus app), heavy versus light users, task category in an offline eval. Precision gained is precision you do not have to buy with more traffic or more labelled items.</p>
+  <p>Two rules. Block on things measured before assignment, never after. And analyse the way you randomized: a blocked design analysed as if it were simple randomization still gives an unbiased answer, but its error bars are too wide, so you throw away what you paid for.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>What predicts this outcome most strongly before treatment? Did we block or adjust on it (stratification, or regression adjustment such as CUPED on a pre-period metric)? Does the analysis use the blocks, or did we pay for precision and then discard it?</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Why blocking reduces variance</span></div>
+  <p>Split the outcome variance into a part explained by the blocks and a part within blocks: \(\sigma^2 = \sigma^2_{\text{between}} + \sigma^2_{\text{within}}\). With a 50/50 split of \(n\) units, the difference-in-means estimator has approximately</p>
+  <div class="eq">\[ \operatorname{Var}_{\text{simple}}(\hat\tau) \approx \frac{4\sigma^2}{n}, \qquad \operatorname{Var}_{\text{blocked}}(\hat\tau) \approx \frac{4\sigma^2_{\text{within}}}{n}, \qquad \frac{\operatorname{Var}_{\text{blocked}}}{\operatorname{Var}_{\text{simple}}} \approx 1 - R^2_{\text{blocks}} \]<span class="eqcap">\(R^2_{\text{blocks}}\) is the share of outcome variance the blocks explain. If customer tier explains 40 percent of the variance in tokens used, blocking on tier cuts the variance by 40 percent, the same as 1.67 times the traffic.</span></div>
+  <p>The blocked estimator is the weighted average of within-block differences, \(\hat\tau = \sum_h w_h(\bar Y_{h,1}-\bar Y_{h,0})\), with \(w_h\) the block's share of units. Matched pairs are the extreme case: each block holds two similar units. The paired eval design (both models answer the same prompts) is exactly this, with the prompt as the block, which is why paired tests are so much more powerful in <a href="#evalstats">statistics for eval sets</a>. Post-stratification and regression adjustment on pre-period covariates recover most of the same gain after the fact when blocking was not possible at assignment.</p>
+</div>
+
+<h3>Choosing the unit of randomization</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">What does the coin decide about?</span></div>
+  <p>A coin can decide about each question someone asks, each conversation, each person, or each whole company. Flip per question and the same person might get the new model on one question and the old one on the next, which feels broken and mixes up the results. Flip per company and everyone at the company gets the same experience, but you have far fewer coin flips, so the answer is less precise. Pick the unit at which the change makes sense, then count your sample in those units.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The trade-off table</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Unit</th><th>Use when</th><th>Main risk</th><th>Analysis must</th></tr></thead>
+    <tbody>
+      <tr><td>Request</td><td>Stateless backend changes users cannot notice: a kernel, a cache, a decoding tweak</td><td>Inconsistent experience; users who repeat dominate the sample</td><td>Cluster standard errors by user if users send many requests</td></tr>
+      <tr><td>Session or conversation</td><td>The change matters within one conversation: a system prompt, a memory policy</td><td>Same user in both arms across sessions; carryover between them</td><td>Cluster by user</td></tr>
+      <tr><td>User or account</td><td>Default for product and model changes; long-term outcomes like retention</td><td>Fewer units than requests; shared accounts</td><td>Treat the user as the observation; per-user metrics or cluster-robust errors</td></tr>
+      <tr><td>Cluster: org, team, region, time block</td><td>Users interact, share content, or share capacity</td><td>Few clusters, so low power; cluster sizes vary</td><td>Analyse at cluster level or with cluster-robust errors; count clusters, not users</td></tr>
+    </tbody>
+  </table></div>
+  <p>The rule that catches most mistakes: <b>the analysis unit must respect the randomization unit</b>. Randomize by user and compute a per-request t-test, and your error bars are too narrow, often several times too narrow. The fix is in <a href="#intervals">intervals and clustering</a>.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The design effect</span></div>
+  <p>When units are randomized in clusters of average size \(m\) with intraclass correlation \(\rho\) (how alike observations in the same cluster are), the variance of a mean is inflated by the design effect</p>
+  <div class="eq">\[ \text{DE} = 1 + (m-1)\,\rho, \qquad n_{\text{eff}} = \frac{n}{\text{DE}} \]<span class="eqcap">Illustrative: 50 requests per user with \(\rho = 0.2\) gives DE = 10.8. A million requests from 20,000 users carry the information of about 93,000 independent requests.</span></div>
+  <p>Ratio metrics such as "success rate per request" when randomized by user are the most common trap: the numerator and denominator are both per-user sums, and the right variance comes from the delta method or a user-level bootstrap (see <a href="#measurement">measuring the right thing</a>). Smaller units buy power only when the treatment cannot leak between them; when it can, the extra power is fake.</p>
+</div>
+
+<h3>Interference and spillover</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">When the control group is not left alone</span></div>
+  <p>Test a new vaccine on half a village and the unvaccinated half also gets sick less, because there is less disease going around. Comparing the halves now understates how well the vaccine works. The control group was affected by the treatment group.</p>
+  <p>The same thing happens with software. If half of a team gets an AI assistant that writes great documents, the other half reads those documents too. If the new model is slower and hogs the shared servers, the old model's users see slower answers too. Either way, the comparison mixes up the two groups.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Where spillover hides at an AI lab</span></div>
+  <ul>
+    <li><b>Shared capacity.</b> A treatment model that uses more GPU time slows the control arm on the same pool, so the latency comparison is wrong in both directions. Give each arm its own capacity or randomize in time.</li>
+    <li><b>Shared content.</b> Workspace features, shared prompts, team knowledge bases, and documents written by one arm and read by the other. Randomize by workspace or org.</li>
+    <li><b>Marketplaces and rate limits.</b> If treatment users consume more of a shared quota or a shared queue, control users are starved.</li>
+    <li><b>Learning effects.</b> Users who see a better model change their habits, and carry those habits into later sessions on the other arm.</li>
+  </ul>
+  <p>The fix is to randomize at a level where the spillover stays inside the unit: whole orgs (cluster randomization), or the whole system flipping between A and B in time blocks (a switchback). Both cost power, so they need longer tests. The question to ask is whether the effect you care about includes the spillover; at launch, everyone gets the treatment, so the clean number is the all-treated versus all-control comparison.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">SUTVA, clusters, and switchbacks</span></div>
+  <p>The potential-outcomes notation \(Y_i(1), Y_i(0)\) quietly assumes the <b>stable unit treatment value assumption</b> (SUTVA, Rubin's term): unit \(i\)'s outcome depends only on its own treatment, not on anyone else's (no interference), and there is only one version of each treatment (no hidden variations). With interference, outcomes depend on the whole assignment vector, \(Y_i(\mathbf{t})\), and the simple difference in means estimates neither the effect of treating everyone nor anything else well defined.</p>
+  <ul>
+    <li><b>Cluster randomization</b> treats the cluster as the unit. Interference across clusters must be small; analysis is at the cluster level.</li>
+    <li><b>Switchback designs</b> randomize the whole system in time blocks (for example, alternate A and B every hour per region). They handle shared-capacity interference, but blocks must be long enough for carryover to wash out, and the analysis should drop or model the period right after each switch. Bojinov, Simchi-Levi and Zhao (Management Science, 2023) give the design and analysis, including how to choose block length when carryover lasts a known number of periods.</li>
+    <li><b>Detecting interference</b>: run the experiment at two treated fractions (for example 10 percent and 50 percent of clusters) and see whether the control arm's outcome moves with the treated fraction.</li>
+  </ul>
+</div>
+
+<h3>Checking balance after randomization</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Check the coin before trusting it</span></div>
+  <p>Randomization done right should give two groups that look alike on everything you measured beforehand and are about the size you planned. Before reading the result, look. If you planned a 50/50 split and got 52/48 on a million users, something in the pipeline is eating people from one arm, and the result cannot be trusted until you find out why.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Three checks before anyone sees the effect</span></div>
+  <ol class="steps">
+    <li><div><b>Sample ratio.</b> Do the arm sizes match the planned split? A mismatch (sample ratio mismatch, SRM) means users were lost or added unevenly: a crash in one arm, a redirect, a bot filter that reacts to the treatment. Kohavi, Tang and Xu (<i>Trustworthy Online Controlled Experiments</i>, 2020) treat SRM as a blocking failure: do not read the results.</div></li>
+    <li><div><b>Covariate balance.</b> Compare pre-period metrics, tier, platform, and tenure between arms, as standardised differences. A large imbalance on a pre-period metric points at broken assignment or exposure logging.</div></li>
+    <li><div><b>A/A test.</b> Run the system with both arms identical. It should show no effect about 95 percent of the time. If it shows "effects" more often, the pipeline or the variance formula is wrong.</div></li>
+  </ol>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Standardised differences and the SRM test</span></div>
+  <p>The standardised mean difference for covariate \(X\) is \(\text{SMD} = (\bar x_T - \bar x_C)/\sqrt{(s_T^2 + s_C^2)/2}\). A common rule of thumb flags \(|\text{SMD}| &gt; 0.1\). Use SMDs rather than p-values: with millions of users trivial differences are "significant", and with a few hundred large ones are not. Clinical-trial reporting guidance (CONSORT) discourages significance tests of baseline differences in randomized trials for the same reason: if randomization was done properly, any difference is chance by construction. If a pre-period covariate is imbalanced, adjust for it in the analysis (regression adjustment), which also shrinks the variance.</p>
+  <p>The SRM check is a chi-square goodness-of-fit test on the arm counts. Teams usually alarm at a strict threshold, such as \(p &lt; 0.001\), because they run it on every experiment.</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code>import math
+
+def srm_check(n_treat, n_control, planned_share=0.5):
+    """Chi-square test (1 df) that arm sizes match the planned split."""
+    n = n_treat + n_control
+    exp_t, exp_c = n * planned_share, n * (1 - planned_share)
+    chi2 = (n_treat - exp_t) ** 2 / exp_t + (n_control - exp_c) ** 2 / exp_c
+    p = math.erfc(math.sqrt(chi2 / 2))    # survival function of chi-square with 1 df
+    return chi2, p
+
+chi2, p = srm_check(50_421, 49_579)       # planned 50/50, observed 50.4/49.6
+print(f"{chi2:.2f} {p:.4f}")              # 7.09 0.0078  small skew, but n is large: investigate
+chi2, p = srm_check(5_042, 4_958)
+print(f"{chi2:.2f} {p:.4f}")              # 0.71 0.4009  same 50.4/49.6 skew, consistent with chance</code></pre>
+<pre class="code" data-lang="rust"><code>// erfc via the Numerical Recipes rational approximation (relative error below 1.2e-7),
+// accurate enough to match Python's math.erfc to the printed digits here.
+fn erfc(x: f64) -&gt; f64 {
+    let z = x.abs();
+    let t = 1.0 / (1.0 + 0.5 * z);
+    let r = t * (-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418
+        + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587
+        + t * (-0.82215223 + t * 0.17087277))))))))).exp();
+    if x &gt;= 0.0 { r } else { 2.0 - r }
+}
+
+/// Chi-square test (1 df) that arm sizes match the planned split.
+fn srm_check(n_treat: f64, n_control: f64, planned_share: f64) -&gt; (f64, f64) {
+    let n = n_treat + n_control;
+    let (exp_t, exp_c) = (n * planned_share, n * (1.0 - planned_share));
+    let chi2 = (n_treat - exp_t).powi(2) / exp_t + (n_control - exp_c).powi(2) / exp_c;
+    let p = erfc((chi2 / 2.0).sqrt()); // survival function of chi-square with 1 df
+    (chi2, p)
+}
+
+fn main() {
+    let (chi2, p) = srm_check(50_421.0, 49_579.0, 0.5); // planned 50/50, observed 50.4/49.6
+    println!("{:.2} {:.4}", chi2, p);                   // 7.09 0.0078  small skew, but n is large: investigate
+    let (chi2, p) = srm_check(5_042.0, 4_958.0, 0.5);
+    println!("{:.2} {:.4}", chi2, p);                   // 0.71 0.4009  same 50.4/49.6 skew, consistent with chance
+}</code></pre>
+  </div>
+</div>
+
+<div class="callout warn"><span class="tag">Common mistakes</span><div><ul>
+  <li><b>Calling an opt-in comparison an experiment.</b> "Users who enabled X" versus "users who did not" is observational, however many users it has.</li>
+  <li><b>Testing a fix on the worst items with no control.</b> Regression to the mean guarantees an improvement. Re-run the old system on the same items.</li>
+  <li><b>Filtering after assignment.</b> Dropping users who did not engage, or who churned, breaks randomization. Analyse as assigned.</li>
+  <li><b>Randomizing by user, analysing by request.</b> Error bars come out several times too narrow. Cluster by the randomization unit.</li>
+  <li><b>Re-rolling the randomization until balance looks good</b> without accounting for it in the analysis.</li>
+  <li><b>Ignoring shared capacity.</b> Two arms on one GPU pool interfere on latency and throughput. Split capacity or use a switchback.</li>
+  <li><b>Running a quasi-experiment without its check.</b> DiD without a pre-trend plot, matching without a balance table, RD without a density check at the cutoff.</li>
+</ul></div></div>
+
+<div class="callout ask"><span class="tag">Principal asks</span><div><ul>
+  <li>How exactly was treatment assigned, and could anything that predicts the outcome have influenced it?</li>
+  <li>What is the randomization unit, and does the variance calculation use it?</li>
+  <li>Did the sample ratio match the plan? What does the balance table show on pre-period metrics?</li>
+  <li>Can the treatment reach the control group through shared capacity, shared content, or shared users?</li>
+  <li>If this is not randomized: what is the identifying assumption, what check supports it, and what would a placebo test show?</li>
+  <li>Is the reported number intention-to-treat, or was the population filtered after assignment?</li>
+</ul></div></div>
+</section>

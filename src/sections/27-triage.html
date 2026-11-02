@@ -1,4 +1,22 @@
 <section id="triage" data-title="Diagnosing a regression">
+<style>
+#w-tg-flow .tg-alert{padding:10px 14px;border-radius:var(--radius);border:1px solid var(--fp);background:var(--sunk);font-size:14px;margin:0 0 12px;line-height:1.55}
+#w-tg-flow .tg-list{display:grid;gap:8px;margin:0 0 6px}
+#w-tg-flow .tg-row{border:1px solid var(--border);border-radius:var(--radius);background:var(--background);overflow:hidden}
+#w-tg-flow .tg-row.done{background:var(--card)}
+#w-tg-flow button.tg-btn{display:flex;align-items:center;gap:10px;width:100%;border:0;border-radius:0;box-shadow:none;background:transparent;padding:9px 12px}
+#w-tg-flow button.tg-btn:disabled{cursor:default;color:var(--foreground)}
+#w-tg-flow button.tg-btn:disabled:hover{background:transparent}
+#w-tg-flow .tg-n{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line-strong);font-size:12px;font-weight:600;color:var(--muted)}
+#w-tg-flow .done .tg-n{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+#w-tg-flow .tg-name{flex:1 1 auto;min-width:0}
+#w-tg-flow .tg-name small{display:block;font-size:12.5px;font-weight:400;color:var(--muted)}
+#w-tg-flow .tg-cost{flex:none;font-size:12.5px;font-family:var(--font-mono);color:var(--muted)}
+#w-tg-flow .tg-find{padding:0 12px 10px 46px;font-size:14px;line-height:1.55}
+#w-tg-flow .tg-tag{display:inline-block;font-size:11.5px;font-weight:600;padding:0 7px;border-radius:5px;margin-right:6px;border:1px solid currentColor}
+#w-tg-flow .tg-ooo{display:block;margin-top:4px;font-size:13px;color:var(--fp)}
+@media (max-width:520px){#w-tg-flow .tg-find{padding-left:12px}}
+</style>
 <h2>Diagnosing a regression: model, harness, data, or infrastructure?</h2>
 <p>An eval suite comes back with an anomalous number a few hours before a decision. The job is to say, quickly and with evidence, whether anything is actually wrong, and if so whether it is the model, the harness, the data, or the infrastructure. This chapter gives an order of operations that answers the cheapest questions first.</p>
 
@@ -127,6 +145,32 @@
   <li><div><b>Replay.</b> Rerun a sample of the regressed tasks against the previous model with today's harness. If the old model also drops, it is not the model.</div></li>
   <li><div><b>Read the outputs.</b> Twenty of them, by hand, every time. The failure mode is usually visible and usually not what the metric suggested.</div></li>
 </ol>
+
+<p>Try the order yourself on five illustrative incidents. Each check costs time, and the cheap ones come first for a reason.</p>
+<div class="widget" id="w-tg-flow">
+  <div class="wtitle">Triage a regression, one check at a time</div>
+  <div class="wsub">Pick an incident and click checks in any order. Each click reveals what that check finds and charges its time. Compare your path with the chapter's order on the timeline: skipping ahead to the expensive checks is where hours go.</div>
+  <div class="controls">
+    <div class="ctl"><label for="tg-case">Incident</label><select id="tg-case">
+      <option value="a">Case 1: coding suite down 2 points</option>
+      <option value="b">Case 2: helpfulness down 5.5 points</option>
+      <option value="c">Case 3: math accuracy down 5 points</option>
+      <option value="d">Case 4: agent tasks down 7 points</option>
+      <option value="e">Case 5: code generation down 4.8 points</option>
+    </select></div>
+    <div class="ctl"><label>Shortcuts</label><div class="btnrow" style="margin:0"><button class="b" data-next>Next check in order</button><button class="b" data-reset>Start over</button></div></div>
+  </div>
+  <div class="tg-alert" data-alert></div>
+  <div class="tg-list" data-list></div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Time spent so far</div><div class="v" data-k="spent">—</div></div>
+    <div class="mc"><div class="l">Chapter order reaches a verdict in</div><div class="v" data-k="ref">—</div></div>
+    <div class="mc"><div class="l">Time on checks not yet needed</div><div class="v" data-k="waste">—</div></div>
+    <div class="mc"><div class="l">Verdict</div><div class="v" data-k="verdict">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
 
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Slice by contribution, not by percentage change</span></div>
   <p>The total change in mean score decomposes exactly into slice contributions. With \(N\) tasks split into slices \(s\) of size \(n_s\) and per-slice mean change \(\bar d_s\):</p>

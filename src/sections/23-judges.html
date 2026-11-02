@@ -1,5 +1,5 @@
 <section id="judges" data-title="LLM as judge">
-<style>#w-jd-roc svg{max-width:400px;margin:0 auto}#w-jd-roc svg text{font-family:var(--font-body)}</style>
+<style>#w-jd-roc svg{max-width:400px;margin:0 auto}#w-jd-roc svg text{font-family:var(--font-body)}#w-jd-kappa .jdk-t td{border-left:4px solid var(--c);text-align:center}#w-jd-kappa .jdk-t td b{display:block;font-size:20px;font-weight:600}#w-jd-kappa .jdk-t td span{display:block;font-size:12px;color:var(--faint)}#w-jd-kappa .jdk-t th{font-size:13px;white-space:nowrap}#w-jd-kappa .jdk-split{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}@media (max-width:900px){#w-jd-kappa .jdk-split{grid-template-columns:minmax(0,1fr)}}</style>
 <h2>LLM as judge: a classifier you have to measure</h2>
 <p>An LLM judge reads a model's output and returns a verdict: pass or fail, better or worse, safe or unsafe. That makes it two things at once. It is a classifier, so everything in <a href="#classification">the previous chapter</a> applies. And it is a measuring instrument, so every number you publish inherits its errors. This chapter covers how to validate a judge, the biases to control, how to get more out of a yes/no judge, and how to run judges responsibly at scale.</p>
 
@@ -100,6 +100,37 @@ fn vote_score(verdicts: &amp;[&amp;str]) -&gt; f64 {
   </tbody></table></div>
   <p>The confusion matrix behind this is TP 90, FP 32, FN 10, TN 68. The finding is invisible if you only look at agreement: the judge <b>ranks</b> models fine, but every <b>absolute</b> number it produces is inflated by about 11 points. That is acceptable for comparing two models and unacceptable for reporting how good either one is. Next step: have a second human label 100 of the items and compute human-to-human kappa. If two humans only reach 0.65, a judge at 0.58 is close to as good as the task allows.</p>
 </div></div>
+
+<p>The widget below shows why agreement alone misleads. Any two raters agree some of the time by luck, and the more lopsided the labels, the more luck there is.</p>
+<div class="widget" id="w-jd-kappa">
+  <div class="wtitle">Why 85% agreement can be bad</div>
+  <div class="wsub">Start with the judge that says "pass" to everything: it agrees with people 85% of the time and has learned nothing. Then try the other presets or move the sliders, and watch how much of the agreement luck alone would produce.</div>
+  <div class="btnrow"><button class="b" data-preset="lazy" aria-pressed="true">Judge always says pass</button><button class="b" data-preset="worked" aria-pressed="false">Worked problem above</button><button class="b" data-preset="good" aria-pressed="false">A useful judge</button></div>
+  <div class="controls">
+    <div class="ctl"><label for="jd-kp-h">Humans say pass: <output id="jd-kp-h-o">85%</output></label><input type="range" id="jd-kp-h" min="0.05" max="0.95" step="0.01" value="0.85"></div>
+    <div class="ctl"><label for="jd-kp-j">Judge says pass: <output id="jd-kp-j-o">100%</output></label><input type="range" id="jd-kp-j" min="0" max="1" step="0.01" value="1"></div>
+    <div class="ctl"><label for="jd-kp-o">Raw agreement: <output id="jd-kp-o-o">85%</output></label><input type="range" id="jd-kp-o" min="0" max="1" step="0.01" value="0.85"></div>
+  </div>
+  <div class="split jdk-split">
+    <div><canvas></canvas></div>
+    <div>
+      <div class="tw"><table class="jdk-t">
+        <thead><tr><th>Per 200 items</th><th>Judge: pass</th><th>Judge: fail</th></tr></thead>
+        <tbody>
+          <tr><th>Human: pass</th><td class="n" data-c="tp"></td><td class="n" data-c="fn"></td></tr>
+          <tr><th>Human: fail</th><td class="n" data-c="fp"></td><td class="n" data-c="tn"></td></tr>
+        </tbody></table></div>
+      <p class="small muted" style="margin:6px 0 0">Big number: what happened. Small grey number: what luck alone would give if the judge labelled at its own pass rate without looking at the item. The diagonal (both pass, both fail) is agreement.</p>
+    </div>
+  </div>
+  <div class="cards">
+    <div class="mc"><div class="l">Observed agreement p<sub>o</sub></div><div class="v" data-k="po">—</div></div>
+    <div class="mc"><div class="l">Agreement from luck p<sub>e</sub></div><div class="v" data-k="pe">—</div></div>
+    <div class="mc"><div class="l">Cohen's kappa</div><div class="v" data-k="kappa">—</div></div>
+    <div class="mc"><div class="l">Pass-rate gap (judge − human)</div><div class="v" data-k="gap">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
 
 <div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Kappa and the judge report</span></div>
   <div class="eq">\[ \kappa=\frac{p_o-p_e}{1-p_e},\qquad p_e=\sum_{\ell} p_A(\ell)\,p_B(\ell) \]<span class="eqcap">\(p_o\) is observed agreement; \(p_e\) is the agreement expected if each rater labelled independently at their own rates. In the worked problem, \(p_o=0.79\) and \(p_e=0.61\cdot0.5+0.39\cdot0.5=0.5\), so \(\kappa=0.58\).</span></div>

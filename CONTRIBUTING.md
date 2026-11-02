@@ -5,7 +5,7 @@ Everything in `src/` is assembled by `build.py` into one self-contained page. Fo
 ## Files
 
 - One chapter = one file `src/sections/NN-slug.html`. `NN` sets order and part:
-  `00–09` front, `10–19` Part I statistics, `20–29` Part II evaluation, `30–49` Part III training, `50–59` Part IV leading.
+  `00–09` front, `10–19` Part I statistics, `20–29` Part II evaluation, `30–39` Part III neural networks and LLMs, `40–59` Part IV training, `60–69` Part V leading, `70–79` Part VI experimental design, `90–99` appendix.
 - The file contains exactly one `<section id="slug" data-title="Short nav title">…</section>`. The build adds the chapter number; start with an `<h2>`.
 - Widget code for a chapter goes in `src/widgets/NN-slug.js`. The build wraps each file in its own scope.
 - Glossary terms go in `src/glossary/NN-slug.json` as `[{"term": "KL divergence", "def": "One sentence, HTML allowed.", "see": "section-id"}]`.

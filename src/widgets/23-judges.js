@@ -44,3 +44,102 @@ G.widget('w-jd-roc', function (root) {
   });
   return function () { modes[mode](); };
 });
+
+/* Chapter 23: raw agreement versus Cohen's kappa. The three sliders fix the 2x2 table:
+   TP = (po - 1 + h + j) / 2, FP = j - TP, FN = h - TP, TN = 1 - h - j + TP. */
+G.widget('w-jd-kappa', function (root) {
+  var sh = G.$(root, '#jd-kp-h'), sj = G.$(root, '#jd-kp-j'), so = G.$(root, '#jd-kp-o');
+  var oh = G.$(root, '#jd-kp-h-o'), oj = G.$(root, '#jd-kp-j-o'), oo = G.$(root, '#jd-kp-o-o');
+  var cv = G.$(root, 'canvas'), out = G.$(root, '[data-out]'), N = 200;
+  var k = function (n) { return G.$(root, '[data-k=' + n + ']'); };
+  var cell = function (n) { return G.$(root, '[data-c=' + n + ']'); };
+  var presets = { lazy: [0.85, 1, 0.85], worked: [0.5, 0.61, 0.79], good: [0.85, 0.83, 0.94] };
+  var btns = G.$$(root, 'button[data-preset]');
+  function press(name) { btns.forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.preset === name ? 'true' : 'false'); }); }
+  btns.forEach(function (b) {
+    G.on(b, 'click', function () { var v = presets[b.dataset.preset]; sh.value = v[0]; sj.value = v[1]; so.value = v[2]; press(b.dataset.preset); draw(); });
+  });
+  function r2(x) { return Math.round(x * 100) / 100; }
+  function sf(x, d) { return G.fmt(x, d).replace(/^-/, '−'); }   // typographic minus
+  function label(kap) {   // Landis and Koch (1977) descriptive bands
+    if (kap < 0) return 'poor';
+    if (kap <= 0.2) return 'slight';
+    if (kap <= 0.4) return 'fair';
+    if (kap <= 0.6) return 'moderate';
+    if (kap <= 0.8) return 'substantial';
+    return 'almost perfect';
+  }
+  function draw(ev) {
+    if (ev && ev.type === 'input') press('');
+    var h = r2(+sh.value), j = r2(+sj.value);
+    var lo = r2(Math.abs(1 - h - j)), hi = r2(1 - Math.abs(h - j));
+    var po = Math.min(hi, Math.max(lo, r2(+so.value)));
+    so.value = po;
+    oh.textContent = G.pct(h); oj.textContent = G.pct(j); oo.textContent = G.pct(po);
+    var tp = (po - 1 + h + j) / 2, fp = j - tp, fn = h - tp, tn = 1 - h - j + tp;
+    var pe = h * j + (1 - h) * (1 - j), kap = (po - pe) / (1 - pe);
+    var E = { tp: h * j, fp: (1 - h) * j, fn: h * (1 - j), tn: (1 - h) * (1 - j) }, A = { tp: tp, fp: fp, fn: fn, tn: tn };
+    ['tp', 'fp', 'fn', 'tn'].forEach(function (c) {
+      var el = cell(c); el.style.setProperty('--c', 'var(--' + c + ')');
+      el.innerHTML = '<b>' + G.fmt(A[c] * N, 0) + '</b><span>luck: ' + G.fmt(E[c] * N, 0) + '</span>';
+    });
+
+    /* the agreement ruler: luck fills 0..pe, kappa is the share of the room above luck that the judge covers */
+    var P = G.pal(), c = G.canvas(cv, 226), ctx = c.ctx, L = 14, R = 14, W = c.w - L - R;
+    var X = function (v) { return L + v * W; };
+    G.text(ctx, 'Agreement, 0% to 100%', L, 10, P.muted, 'left', 12);
+    var y1 = 40, bh = 26;
+    ctx.fillStyle = P.sunk; ctx.fillRect(X(0), y1, W, bh);
+    ctx.fillStyle = P.tn; ctx.globalAlpha = 0.45; ctx.fillRect(X(0), y1, X(pe) - X(0), bh); ctx.globalAlpha = 1;
+    if (po >= pe) { ctx.fillStyle = P.accent; ctx.fillRect(X(pe), y1, X(po) - X(pe), bh); }
+    else { ctx.fillStyle = P.fp; ctx.globalAlpha = 0.8; ctx.fillRect(X(po), y1, X(pe) - X(po), bh); ctx.globalAlpha = 1; }
+    function clampX(x, half) { return Math.min(c.w - R - half, Math.max(L + half, x)); }
+    var lx0 = Math.min(X(pe), X(po)) - 8;
+    if (lx0 - X(0) > 80) G.text(ctx, 'luck ' + G.pct(pe, 1), lx0, y1 + bh / 2, P.fg, 'right', 11.5);
+    // observed agreement marker, labelled above the bar
+    ctx.strokeStyle = P.fg; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(X(po), y1 - 5); ctx.lineTo(X(po), y1 + bh + 3); ctx.stroke();
+    G.text(ctx, 'observed ' + G.pct(po), clampX(X(po), 46), y1 - 13, P.fg, 'center', 11.5);
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (t) { G.text(ctx, G.pct(t), clampX(X(t), 12), y1 + bh + 11, P.faint, 'center', 10.5); });
+    // feasible range for raw agreement, given the two pass rates
+    var fy = y1 + bh + 28;
+    ctx.strokeStyle = P.faint; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(X(lo), fy); ctx.lineTo(X(hi), fy); ctx.stroke(); ctx.setLineDash([]);
+    [lo, hi].forEach(function (v) { ctx.beginPath(); ctx.moveTo(X(v), fy - 4); ctx.lineTo(X(v), fy + 4); ctx.stroke(); });
+    var feas = lo === hi ? 'these pass rates force agreement to ' + G.pct(lo) : 'possible agreement at these pass rates: ' + G.pct(lo) + ' to ' + G.pct(hi);
+    var fx = (X(lo) + X(hi)) / 2, fa = 'center', tw = ctx.measureText(feas).width / 2 + 4;
+    if (fx - tw < L) { fx = L; fa = 'left'; } else if (fx + tw > c.w - R) { fx = c.w - R; fa = 'right'; }
+    G.text(ctx, feas, fx, fy + 13, P.faint, fa, 11);
+    // second row: the room above luck, stretched to full width
+    var y2 = 146;
+    G.text(ctx, 'Room above luck (p_e to 100%), stretched', L, y2 - 16, P.muted, 'left', 12);
+    ctx.fillStyle = P.sunk; ctx.fillRect(X(0), y2, W, bh);
+    if (kap >= 0) { ctx.fillStyle = P.accent; ctx.fillRect(X(0), y2, W * Math.min(1, kap), bh); }
+    else { ctx.fillStyle = P.fp; ctx.globalAlpha = 0.8; ctx.fillRect(X(0), y2, W * Math.min(1, -kap), bh); ctx.globalAlpha = 1; }
+    [0.2, 0.4, 0.6, 0.8].forEach(function (t) { ctx.strokeStyle = P.surface; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X(t), y2); ctx.lineTo(X(t), y2 + bh); ctx.stroke(); });
+    var kt = kap >= 0 ? 'κ = ' + sf(kap, 2) + ': covers ' + G.pct(Math.max(0, kap)) + ' of the room' : 'κ = ' + sf(kap, 2) + ': agrees less than luck would';
+    var inside = Math.abs(kap) > 0.55;
+    G.text(ctx, kt, inside ? X(0) + 8 : X(Math.min(1, Math.abs(kap))) + 8, y2 + bh / 2, inside ? P.surface : P.fg, 'left', 12);
+    var lx = L, ly = y2 + bh + 22;
+    [[P.tn, 'luck alone (p_e)', 0.45], [P.accent, 'agreement beyond luck', 1], [P.fp, 'below luck', 0.8]].forEach(function (it) {
+      ctx.fillStyle = it[0]; ctx.globalAlpha = it[2]; ctx.fillRect(lx, ly - 5, 10, 10); ctx.globalAlpha = 1;
+      G.text(ctx, it[1], lx + 15, ly, P.muted, 'left', 11.5); lx += ctx.measureText(it[1]).width + 34;
+      if (lx > c.w - 110) { lx = L; ly += 18; }
+    });
+
+    k('po').textContent = G.pct(po); k('pe').textContent = G.pct(pe, 1);
+    k('kappa').textContent = sf(kap, 2); k('kappa').style.color = kap < 0.2 ? 'var(--fp)' : kap > 0.6 ? 'var(--tp)' : '';
+    var gap = j - h; k('gap').textContent = (gap > 0.004 ? '+' : '') + sf(gap * 100, 0) + ' pts';
+    var s = 'Luck alone: people pass ' + G.pct(h) + ' of items and the judge passes ' + G.pct(j) + ', so two raters who ignored the content would still agree on ' +
+      G.fmt(h, 2) + ' × ' + G.fmt(j, 2) + ' + ' + G.fmt(1 - h, 2) + ' × ' + G.fmt(1 - j, 2) + ' = <b>' + G.pct(pe, 1) + '</b> of items. ' +
+      'Kappa only credits the agreement above that: (' + G.fmt(po, 2) + ' − ' + G.fmt(pe, 3) + ') / (1 − ' + G.fmt(pe, 3) + ') = <b>' + sf(kap, 2) + '</b>, ' + label(kap) + ' on the Landis and Koch (1977) scale. ';
+    if (Math.abs(kap) < 0.005 && j >= 0.995) s += 'This judge never looks at the answer. Its ' + G.pct(po) + ' agreement is exactly the share of items people pass, so it tells you nothing about which ones deserve to pass.';
+    else if (Math.abs(kap) < 0.05) s += 'The judge agrees about as often as a coin weighted to its pass rate would. The raw ' + G.pct(po) + ' is almost all luck.';
+    else if (kap < 0) s += 'The judge is systematically wrong: it agrees less often than random labelling at the same rates.';
+    else if (Math.abs(gap) >= 0.05) s += 'It does carry signal, but it passes ' + G.fmt(Math.abs(gap) * 100, 0) + ' points ' + (gap > 0 ? 'more' : 'less') + ' often than people do, so every absolute pass rate it reports is ' + (gap > 0 ? 'inflated' : 'deflated') + ' by about that much.';
+    else s += 'It carries real signal and its pass rate is within ' + G.fmt(Math.abs(gap) * 100, 0) + ' points of the human rate, so its absolute numbers are usable too.';
+    out.innerHTML = s;
+  }
+  G.on([sh, sj, so], 'input', draw);
+  return draw;
+});

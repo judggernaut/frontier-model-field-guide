@@ -1,0 +1,435 @@
+<section id="decisions" data-title="System 1 decision models: typed answers in one pass">
+<h2>System 1 decision models: typed answers in one pass</h2>
+<p>Most production uses of language models are decisions in disguise: is this ticket about billing, is this message a refund request, how urgent is this, which of these five tools should run next. The usual way to get one is to ask a chat model and parse the word it writes back. In 2026 a different kind of system appeared: models that take messy input and return a <b>typed decision with probabilities</b> in a single pass, generating no text at all. This chapter explains how they work, how they differ from asking a chat model, what three current offerings actually provide, and how to validate one before you let it make decisions for you.</p>
+
+<div class="story" id="st-dm-triage">
+  <div class="story-head"><div class="story-title">The triage nurse and the doctor</div><p class="story-sub">Why a fast, typed, probabilistic decision is worth having, told as an emergency room's first five minutes.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A queue of twelve patients and one doctor">
+      <text x="320" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Monday evening: twelve patients, one doctor</text>
+      <g class="a" style="--d:0">
+        <circle cx="60" cy="96" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M44 130 Q44 110 60 110 Q76 110 76 130 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="100" cy="96" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M84 130 Q84 110 100 110 Q116 110 116 130 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="140" cy="96" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M124 130 Q124 110 140 110 Q156 110 156 130 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="180" cy="96" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M164 130 Q164 110 180 110 Q196 110 196 130 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="220" cy="96" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M204 130 Q204 110 220 110 Q236 110 236 130 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="260" cy="96" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M244 130 Q244 110 260 110 Q276 110 276 130 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="60" cy="166" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M44 200 Q44 180 60 180 Q76 180 76 200 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="100" cy="166" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M84 200 Q84 180 100 180 Q116 180 116 200 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="140" cy="166" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M124 200 Q124 180 140 180 Q156 180 156 200 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="180" cy="166" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M164 200 Q164 180 180 180 Q196 180 196 200 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="220" cy="166" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M204 200 Q204 180 220 180 Q236 180 236 200 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+        <circle cx="260" cy="166" r="10" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/><path d="M244 200 Q244 180 260 180 Q276 180 276 200 Z" fill="var(--sunk)" stroke="var(--line-strong)" stroke-width="2"/>
+      </g>
+      <g class="a" style="--d:1"><circle cx="470" cy="104" r="16" fill="var(--deep-soft)" stroke="var(--deep)" stroke-width="2"/><path d="M444 158 Q444 128 470 128 Q496 128 496 158 Z" fill="var(--deep-soft)" stroke="var(--deep)" stroke-width="2"/><text x="470" y="184" text-anchor="middle" font-size="14" font-weight="600" fill="var(--deep)">the doctor</text><text x="470" y="204" text-anchor="middle" font-size="12.5" fill="var(--muted)">full workup: about 45 minutes</text></g>
+      <g class="a" style="--d:2"><text x="320" y="242" text-anchor="middle" font-size="14" fill="var(--fg)">Nine hours to see everyone in order. Someone in the queue may not have nine hours.</text></g>
+    </svg>
+    <p>The doctor is thorough and slow, like a frontier language model asked to reason about every case. Seeing everyone in arrival order means a heart attack can wait behind a sprained wrist.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A triage nurse fills a fixed five-level form">
+      <text x="320" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">The triage nurse: one minute, one fixed form</text>
+      <g class="a" style="--d:0"><circle cx="110" cy="104" r="16" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><path d="M84 158 Q84 128 110 128 Q136 128 136 158 Z" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="2"/><text x="110" y="184" text-anchor="middle" font-size="14" font-weight="600" fill="var(--eli5)">triage nurse</text><text x="110" y="204" text-anchor="middle" font-size="12.5" fill="var(--muted)">about a minute each</text></g>
+      <g class="a" style="--d:1"><rect x="250" y="50" width="300" height="166" rx="10" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="272" y="76" font-size="13" font-weight="600" fill="var(--fg)">Urgency (tick one)</text>
+        <rect x="272" y="88" width="14" height="14" rx="3" fill="none" stroke="var(--line-strong)" stroke-width="1.5"/><text x="296" y="100" font-size="13" fill="var(--fg)">1  needs life-saving help now</text>
+        <rect x="272" y="112" width="14" height="14" rx="3" fill="var(--accent)" stroke="var(--accent)" stroke-width="1.5"/><text x="296" y="124" font-size="13" font-weight="600" fill="var(--fg)">2  high risk, should not wait</text>
+        <rect x="272" y="136" width="14" height="14" rx="3" fill="none" stroke="var(--line-strong)" stroke-width="1.5"/><text x="296" y="148" font-size="13" fill="var(--fg)">3  stable, needs several tests</text>
+        <rect x="272" y="160" width="14" height="14" rx="3" fill="none" stroke="var(--line-strong)" stroke-width="1.5"/><text x="296" y="172" font-size="13" fill="var(--fg)">4  stable, needs one thing</text>
+        <rect x="272" y="184" width="14" height="14" rx="3" fill="none" stroke="var(--line-strong)" stroke-width="1.5"/><text x="296" y="196" font-size="13" fill="var(--fg)">5  can safely wait</text></g>
+      <g class="a" style="--d:2"><text x="320" y="244" text-anchor="middle" font-size="14" fill="var(--fg)">No essay, no diagnosis. One answer from a fixed list.</text></g>
+    </svg>
+    <p>A triage nurse looks at each patient for about a minute and ticks one box on a fixed five-level scale. The answer is typed: it can only be one of five values, so nobody has to interpret a paragraph.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="The form records how likely each level is">
+      <text x="320" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">A better form also records how sure she is</text>
+      <line x1="120" y1="200" x2="470" y2="200" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <rect class="grow-x" style="--d:0" x="140" y="190" width="50" height="10" rx="2" fill="var(--warn)"/><text x="165" y="182" text-anchor="middle" font-size="13" fill="var(--fg)">5%</text><text x="165" y="220" text-anchor="middle" font-size="13" fill="var(--fg)">level 1</text>
+      <rect class="grow-x" style="--d:1" x="210" y="90" width="50" height="110" rx="2" fill="var(--warn)"/><text x="235" y="82" text-anchor="middle" font-size="13" fill="var(--fg)">55%</text><text x="235" y="220" text-anchor="middle" font-size="13" fill="var(--fg)">level 2</text>
+      <rect class="grow-x" style="--d:2" x="280" y="140" width="50" height="60" rx="2" fill="var(--accent)"/><text x="305" y="132" text-anchor="middle" font-size="13" fill="var(--fg)">30%</text><text x="305" y="220" text-anchor="middle" font-size="13" fill="var(--fg)">level 3</text>
+      <rect class="grow-x" style="--d:3" x="350" y="180" width="50" height="20" rx="2" fill="var(--accent)"/><text x="375" y="172" text-anchor="middle" font-size="13" fill="var(--fg)">10%</text><text x="375" y="220" text-anchor="middle" font-size="13" fill="var(--fg)">level 4</text>
+      <rect x="420" y="199" width="50" height="1" fill="var(--accent)"/><text x="445" y="190" text-anchor="middle" font-size="13" fill="var(--fg)">0%</text><text x="445" y="220" text-anchor="middle" font-size="13" fill="var(--fg)">level 5</text>
+      <g class="a" style="--d:4"><rect x="490" y="80" width="130" height="66" rx="10" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="555" y="106" text-anchor="middle" font-size="13" font-weight="600" fill="var(--warn)">P(urgent)</text><text x="555" y="130" text-anchor="middle" font-size="13" fill="var(--fg)">5% + 55% = 60%</text></g>
+    </svg>
+    <p>Instead of a single tick, she writes down how likely each level is. Now the hospital knows more than "level 2": it knows there is a 60% chance this patient is level 1 or 2, and a 40% chance they could wait.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A threshold on the probability of urgency sends patients to the doctor">
+      <text x="320" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">The hospital sets the rule from what mistakes cost</text>
+      <line x1="60" y1="130" x2="580" y2="130" stroke="var(--line-strong)" stroke-width="2"/>
+      <text x="60" y="156" text-anchor="middle" font-size="12" fill="var(--muted)">0%</text><text x="580" y="156" text-anchor="middle" font-size="12" fill="var(--muted)">100%</text><text x="320" y="176" text-anchor="middle" font-size="12.5" fill="var(--muted)">P(urgent) from the nurse's form</text>
+      <g class="a" style="--d:0"><circle cx="78" cy="118" r="6" fill="var(--tn)"/><circle cx="96" cy="106" r="6" fill="var(--tn)"/><circle cx="114" cy="118" r="6" fill="var(--tn)"/><circle cx="132" cy="106" r="6" fill="var(--tn)"/><circle cx="150" cy="118" r="6" fill="var(--tn)"/><circle cx="190" cy="118" r="6" fill="var(--warn)"/><circle cx="250" cy="118" r="6" fill="var(--warn)"/><circle cx="290" cy="118" r="6" fill="var(--warn)"/><circle cx="372" cy="118" r="6" fill="var(--warn)"/><circle cx="430" cy="118" r="6" fill="var(--warn)"/><circle cx="500" cy="118" r="6" fill="var(--warn)"/><circle cx="550" cy="118" r="6" fill="var(--warn)"/></g>
+      <g class="a" style="--d:1"><line x1="164" y1="64" x2="164" y2="140" stroke="var(--warn)" stroke-width="2.5"/><text x="172" y="72" font-size="13" font-weight="600" fill="var(--warn)">rule: doctor now if above 20%</text></g>
+      <g class="a" style="--d:2"><text x="110" y="216" text-anchor="middle" font-size="13" fill="var(--fg)">wait in the queue</text><text x="390" y="216" text-anchor="middle" font-size="13" fill="var(--fg)">see the doctor first: 7 of 12</text></g>
+      <g class="a" style="--d:3"><text x="320" y="246" text-anchor="middle" font-size="13" fill="var(--muted)">Missing a heart attack costs far more than an early look at a sprain, so the line sits low.</text></g>
+    </svg>
+    <p>With probabilities, the rule becomes a dial the hospital controls. Because missing an emergency is far worse than an unnecessary early look, it sends anyone above 20% straight to the doctor. A yes-or-no form could never be tuned this way.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Auditing the nurse's stated odds against outcomes">
+      <text x="320" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Once a month: were her odds honest?</text>
+      <g class="a" style="--d:0"><text x="80" y="66" font-size="13" font-weight="600" fill="var(--muted)">She said</text><text x="200" y="66" font-size="13" font-weight="600" fill="var(--muted)">Turned out urgent</text></g>
+      <g class="a" style="--d:1"><text x="80" y="100" font-size="15" fill="var(--fg)">20%</text><rect x="200" y="86" width="36" height="20" rx="3" fill="var(--good)"/><text x="248" y="101" font-size="13" fill="var(--fg)">18%  close</text></g>
+      <g class="a" style="--d:2"><text x="80" y="140" font-size="15" fill="var(--fg)">60%</text><rect x="200" y="126" width="114" height="20" rx="3" fill="var(--good)"/><text x="326" y="141" font-size="13" fill="var(--fg)">57%  close</text></g>
+      <g class="a" style="--d:3"><text x="80" y="180" font-size="15" fill="var(--fg)">90%</text><rect x="200" y="166" width="140" height="20" rx="3" fill="var(--warn)"/><text x="352" y="181" font-size="13" fill="var(--fg)">70%  overconfident</text></g>
+      <g class="a" style="--d:4"><rect x="470" y="70" width="150" height="110" rx="10" fill="var(--sunk)" stroke="var(--line-strong)"/><text x="545" y="98" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">decision model</text><text x="545" y="118" text-anchor="middle" font-size="12.5" fill="var(--muted)">= the nurse</text><text x="545" y="146" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">reasoning LLM</text><text x="545" y="166" text-anchor="middle" font-size="12.5" fill="var(--muted)">= the doctor</text></g>
+      <g class="a" style="--d:5"><text x="320" y="230" text-anchor="middle" font-size="14" fill="var(--fg)">Odds are only useful if they are honest. Check them against outcomes.</text></g>
+    </svg>
+    <p>The odds only help if they mean what they say. Each month the hospital checks: of the patients she called 60% likely urgent, were about 60% actually urgent? Here her top bucket is overconfident. That check is called calibration, and every decision model needs it. The nurse does not replace the doctor; she decides who sees the doctor first.</p>
+  </div>
+</div>
+
+<h3>What a decision model is</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A form instead of an essay</span></div>
+  <p>Asking a chat model for a decision is like asking someone to write you a note and then reading it to find the answer. Sometimes the note says "billing", sometimes "Billing.", sometimes "This is probably a billing issue, although...". You need code to dig the answer out, and you never learn how sure the writer was.</p>
+  <p>A <b>decision model</b> is handed a form. You tell it the possible answers in advance (billing, technical, shipping, other), and it fills in the form with how likely each one is, in one quick step. It cannot write anything off the form, so there is nothing to dig out and nothing to misspell.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What is new, and what is not</span></div>
+  <p>The pitch from all three offerings below is the same: <b>unstructured state in, typed probabilistic decisions out</b> (TypeSafe's phrase). In practice that buys four things:</p>
+  <div class="four">
+    <div class="tile"><h4>Typed output</h4><p>The answer is always one of the values you defined. No parsing, no "the model replied in French", no retries on malformed JSON.</p></div>
+    <div class="tile"><h4>Probabilities</h4><p>Every answer comes with a distribution. That turns one fixed decision into a dial you can set by cost, as in <a href="#classification">classification metrics</a>.</p></div>
+    <div class="tile"><h4>Latency</h4><p>One pass instead of hundreds of generated tokens. Vendors report answers in tenths of a second.</p></div>
+    <div class="tile"><h4>Cost</h4><p>You pay mostly for input. Two of the three offerings do not charge for output at all.</p></div>
+  </div>
+  <p>What is not new: the shape. A model that reads text and outputs a distribution over a fixed set of labels is a classifier, and teams have fine-tuned BERT-style classifiers for years. The new part is that these models take the label set and its definitions as <b>input at request time</b>, so one model serves any decision you can describe, without training data. That makes them closer to a zero-shot LLM judge in flexibility, and closer to a classifier in speed and output.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Autoregressive text versus a fixed output space</span></div>
+  <p>A chat model produces a decision as a string, one token at a time:</p>
+  <div class="eq">\[ p(y_{1:T} \mid x) = \prod_{t=1}^{T} p(y_t \mid x, y_{&lt;t}) \]<span class="eqcap">\(T\) sequential forward passes. The probability of the <i>label</i> "billing" is the sum over every string that your parser would map to billing, which you cannot compute. In practice teams read the first token's logprob, or sample several times and count.</span></div>
+  <p>A decision model encodes the input and the question (including the option descriptions) once, then applies a small head over the \(K\) options you supplied:</p>
+  <div class="eq">\[ h = f_\theta(x, q), \qquad p(k \mid x, q) = \frac{e^{s_\theta(h, k)}}{\sum_{j=1}^{K} e^{s_\theta(h, j)}}, \qquad \text{score} = \sum_{k=0}^{K-1} k\, p(k \mid x, q) \]<span class="eqcap">\(x\) is the input state, \(q\) the question with its options or levels, \(s_\theta\) a learned scoring head. A predicate is the \(K = 2\) case, reported as one probability. A score question reports the probability-weighted level index.</span></div>
+  <p>This is the same shape as a reward model's scalar head (<a href="#reward-models">reward models</a>) or a classifier's softmax layer. Laya's published checkpoints make the lineage explicit: they are encoder models (ModernBERT-large at 421M parameters and mmBERT-base at 322M), not generative LLMs. TypeSafe describes Jev as a new architecture with a parallel sampler and gives no further detail.</p>
+  <p>Training matters as much as architecture. A <b>strictly proper scoring rule</b>, such as log loss \(-\log p(k^\ast)\) or the Brier score \(\sum_k (p_k - \mathbb{1}[k = k^\ast])^2\), is minimised in expectation only by reporting the true probabilities, so optimising one rewards honest confidence. TypeSafe calls its method Reinforcement Learning for Calibrated Decisions (RLCD) without describing it; Laya's README describes its training as reinforcement learning against strictly proper scoring rules. Neither guarantees calibration on your data.</p>
+</div>
+
+<div class="story" id="st-dm-form">
+  <div class="story-head"><div class="story-title">Ask for an essay, or hand over a form</div><p class="story-sub">The same routing decision made two ways, from input to answer.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A chat model writes tokens one at a time, then a parser extracts a label">
+      <text x="320" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">The chat-model way: write, then parse</text>
+      <g class="a" style="--d:0"><rect x="20" y="52" width="150" height="62" rx="8" fill="var(--sunk)" stroke="var(--line-strong)"/><text x="95" y="76" text-anchor="middle" font-size="12.5" fill="var(--fg)">"We were billed</text><text x="95" y="96" text-anchor="middle" font-size="12.5" fill="var(--fg)">twice. Refund it."</text></g>
+      <g class="a" style="--d:1"><path class="dash" d="M172 83 H206" stroke="var(--line-strong)" stroke-width="2" fill="none"/><rect x="210" y="58" width="70" height="50" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="245" y="88" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">LLM</text></g>
+      <g class="a" style="--d:2"><rect x="300" y="52" width="46" height="26" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/><text x="323" y="70" text-anchor="middle" font-size="12" fill="var(--fg)">This</text><rect x="350" y="52" width="38" height="26" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/><text x="369" y="70" text-anchor="middle" font-size="12" fill="var(--fg)">is</text><rect x="392" y="52" width="74" height="26" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/><text x="429" y="70" text-anchor="middle" font-size="12" fill="var(--fg)">probably</text><rect x="470" y="52" width="38" height="26" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/><text x="489" y="70" text-anchor="middle" font-size="12" fill="var(--fg)">a</text><rect x="512" y="52" width="62" height="26" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/><text x="543" y="70" text-anchor="middle" font-size="12" fill="var(--fg)">billing</text><rect x="578" y="52" width="46" height="26" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/><text x="601" y="70" text-anchor="middle" font-size="12" fill="var(--fg)">issue</text>
+        <rect x="300" y="86" width="74" height="26" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/><text x="337" y="104" text-anchor="middle" font-size="12" fill="var(--fg)">because</text><rect x="378" y="86" width="46" height="26" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/><text x="401" y="104" text-anchor="middle" font-size="12" fill="var(--fg)">the</text><rect x="428" y="86" width="70" height="26" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/><text x="463" y="104" text-anchor="middle" font-size="12" fill="var(--fg)">customer</text><text x="512" y="104" font-size="13" fill="var(--muted)">… 40 more</text></g>
+      <g class="a" style="--d:3"><path class="dash" d="M460 120 V146" stroke="var(--line-strong)" stroke-width="2" fill="none"/><rect x="360" y="150" width="200" height="40" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="460" y="175" text-anchor="middle" font-size="13" fill="var(--fg)">parser looks for a label</text></g>
+      <g class="a" style="--d:4"><path class="dash" d="M356 170 H252" stroke="var(--line-strong)" stroke-width="2" fill="none"/><text x="160" y="175" text-anchor="middle" font-size="16" font-weight="700" fill="var(--fg)" style="font-family:var(--font-mono)">"billing"</text><text x="160" y="198" text-anchor="middle" font-size="12.5" fill="var(--muted)">one word, no odds</text></g>
+      <g class="a" style="--d:5"><text x="320" y="240" text-anchor="middle" font-size="13.5" fill="var(--fg)">About 50 tokens, each one a full pass through the network, written in sequence.</text></g>
+    </svg>
+    <p>The chat model writes a sentence one token at a time. Your code then searches the text for a label. You get a word, not a probability, and you pay for every token of the explanation, in money and in waiting time.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A decision model returns a distribution over the supplied options in one pass">
+      <text x="320" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">The decision-model way: one pass, fixed options</text>
+      <g class="a" style="--d:0"><rect x="20" y="52" width="150" height="62" rx="8" fill="var(--sunk)" stroke="var(--line-strong)"/><text x="95" y="76" text-anchor="middle" font-size="12.5" fill="var(--fg)">"We were billed</text><text x="95" y="96" text-anchor="middle" font-size="12.5" fill="var(--fg)">twice. Refund it."</text><rect x="20" y="126" width="150" height="88" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/><text x="34" y="146" font-size="12" fill="var(--muted)">options</text><text x="34" y="166" font-size="12.5" fill="var(--fg)">billing · technical</text><text x="34" y="186" font-size="12.5" fill="var(--fg)">shipping · other</text></g>
+      <g class="a" style="--d:1"><path class="dash" d="M172 120 H220" stroke="var(--line-strong)" stroke-width="2" fill="none"/><rect x="224" y="90" width="100" height="60" rx="10" fill="var(--good-soft)" stroke="var(--good)"/><text x="274" y="116" text-anchor="middle" font-size="13" font-weight="600" fill="var(--good)">decision</text><text x="274" y="134" text-anchor="middle" font-size="13" font-weight="600" fill="var(--good)">model</text><path class="dash" d="M326 120 H360" stroke="var(--line-strong)" stroke-width="2" fill="none"/></g>
+      <g class="a" style="--d:2"><text x="370" y="74" font-size="13" fill="var(--fg)">billing</text><rect x="450" y="62" width="139" height="16" rx="3" fill="var(--good)"/><text x="596" y="75" font-size="12.5" fill="var(--fg)">82%</text>
+        <text x="370" y="106" font-size="13" fill="var(--fg)">technical</text><rect x="450" y="94" width="15" height="16" rx="3" fill="var(--accent)"/><text x="472" y="107" font-size="12.5" fill="var(--fg)">9%</text>
+        <text x="370" y="138" font-size="13" fill="var(--fg)">shipping</text><rect x="450" y="126" width="5" height="16" rx="3" fill="var(--accent)"/><text x="462" y="139" font-size="12.5" fill="var(--fg)">3%</text>
+        <text x="370" y="170" font-size="13" fill="var(--fg)">other</text><rect x="450" y="158" width="10" height="16" rx="3" fill="var(--accent)"/><text x="467" y="171" font-size="12.5" fill="var(--fg)">6%</text></g>
+      <g class="a" style="--d:3"><text x="320" y="240" text-anchor="middle" font-size="13.5" fill="var(--fg)">One pass over the input. The answer is a distribution, already typed.</text></g>
+    </svg>
+    <p>The decision model receives the input and the allowed options together, runs once, and returns a probability for each option. Nothing is generated, so there is nothing to parse, and the odds come for free (illustrative numbers).</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Both models share a network body but have different heads">
+      <text x="320" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Same kind of body, different head</text>
+      <g class="a" style="--d:0"><rect x="40" y="70" width="70" height="22" rx="4" fill="var(--sunk)" stroke="var(--line-strong)"/><rect x="40" y="98" width="70" height="22" rx="4" fill="var(--sunk)" stroke="var(--line-strong)"/><rect x="40" y="126" width="70" height="22" rx="4" fill="var(--sunk)" stroke="var(--line-strong)"/><rect x="40" y="154" width="70" height="22" rx="4" fill="var(--sunk)" stroke="var(--line-strong)"/><text x="75" y="200" text-anchor="middle" font-size="12.5" fill="var(--muted)">network layers</text></g>
+      <g class="a" style="--d:1"><path d="M112 100 L180 76" stroke="var(--line-strong)" stroke-width="2" fill="none"/><rect x="184" y="56" width="190" height="40" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="279" y="81" text-anchor="middle" font-size="13" fill="var(--fg)">head over 100,000+ tokens</text><text x="390" y="74" font-size="12.5" fill="var(--fg)">pick a token, append it,</text><text x="390" y="92" font-size="12.5" fill="var(--fg)">run the layers again</text><path class="dash" d="M279 54 Q180 26 82 66" stroke="var(--accent)" stroke-width="1.5" fill="none"/></g>
+      <g class="a" style="--d:2"><path d="M112 148 L180 170" stroke="var(--line-strong)" stroke-width="2" fill="none"/><rect x="184" y="150" width="190" height="40" rx="8" fill="var(--good-soft)" stroke="var(--good)"/><text x="279" y="175" text-anchor="middle" font-size="13" fill="var(--fg)">head over your K options</text><text x="390" y="168" font-size="12.5" fill="var(--fg)">read the distribution,</text><text x="390" y="186" font-size="12.5" fill="var(--fg)">done</text></g>
+      <g class="a" style="--d:3"><text x="320" y="236" text-anchor="middle" font-size="13.5" fill="var(--fg)">Like a classifier or a reward model's score head, with the options given at request time.</text></g>
+    </svg>
+    <p>Under the hood, both read the input through a stack of network layers. The chat model's head chooses among its whole vocabulary and loops once per token. The decision model's head chooses among only the options you supplied and stops. That is the same design as a classifier or a reward model's score head.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Latency of the two approaches">
+      <text x="320" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">Where the time goes</text>
+      <g class="a" style="--d:0"><text x="40" y="86" font-size="13" font-weight="600" fill="var(--fg)">Chat model</text><rect x="170" y="72" width="24" height="22" rx="2" fill="var(--sunk)" stroke="var(--line-strong)"/></g>
+      <rect class="grow-x" style="--d:1" x="196" y="72" width="330" height="22" rx="2" fill="var(--accent)"/>
+      <g class="a" style="--d:2"><text x="170" y="116" font-size="12.5" fill="var(--muted)">read input</text><text x="360" y="116" text-anchor="middle" font-size="12.5" fill="var(--muted)">write ~50 tokens, one after another</text></g>
+      <g class="a" style="--d:3"><text x="40" y="166" font-size="13" font-weight="600" fill="var(--fg)">Decision model</text><rect x="170" y="152" width="24" height="22" rx="2" fill="var(--sunk)" stroke="var(--line-strong)"/><rect x="196" y="152" width="4" height="22" rx="1" fill="var(--good)"/><text x="212" y="168" font-size="12.5" fill="var(--muted)">read input, apply the head, done</text></g>
+      <g class="a" style="--d:4"><text x="320" y="216" text-anchor="middle" font-size="13" fill="var(--fg)">Generation is sequential; reading the input is parallel.</text><text x="320" y="240" text-anchor="middle" font-size="12" fill="var(--muted)">Bars are schematic. Vendors report speedups of 40 to 200 times; measure your own.</text></g>
+    </svg>
+    <p>Reading the input is done in parallel across all its tokens, so it is fast. Writing is done one token after another, so it is slow. A decision model skips the writing. That, more than any clever trick, is where the speedup comes from, and it is why the gap grows when the chat model would have reasoned first.</p>
+  </div>
+</div>
+
+<h3>Three offerings, one vocabulary</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Three kinds of question</span></div>
+  <p>All three systems ask the same three kinds of question, with slightly different names:</p>
+  <ul>
+    <li><b>Is it true?</b> "Does the customer ask for a refund?" The answer is one probability, such as 0.93.</li>
+    <li><b>Which one?</b> "Which team should handle this: billing, technical, shipping, or other?" The answer is one choice plus a probability for each option.</li>
+    <li><b>How much?</b> "How urgent is this, on a scale from low to high?" The answer is a position on the scale plus a probability for each step.</li>
+  </ul>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Who offers what, as each vendor reports it</span></div>
+  <div class="tw"><table>
+    <thead><tr><th></th><th>OpenAI Decisions API</th><th>Laya (Convai Innovations)</th><th>Jev (TypeSafe AI)</th></tr></thead>
+    <tbody>
+      <tr><td>Form</td><td>Hosted API, <code>POST /v1/decisions</code>, model <code>gpt-6-luna</code> (the only supported model)</td><td>Open source, Apache 2.0, runs on your own CPU or NVIDIA GPU</td><td>Hosted API, early access since 15 September 2026</td></tr>
+      <tr><td>Is it true?</td><td><code>predicate</code>: probability the condition holds</td><td><code>noul</code>: probability the answer is yes</td><td rowspan="3">Typed outputs for "classify, route, score, extract, or branch". Laya's server speaks the same wire protocol (<code>POST /v1/systemone</code>)</td></tr>
+      <tr><td>Which one?</td><td><code>choice</code>: one of your values, probabilities, confidence</td><td><code>choice</code>: one label, probabilities, confidence</td></tr>
+      <tr><td>How much?</td><td><code>score</code>: 2 to 10 ordered levels; probability-weighted score, per-level probabilities, confidence</td><td><code>score</code>: expected ordinal level, probabilities, confidence</td></tr>
+      <tr><td>Pricing</td><td>$0.10 per 1M uncached input tokens; output not charged</td><td>Your hardware</td><td>$0.042 per 1M input tokens; output free; may be subsidised (company note)</td></tr>
+      <tr><td>Speed claims</td><td>None stated in the guide</td><td>None on the main page; benchmarks say measure warm and cold calls yourself</td><td>70 to 500 ms end to end; 40 to 200 times faster than frontier LLMs on "System One-shaped" queries</td></tr>
+    </tbody>
+  </table></div>
+  <p>Laya and Jev share a lineage beyond the name: TypeSafe says "System One" is inspired by Kahneman, and Laya's server is wire-compatible with Jev's API. Do not assume numbers carry across, though. Laya documents that its <code>confidence</code> is computed differently from Jev's, so thresholds tuned on one do not transfer.</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Read vendor numbers as claims. TypeSafe's own post says its latency tests were "generally run from our laptops on the West Coast", its workflow evals were built by its own team, its reference answers were an average of two LLMs (GPT-6 Astra and Fable 5.1), its 193.6× speed and 444.6× cost figures are expected to be "on the higher end of real world gains", and its 0% hallucination figure is "not empirical" because the output schema makes free-text hallucination impossible by construction. A wrong label inside the schema is still a wrong answer. OpenAI's guide makes no calibration claim and tells you to set thresholds from your own labelled examples. Laya's benchmarks page says both base checkpoints are over-confident.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A request, and what comes back</span></div>
+  <p>A Decisions API request carries shared input and up to 400 named questions. The shape below follows OpenAI's guide; the content is made up.</p>
+<pre class="code" data-lang="json"><code>{
+  "model": "gpt-6-luna",
+  "input": "Customer: I was charged twice for order 4417. Please refund the duplicate.",
+  "questions": [
+    {"type": "predicate", "name": "refund_request",
+     "instructions": "The customer explicitly asks for money back."},
+    {"type": "choice", "name": "department",
+     "instructions": "Which team should handle this message?",
+     "choices": [
+       {"value": "billing",   "description": "Charges, refunds, invoices"},
+       {"value": "technical", "description": "Bugs, errors, account access"},
+       {"value": "shipping",  "description": "Delivery, tracking, returns in transit"},
+       {"value": "other",     "description": "None of the above; send to general review"}]},
+    {"type": "score", "name": "urgency",
+     "instructions": "How soon does this need a human?",
+     "levels": [
+       {"label": "low",    "description": "Can wait several days"},
+       {"label": "medium", "description": "Should be handled within a day"},
+       {"label": "high",   "description": "Money or access is blocked now"}]}
+  ]
+}</code></pre>
+  <p>Answers come back per question: a <code>probability</code> for the predicate; a <code>choice</code>, a <code>probabilities</code> array and a <code>confidence</code> for the choice; and a <code>score</code>, per-level <code>probabilities</code> and a <code>confidence</code> for the score. Level indices start at 0, so level probabilities of 0.1, 0.2 and 0.7 give a score of \(0(0.1) + 1(0.2) + 2(0.7) = 1.6\). A score between levels is a feature: 1.6 says "probably high, possibly medium" in one number.</p>
+  <p>Laya's equivalent is <code>router.predict(state, questions)</code>, returning <code>noul</code>, <code>choice</code> or <code>score</code> with <code>probabilities</code> and a per-answer <code>confidence</code>, plus which checkpoint answered. Laya defines confidence as one minus normalised entropy,</p>
+  <div class="eq">\[ \text{conf}(p) = 1 - \frac{H(p)}{\log K} = 1 + \frac{\sum_k p_k \log p_k}{\log K} \]<span class="eqcap">1 when all mass is on one option, 0 when the distribution is uniform over the \(K\) options. It measures concentration, not correctness; a confidently wrong model scores high.</span></div>
+  <p>OpenAI's guide does not define its <code>confidence</code> field. Treat any vendor's confidence as a ranking signal until you have checked it against labels.</p>
+</div>
+
+<h3>Why one pass is fast, and what you give up</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The nurse cannot write a diagnosis</span></div>
+  <p>The triage form is fast because it is narrow. The nurse cannot write "chest pain, but probably reflux, let me order an ECG to be sure." A decision model has the same limit. It can only pick from the options you gave it, it cannot explain itself in words, and it cannot think through a long chain of steps before answering. For those, you still want the doctor.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The trade-offs to put on the table</span></div>
+  <ul>
+    <li><b>No reasoning before the answer.</b> If the decision needs multi-step work (reconcile three invoices, then decide), a single pass may not have enough computation. See <a href="#reasoning">fast and slow</a>.</li>
+    <li><b>No explanation.</b> Audits, appeals and regulated decisions often need a reason. Pair the decision model with an LLM that explains the hard or contested cases.</li>
+    <li><b>Fixed options.</b> Anything outside your options is forced into one of them. Always include an "other" option, as OpenAI's guide recommends, and route it to review.</li>
+    <li><b>Dependent decisions.</b> If question two depends on the answer to question one, OpenAI recommends separate requests rather than chaining questions in one call.</li>
+    <li><b>Documented limits (Laya).</b> Keep a choice to roughly 20 self-contained options; reliability drops past about 4,000 tokens of input; option order can change choice answers; ordinal score questions are its weakest type.</li>
+  </ul>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A latency model</span></div>
+  <div class="eq">\[ t_{\text{LLM}} \approx t_{\text{prefill}}(n) + T \cdot t_{\text{token}}, \qquad t_{\text{decision}} \approx t_{\text{prefill}}(n) + t_{\text{head}} \]<span class="eqcap">\(n\) input tokens are processed in parallel during prefill. The \(T\) output tokens are generated sequentially at \(t_{\text{token}}\) each. With a 300-token reasoning answer at 80 tokens per second, the second term alone is 3.75 s, while prefill of a short input is typically a small fraction of a second.</span></div>
+  <p>The speedup therefore depends mostly on \(T\): small against a terse non-reasoning reply, large against a reasoning model. That is why TypeSafe reports a smaller speedup on its Wikiracing demo, where the comparison LLMs ran without reasoning. Smaller models help too: Laya's 322M to 421M parameter encoders are hundreds of times smaller than frontier LLMs, so even their prefill is cheap.</p>
+</div>
+
+<h3>Probabilities make thresholds possible</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A dial instead of a switch</span></div>
+  <p>A yes-or-no answer is a switch: it is either on or off, and you cannot adjust it. A probability is a dial. If wrongly blocking a payment annoys a customer but missing fraud costs real money, you set the dial so the model flags anything above, say, 17% likely fraud. If the costs change, you turn the dial. You do not have to retrain or rewrite anything.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Let costs set the threshold</span></div>
+  <p>The threshold is a business decision, not a model property. Write down what each mistake costs: a false positive (a needless review, a blocked customer) and a false negative (missed fraud, a missed emergency). If the probabilities are calibrated, the cost-minimising rule is simple: act when the probability exceeds \(c_{\text{FP}} / (c_{\text{FP}} + c_{\text{FN}})\). A miss that costs five times a false alarm gives a threshold of 1/6, about 17%.</p>
+  <p>If the probabilities are not calibrated, that formula picks the wrong threshold, and you must choose it empirically on labelled data instead. The widget below shows both cases. For a <b>choice</b> question, the same logic picks the action with the lowest expected cost, which is not always the most likely option.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Expected cost, thresholds, and calibration error</span></div>
+  <div class="eq">\[ \text{act if } p\,c_{\text{FN}} &gt; (1 - p)\,c_{\text{FP}} \iff p &gt; t^\ast = \frac{c_{\text{FP}}}{c_{\text{FP}} + c_{\text{FN}}}, \qquad a^\ast = \arg\min_a \sum_k p_k\, C(a, k) \]<span class="eqcap">Left: the binary rule, valid when \(p\) is calibrated. Right: the general rule for a choice answer with cost matrix \(C(a, k)\), the cost of action \(a\) when the true class is \(k\). Adding a "send to a human" action with flat cost turns abstention into part of the same calculation.</span></div>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code># 1) A choice answer: route a support ticket. The top choice is not always the cheapest action.
+classes = ["billing", "technical", "other"]
+dist    = [0.55, 0.40, 0.05]                 # probabilities returned by the decision model
+actions = ["send to billing", "send to technical", "human review"]
+cost = [[0, 3, 3],                           # cost[action][true class]: a misroute costs 3
+        [3, 0, 3],
+        [1, 1, 1]]                           # a human look always costs 1
+
+def expected_costs(dist, cost):
+    return [sum(p * c for p, c in zip(dist, row)) for row in cost]
+
+ec = expected_costs(dist, cost)
+print([round(x, 2) for x in ec], "-&gt;", actions[ec.index(min(ec))])   # [1.35, 1.8, 1.0] -&gt; human review
+
+# 2) A predicate answer on 12 labelled cases: P(fraud) and the truth.
+probs  = [0.97, 0.91, 0.84, 0.72, 0.66, 0.58, 0.41, 0.33, 0.27, 0.15, 0.08, 0.03]
+labels = [1,    1,    1,    0,    1,    0,    1,    0,    0,    0,    0,    0]
+C_FP, C_FN = 1.0, 5.0                        # a missed fraud costs 5x a needless review
+
+def bayes_threshold(c_fp, c_fn):
+    # act when p*c_fn &gt; (1-p)*c_fp, i.e. p &gt; c_fp/(c_fp+c_fn); only right if p is calibrated
+    return c_fp / (c_fp + c_fn)
+
+def cost_at(t):
+    fp = sum(1 for p, y in zip(probs, labels) if p &gt;= t and y == 0)
+    fn = sum(1 for p, y in zip(probs, labels) if p &lt; t and y == 1)
+    return (C_FP * fp + C_FN * fn) / len(probs)
+
+def best_threshold():
+    # try every observed score as the cut; on ties keep the higher cut (fewer reviews)
+    best = 1.01
+    for t in sorted(set(probs)):
+        if cost_at(t) &lt;= cost_at(best):
+            best = t
+    return best
+
+t0 = bayes_threshold(C_FP, C_FN)
+print(round(t0, 3), round(cost_at(t0), 3))           # theory: 0.167
+t1 = best_threshold()
+print(t1, round(cost_at(t1), 3))                     # chosen on labels; with 12 cases this is noisy
+
+def ece(probs, labels, bins=5):
+    # expected calibration error: gap between stated and observed rate, weighted by bin size
+    total, n = 0.0, len(probs)
+    for b in range(bins):
+        lo, hi = b / bins, (b + 1) / bins
+        idx = [i for i, p in enumerate(probs) if lo &lt;= p &lt; hi or (b == bins - 1 and p == 1.0)]
+        if not idx:
+            continue
+        conf = sum(probs[i] for i in idx) / len(idx)
+        rate = sum(labels[i] for i in idx) / len(idx)
+        total += len(idx) / n * abs(rate - conf)
+    return total
+
+print(round(ece(probs, labels), 3))</code></pre>
+<pre class="code" data-lang="rust"><code>fn expected_costs(dist: &amp;[f64], cost: &amp;[[f64; 3]]) -&gt; Vec&lt;f64&gt; {
+    cost.iter().map(|row| dist.iter().zip(row).map(|(p, c)| p * c).sum()).collect()
+}
+
+const PROBS: [f64; 12] = [0.97, 0.91, 0.84, 0.72, 0.66, 0.58, 0.41, 0.33, 0.27, 0.15, 0.08, 0.03];
+const LABELS: [u8; 12] = [1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0];
+const C_FP: f64 = 1.0;
+const C_FN: f64 = 5.0; // a missed fraud costs 5x a needless review
+
+fn bayes_threshold(c_fp: f64, c_fn: f64) -&gt; f64 {
+    // act when p*c_fn &gt; (1-p)*c_fp, i.e. p &gt; c_fp/(c_fp+c_fn); only right if p is calibrated
+    c_fp / (c_fp + c_fn)
+}
+
+fn cost_at(t: f64) -&gt; f64 {
+    let fp = PROBS.iter().zip(LABELS).filter(|(&amp;p, y)| p &gt;= t &amp;&amp; *y == 0).count() as f64;
+    let fn_ = PROBS.iter().zip(LABELS).filter(|(&amp;p, y)| p &lt; t &amp;&amp; *y == 1).count() as f64;
+    (C_FP * fp + C_FN * fn_) / PROBS.len() as f64
+}
+
+fn best_threshold() -&gt; f64 {
+    // try every observed score as the cut; on ties keep the higher cut (fewer reviews)
+    let mut cands = PROBS.to_vec();
+    cands.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let mut best = 1.01;
+    for t in cands {
+        if cost_at(t) &lt;= cost_at(best) { best = t; }
+    }
+    best
+}
+
+fn ece(probs: &amp;[f64], labels: &amp;[u8], bins: usize) -&gt; f64 {
+    // expected calibration error: gap between stated and observed rate, weighted by bin size
+    let n = probs.len() as f64;
+    let mut total = 0.0;
+    for b in 0..bins {
+        let (lo, hi) = (b as f64 / bins as f64, (b + 1) as f64 / bins as f64);
+        let idx: Vec&lt;usize&gt; = (0..probs.len())
+            .filter(|&amp;i| (lo &lt;= probs[i] &amp;&amp; probs[i] &lt; hi) || (b == bins - 1 &amp;&amp; probs[i] == 1.0))
+            .collect();
+        if idx.is_empty() { continue; }
+        let k = idx.len() as f64;
+        let conf = idx.iter().map(|&amp;i| probs[i]).sum::&lt;f64&gt;() / k;
+        let rate = idx.iter().map(|&amp;i| labels[i] as f64).sum::&lt;f64&gt;() / k;
+        total += k / n * (rate - conf).abs();
+    }
+    total
+}
+
+fn r(x: f64, d: i32) -&gt; f64 { let m = 10f64.powi(d); (x * m).round() / m }
+
+fn main() {
+    // 1) A choice answer: route a support ticket. The top choice is not always the cheapest action.
+    let dist = [0.55, 0.40, 0.05]; // billing, technical, other
+    let actions = ["send to billing", "send to technical", "human review"];
+    let cost = [[0.0, 3.0, 3.0], [3.0, 0.0, 3.0], [1.0, 1.0, 1.0]]; // a misroute costs 3, a human look 1
+    let ec = expected_costs(&amp;dist, &amp;cost);
+    let mut best = 0;
+    for i in 0..ec.len() { if ec[i] &lt; ec[best] { best = i; } }
+    let shown: Vec&lt;f64&gt; = ec.iter().map(|&amp;x| r(x, 2)).collect();
+    println!("{:?} -&gt; {}", shown, actions[best]); // [1.35, 1.8, 1.0] -&gt; human review
+
+    // 2) A predicate answer on 12 labelled cases: P(fraud) and the truth.
+    let t0 = bayes_threshold(C_FP, C_FN);
+    println!("{} {}", r(t0, 3), r(cost_at(t0), 3));  // theory: 0.167
+    let t1 = best_threshold();
+    println!("{} {}", t1, r(cost_at(t1), 3));        // chosen on labels; with 12 cases this is noisy
+    println!("{}", r(ece(&amp;PROBS, &amp;LABELS, 5), 3));
+}</code></pre>
+</div>
+  <p>The routing example picks human review even though billing is the single most likely class, because a misroute is expensive and the model is only 55% sure. In the fraud example the theoretical threshold flags four legitimate cases while the empirical one flags two; on twelve cases that gap is noise, which is why you set thresholds on hundreds of labelled items.</p>
+</div>
+
+<div class="widget" id="w-dm-thr">
+  <div class="wtitle">Choosing a threshold from costs</div>
+  <div class="wsub">400 labelled cases scored by two decision models with the same ranking: one calibrated, one overconfident. A binary LLM judge on the same cases gives a single yes or no. Set what a miss costs relative to a false alarm, then move the threshold. Synthetic data, illustrative.</div>
+  <div class="btnrow"><button class="b" data-m="cal" aria-pressed="true">Calibrated model</button><button class="b" data-m="over" aria-pressed="false">Overconfident model</button><button class="b" data-snap>Set threshold to 1/(1 + ratio)</button></div>
+  <div class="controls">
+    <div class="ctl"><label for="dm-r">Cost of a miss ÷ cost of a false alarm: <output id="dm-r-o">5</output></label><input type="range" id="dm-r" min="1" max="20" step="1" value="5"></div>
+    <div class="ctl"><label for="dm-t">Threshold: <output id="dm-t-o">0.17</output></label><input type="range" id="dm-t" min="0.01" max="0.98" step="0.01" value="0.17"></div>
+  </div>
+  <div class="split">
+    <div><canvas data-cv="cost"></canvas></div>
+    <div><canvas data-cv="rel"></canvas></div>
+  </div>
+  <div class="legend"><span><span class="sw" style="background:var(--eli5)"></span>calibrated model</span><span><span class="sw" style="background:var(--lead)"></span>overconfident model</span><span><span class="sw" style="background:var(--muted)"></span>binary LLM judge (dashed line, grey squares)</span><span><span class="sw" style="background:var(--good)"></span>best threshold on these labels</span><span><span class="sw" style="background:var(--warn)"></span>calibration gap</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Precision</div><div class="v" data-k="prec">—</div></div>
+    <div class="mc"><div class="l">Recall</div><div class="v" data-k="rec">—</div></div>
+    <div class="mc"><div class="l">Expected cost per case</div><div class="v" data-k="cost">—</div></div>
+    <div class="mc"><div class="l">ECE of this model</div><div class="v" data-k="ece">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>Validating a decision model</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Audit the nurse before trusting the form</span></div>
+  <p>Before a hospital relies on a new triage nurse, someone checks a sample of her calls against what happened. Do the same with a decision model. Collect a few hundred real cases, have people label the right answer, run the model, and compare. Check two things: does it rank cases well (risky ones above safe ones), and do its percentages mean what they say?</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">A validation plan you can ask for</span></div>
+  <ol class="steps">
+    <li><div><b>Labelled set.</b> 300 to 1,000 items from real traffic, stratified so rare but costly classes have enough examples. Measure human-to-human agreement on a subset: that is the ceiling, as in <a href="#judges">LLM as judge</a>.</div></li>
+    <li><div><b>Ranking.</b> ROC-AUC per predicate and per choice option (one-versus-rest), with confidence intervals. PR-AUC when positives are rare.</div></li>
+    <li><div><b>Calibration.</b> A reliability diagram and ECE. If it is off, fit temperature scaling on held-out labels; ranking is unchanged and the probabilities become usable.</div></li>
+    <li><div><b>Threshold by cost.</b> Agree the cost ratio with the business owner, pick the threshold on a validation split, and report precision, recall and cost on a separate test split.</div></li>
+    <li><div><b>Slices.</b> Languages, input length, customer tier, and option order. Laya documents failures by language, by input length and by option order.</div></li>
+    <li><div><b>Drift.</b> In production, track the share of each decision, the mean predicted probability, and a weekly labelled audit sample. Re-validate whenever the vendor changes the model behind the endpoint.</div></li>
+  </ol>
+  <div class="callout eval"><span class="tag">Eval lens</span><div>A decision model is a classifier with a prompt, so validate it like one. Everything in <a href="#classification">classification metrics</a> applies directly, with one upgrade over a binary LLM judge: because it returns probabilities, you get the full ROC curve, a calibration check, and a threshold you can move, instead of one fixed point. Report AUC for ranking, ECE for honesty, and expected cost at the chosen threshold for the business.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">ECE and temperature scaling</span></div>
+  <div class="eq">\[ \mathrm{ECE} = \sum_{b=1}^{B} \frac{n_b}{n}\,\big|\,\bar y_b - \bar p_b\,\big|, \qquad p' = \sigma\!\Big(\frac{\operatorname{logit}(p)}{\tau}\Big) \]<span class="eqcap">Left: bin predictions by stated probability, compare the observed positive rate \(\bar y_b\) with the mean stated probability \(\bar p_b\), and weight by bin size \(n_b\). Right: temperature scaling with one parameter \(\tau\), fitted by minimising log loss on held-out labels. \(\tau &gt; 1\) softens an overconfident model. Guo et al. (2017) found modern neural networks poorly calibrated and temperature scaling surprisingly effective.</span></div>
+  <p>Two cautions. ECE depends on the binning and is noisy below a few hundred items, so show the reliability diagram, not only the number. And calibration is distribution-specific: Laya's benchmarks note that a lower ECE on one suite does not set a safe threshold for another task or a different number of options.</p>
+</div>
+
+<h3>Decision model, LLM judge, or fine-tuned classifier?</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Pick the tool by the job</span></div>
+  <p>If you need a quick answer from a fixed list and you need it millions of times, use a decision model. If you need someone to read carefully and explain, use a chat model as a judge. If you have thousands of labelled examples of one specific decision that will not change, train your own classifier. Many systems use all three: the fast one for everything, the careful one for the unsure cases.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">A comparison for design reviews</span></div>
+  <div class="tw"><table>
+    <thead><tr><th></th><th>Decision model</th><th>LLM judge</th><th>Fine-tuned classifier</th></tr></thead>
+    <tbody>
+      <tr><td>Change the criteria</td><td>Edit the question text</td><td>Edit the prompt</td><td>Relabel and retrain</td></tr>
+      <tr><td>Labels needed to start</td><td>Only for validation</td><td>Only for validation</td><td>Thousands for training</td></tr>
+      <tr><td>Output</td><td>Typed, with probabilities</td><td>Text to parse; probabilities only via logprobs or repeated sampling</td><td>Typed, with probabilities</td></tr>
+      <tr><td>Latency and cost</td><td>Low</td><td>High, much higher with reasoning</td><td>Lowest</td></tr>
+      <tr><td>Explanations</td><td>None</td><td>Yes</td><td>None</td></tr>
+      <tr><td>Multi-step reasoning</td><td>No</td><td>Yes</td><td>No</td></tr>
+      <tr><td>Data control</td><td>Hosted, or self-hosted (Laya)</td><td>Usually hosted</td><td>Fully yours</td></tr>
+      <tr><td>Best for</td><td>High-volume routing, gating, guardrails, many changing decisions</td><td>Hard, rare, or contested cases; anything needing a reason</td><td>One stable, high-volume decision with plenty of labels</td></tr>
+    </tbody>
+  </table></div>
+  <p>A common architecture is a cascade: the decision model handles every request, acts when its probability is far from the threshold, and escalates the uncertain band (and every "other") to an LLM judge or a person. The width of that band is a direct trade between cost and error, and you can measure it with the selective prediction tools in <a href="#classification">classification metrics</a>.</p>
+  <div class="callout ask"><span class="tag">Principal asks</span><div>What is the cost ratio between a false positive and a false negative, and who signed off on it? What is the AUC and ECE on our own labelled traffic, with intervals, compared with our current LLM judge? Which slice is worst? What fraction goes to the escalation band, and what does a human cost per item there? What happens to our thresholds when the vendor updates the model, and how will we know?</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The cascade as a cost calculation</span></div>
+  <p>With a calibrated probability \(p\) and an escalation that costs \(c_{\text{esc}}\) per item and is (nearly) always right, the cheapest action for each item is the minimum of three expected costs:</p>
+  <div class="eq">\[ \min\big\{\; (1-p)\,c_{\text{FP}} \;(\text{act}),\;\; p\,c_{\text{FN}} \;(\text{do nothing}),\;\; c_{\text{esc}} \;(\text{escalate}) \;\big\} \]<span class="eqcap">Escalation wins in a band around the threshold whenever \(c_{\text{esc}}\) is smaller than the expected cost of guessing there. The band narrows as escalation gets dearer and vanishes when \(c_{\text{esc}} \ge c_{\text{FP}}c_{\text{FN}}/(c_{\text{FP}}+c_{\text{FN}})\), the expected cost at the threshold itself.</span></div>
+  <p>This only works if \(p\) is calibrated; an overconfident model pushes items out of the band that should have been escalated. That is the practical reason calibration matters more for decision models than for chat models: the probabilities are the product.</p>
+</div>
+</section>

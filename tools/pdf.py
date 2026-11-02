@@ -9,7 +9,7 @@ OUT = os.path.join(ROOT, 'dist', 'frontier-model-field-guide.pdf')
 
 with sync_playwright() as p:
     b = p.chromium.launch()
-    pg = b.new_page(viewport={'width': 900, 'height': 1200}, device_scale_factor=2)
+    pg = b.new_page(viewport={'width': 900, 'height': 1200}, device_scale_factor=1.25)
     errs = []
     pg.on('pageerror', lambda e: errs.append(str(e)))
     pg.add_init_script("try{localStorage.setItem('guide-theme','light');localStorage.setItem('guide-layer','all')}catch(e){}")
@@ -20,11 +20,17 @@ with sync_playwright() as p:
     pg.wait_for_timeout(1500)
     pg.evaluate("G.redraw()")
     pg.wait_for_timeout(800)
-    pg.pdf(path=OUT, format='Letter', print_background=True, outline=True, tagged=True,
+    pg.pdf(path=OUT, format='Letter', print_background=True, outline=True, tagged=False,
            margin={'top': '0.6in', 'bottom': '0.7in', 'left': '0.6in', 'right': '0.6in'},
            display_header_footer=True,
            header_template='<div></div>',
            footer_template='<div style="width:100%;font-size:8px;color:#888;padding:0 0.6in;display:flex;justify-content:space-between;font-family:sans-serif"><span>Frontier Model Field Guide</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>')
     b.close()
     if errs: print('page errors:', errs[:10])
+    # recompress so the file stays under 30 MB for transfer
+    import shutil, subprocess
+    if shutil.which('qpdf'):
+        tmp = OUT + '.tmp'
+        subprocess.run(['qpdf', '--object-streams=generate', '--compress-streams=y', '--recompress-flate', '--compression-level=9', OUT, tmp], check=True)
+        os.replace(tmp, OUT)
     print('pdf written', OUT, os.path.getsize(OUT) // 1024, 'KB')

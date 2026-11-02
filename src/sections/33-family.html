@@ -1,0 +1,794 @@
+<section id="family" data-title="The family tree: CNNs, RNNs, transformers, GNNs">
+<h2>The family tree: CNNs, RNNs, transformers, GNNs</h2>
+<p>Every neural network architecture you will hear about is a variation on one idea: layers of weighted sums and simple nonlinearities, trained by backpropagation. What differs is the <b>inductive bias</b>, the assumption about the data that each design bakes in (see <a href="#architecture">designing a network</a>). This chapter tours the family in historical order, because each branch was invented to fix a specific limit of the one before, and then covers graph neural networks in depth: where they came from, what they are used for, and why a transformer is secretly one of them.</p>
+
+<div class="story" id="st-fm-timeline">
+  <div class="story-head"><div class="story-title">Seventy years in seven pictures</div><p class="story-sub">The family tree of neural networks, one idea per step. Each new branch fixed a specific limit of the one before.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Timeline at 1958; a perceptron sums weighted inputs and compares with a threshold">
+      <line x1="40" y1="34" x2="600" y2="34" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <line x1="80" y1="30" x2="80" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="80" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1960</text>
+      <line x1="160" y1="30" x2="160" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="160" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1970</text>
+      <line x1="240" y1="30" x2="240" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="240" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1980</text>
+      <line x1="320" y1="30" x2="320" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="320" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1990</text>
+      <line x1="400" y1="30" x2="400" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="400" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2000</text>
+      <line x1="480" y1="30" x2="480" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="480" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2010</text>
+      <line x1="560" y1="30" x2="560" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="560" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2020</text>
+      <circle class="pulse" cx="64" cy="34" r="7" fill="var(--accent)"/>
+      <text x="40" y="60" text-anchor="start" font-size="13" font-weight="700" fill="var(--accent)">1958 · the perceptron</text>
+      <g class="a" style="--d:0"><circle cx="110" cy="100" r="16" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="110" y="104" text-anchor="middle" font-size="12" fill="var(--fg)">x1</text></g>
+      <line class="a" style="--d:1" x1="127" y1="100" x2="270" y2="150" stroke="var(--line-strong)" stroke-width="3"/>
+      <g class="a" style="--d:0"><circle cx="110" cy="150" r="16" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="110" y="154" text-anchor="middle" font-size="12" fill="var(--fg)">x2</text></g>
+      <line class="a" style="--d:1" x1="127" y1="150" x2="270" y2="150" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <g class="a" style="--d:0"><circle cx="110" cy="200" r="16" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="110" y="204" text-anchor="middle" font-size="12" fill="var(--fg)">x3</text></g>
+      <line class="a" style="--d:1" x1="127" y1="200" x2="270" y2="150" stroke="var(--line-strong)" stroke-width="2.2"/>
+      <text class="a" style="--d:1" x="196" y="104" font-size="12" fill="var(--muted)">weights</text>
+      <g class="a" style="--d:2"><circle cx="298" cy="150" r="27" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/><text x="298" y="156" text-anchor="middle" font-size="18" fill="var(--fg)">Σ</text></g>
+      <path class="dash" d="M327 150 L372 150" stroke="var(--muted)" stroke-width="2" fill="none"/>
+      <g class="a" style="--d:3"><rect x="378" y="128" width="112" height="44" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="434" y="155" text-anchor="middle" font-size="13" fill="var(--fg)">above threshold?</text></g>
+      <path class="dash" d="M494 150 L522 150" stroke="var(--muted)" stroke-width="2" fill="none"/>
+      <text class="a" style="--d:4" x="530" y="155" font-size="14" font-weight="600" fill="var(--fg)">yes / no</text>
+      <text class="a" style="--d:4" x="320" y="240" text-anchor="middle" font-size="12.5" fill="var(--muted)">weigh the evidence, add it up, compare with a threshold</text>
+    </svg>
+    <p>Frank Rosenblatt's <b>perceptron</b> (1958) weighs a few inputs, adds them up, and answers yes or no. A simple rule nudges the weights after each mistake. It can only draw a straight line between two classes, so it cannot learn XOR, a limitation Minsky and Papert analysed in 1969.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 270" role="img" aria-label="Timeline at 1986; a network with a hidden layer and an error signal flowing backwards">
+      <line x1="40" y1="34" x2="600" y2="34" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <line x1="80" y1="30" x2="80" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="80" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1960</text>
+      <line x1="160" y1="30" x2="160" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="160" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1970</text>
+      <line x1="240" y1="30" x2="240" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="240" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1980</text>
+      <line x1="320" y1="30" x2="320" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="320" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1990</text>
+      <line x1="400" y1="30" x2="400" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="400" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2000</text>
+      <line x1="480" y1="30" x2="480" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="480" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2010</text>
+      <line x1="560" y1="30" x2="560" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="560" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2020</text>
+      <circle cx="64" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle class="pulse" cx="288" cy="34" r="7" fill="var(--accent)"/>
+      <text x="288" y="60" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">1986 · backpropagation popularised</text>
+      <line class="a" style="--d:0" x1="150" y1="100" x2="320" y2="85" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="100" x2="320" y2="125" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="100" x2="320" y2="165" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="100" x2="320" y2="205" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="150" x2="320" y2="85" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="150" x2="320" y2="125" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="150" x2="320" y2="165" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="150" x2="320" y2="205" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="200" x2="320" y2="85" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="200" x2="320" y2="125" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="200" x2="320" y2="165" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="150" y1="200" x2="320" y2="205" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="320" y1="85" x2="490" y2="125" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="320" y1="85" x2="490" y2="175" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="320" y1="125" x2="490" y2="125" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="320" y1="125" x2="490" y2="175" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="320" y1="165" x2="490" y2="125" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="320" y1="165" x2="490" y2="175" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="320" y1="205" x2="490" y2="125" stroke="var(--line)" stroke-width="1.2"/>
+      <line class="a" style="--d:0" x1="320" y1="205" x2="490" y2="175" stroke="var(--line)" stroke-width="1.2"/>
+      <circle class="a" style="--d:0" cx="150" cy="100" r="11" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="150" cy="150" r="11" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="150" cy="200" r="11" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="320" cy="85" r="11" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="320" cy="125" r="11" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="320" cy="165" r="11" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="320" cy="205" r="11" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="490" cy="125" r="11" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="490" cy="175" r="11" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <text class="a" style="--d:1" x="40" y="104" font-size="12.5" fill="var(--eli5)">input</text>
+      <text class="a" style="--d:1" x="340" y="89" font-size="12.5" fill="var(--eli5)">hidden layer</text>
+      <text class="a" style="--d:1" x="512" y="129" font-size="12.5" fill="var(--eli5)">output</text>
+      <path class="dash" d="M500 205 Q 330 262 150 222" stroke="var(--accent)" stroke-width="2.5" fill="none"/>
+      <text class="a" style="--d:2" x="560" y="214" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--accent)">error</text>
+      <text class="a" style="--d:3" x="330" y="254" text-anchor="middle" font-size="12.5" fill="var(--accent)">blame flows backwards; every weight learns its share</text>
+    </svg>
+    <p>Hidden layers fix the straight-line limit, but how do you train weights deep inside? <b>Backpropagation</b>, popularised by Rumelhart, Hinton and Williams (1986), uses the chain rule to send the output error backwards and give every weight its share of the blame. Every network in this guide still trains this way.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Timeline at 1989 and 2012; a 3 by 3 window slides over an image grid to make a feature map">
+      <line x1="40" y1="34" x2="600" y2="34" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <line x1="80" y1="30" x2="80" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="80" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1960</text>
+      <line x1="160" y1="30" x2="160" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="160" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1970</text>
+      <line x1="240" y1="30" x2="240" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="240" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1980</text>
+      <line x1="320" y1="30" x2="320" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="320" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1990</text>
+      <line x1="400" y1="30" x2="400" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="400" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2000</text>
+      <line x1="480" y1="30" x2="480" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="480" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2010</text>
+      <line x1="560" y1="30" x2="560" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="560" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2020</text>
+      <circle cx="64" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="288" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle class="pulse" cx="312" cy="34" r="7" fill="var(--accent)"/>
+      <circle class="pulse" cx="496" cy="34" r="7" fill="var(--accent)"/>
+      <text x="404" y="60" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">LeNet 1989 · AlexNet 2012</text>
+      <rect class="a" style="--d:0" x="80" y="88" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="102" y="88" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="124" y="88" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="146" y="88" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="168" y="88" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="190" y="88" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="80" y="110" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="102" y="110" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="124" y="110" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="146" y="110" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="168" y="110" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="190" y="110" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="80" y="132" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="102" y="132" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="124" y="132" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="146" y="132" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="168" y="132" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="190" y="132" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="80" y="154" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="102" y="154" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="124" y="154" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="146" y="154" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="168" y="154" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="190" y="154" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="80" y="176" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="102" y="176" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="124" y="176" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="146" y="176" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="168" y="176" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="190" y="176" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="80" y="198" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="102" y="198" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="124" y="198" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="146" y="198" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="168" y="198" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="190" y="198" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:1" x="101" y="109" width="66" height="66" rx="3" fill="var(--accent-soft)" fill-opacity=".55" stroke="var(--accent)" stroke-width="2.5"/>
+      <path class="dash" d="M220 142 L282 142" stroke="var(--muted)" stroke-width="2" fill="none"/>
+      <rect class="a" style="--d:2" x="292" y="100" width="20" height="20" rx="2" fill="var(--accent)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="314" y="100" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="336" y="100" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="358" y="100" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="292" y="122" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="314" y="122" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="336" y="122" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="358" y="122" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="292" y="144" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="314" y="144" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="336" y="144" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="358" y="144" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="292" y="166" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="314" y="166" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="336" y="166" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="358" y="166" width="20" height="20" rx="2" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <text class="a" style="--d:2" x="336" y="208" text-anchor="middle" font-size="12" fill="var(--muted)">feature map</text>
+      <text class="a" style="--d:3" x="420" y="112" font-size="13" font-weight="600" fill="var(--fg)">LeNet (1989)</text><text class="a" style="--d:3" x="420" y="132" font-size="12.5" fill="var(--muted)">read handwritten zip codes</text>
+      <text class="a" style="--d:4" x="420" y="166" font-size="13" font-weight="600" fill="var(--fg)">AlexNet (2012)</text><text class="a" style="--d:4" x="420" y="186" font-size="12.5" fill="var(--muted)">ImageNet top-5 error 15%</text><text class="a" style="--d:4" x="420" y="204" font-size="12.5" fill="var(--muted)">vs 26% for the runner-up</text>
+      <text class="a" style="--d:1" x="146" y="240" text-anchor="middle" font-size="12.5" fill="var(--accent)">one 3×3 detector, reused everywhere</text>
+    </svg>
+    <p><b>Convolutional networks</b> slide one small detector across an image, reusing the same weights at every position. LeCun's LeNet (1989) read handwritten zip codes. In 2012 AlexNet (Krizhevsky, Sutskever and Hinton) combined a deep CNN, GPUs and the ImageNet dataset and won by a wide margin, which started the deep learning boom.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Timeline at 1997; a chain of LSTM cells reads one word at a time with a memory line on top">
+      <line x1="40" y1="34" x2="600" y2="34" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <line x1="80" y1="30" x2="80" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="80" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1960</text>
+      <line x1="160" y1="30" x2="160" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="160" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1970</text>
+      <line x1="240" y1="30" x2="240" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="240" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1980</text>
+      <line x1="320" y1="30" x2="320" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="320" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1990</text>
+      <line x1="400" y1="30" x2="400" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="400" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2000</text>
+      <line x1="480" y1="30" x2="480" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="480" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2010</text>
+      <line x1="560" y1="30" x2="560" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="560" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2020</text>
+      <circle cx="64" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="288" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="312" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle class="pulse" cx="376" cy="34" r="7" fill="var(--accent)"/>
+      <text x="376" y="60" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">1997 · LSTM</text>
+      <path class="a" style="--d:0" d="M60 108 L590 108" stroke="var(--good)" stroke-width="3" fill="none"/><path class="a" style="--d:0" d="M596 108 l-10 -6 l0 12 z" fill="var(--good)"/>
+      <text class="a" style="--d:0" x="325" y="94" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--good)">memory carried forward (cell state)</text>
+      <g class="a" style="--d:1"><rect x="80" y="134" width="64" height="40" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="112" y="158" text-anchor="middle" font-size="12" fill="var(--fg)">cell</text><line x1="112" y1="132" x2="112" y2="111" stroke="var(--good)" stroke-width="1.5"/><text x="112" y="200" text-anchor="middle" font-size="13" fill="var(--fg)">The</text></g>
+      <path class="a" style="--d:1" d="M146 154 L186 154" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+      <g class="a" style="--d:1"><rect x="190" y="134" width="64" height="40" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="222" y="158" text-anchor="middle" font-size="12" fill="var(--fg)">cell</text><line x1="222" y1="132" x2="222" y2="111" stroke="var(--good)" stroke-width="1.5"/><text x="222" y="200" text-anchor="middle" font-size="13" fill="var(--fg)">cat</text></g>
+      <path class="a" style="--d:1" d="M256 154 L296 154" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+      <g class="a" style="--d:2"><rect x="300" y="134" width="64" height="40" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="332" y="158" text-anchor="middle" font-size="12" fill="var(--fg)">cell</text><line x1="332" y1="132" x2="332" y2="111" stroke="var(--good)" stroke-width="1.5"/><text x="332" y="200" text-anchor="middle" font-size="13" fill="var(--fg)">which</text></g>
+      <path class="a" style="--d:2" d="M366 154 L406 154" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+      <g class="a" style="--d:2"><rect x="410" y="134" width="64" height="40" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="442" y="158" text-anchor="middle" font-size="12" fill="var(--fg)">cell</text><line x1="442" y1="132" x2="442" y2="111" stroke="var(--good)" stroke-width="1.5"/><text x="442" y="200" text-anchor="middle" font-size="13" fill="var(--fg)">we</text></g>
+      <path class="a" style="--d:2" d="M476 154 L516 154" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+      <g class="a" style="--d:3"><rect x="520" y="134" width="64" height="40" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="552" y="158" text-anchor="middle" font-size="12" fill="var(--fg)">cell</text><line x1="552" y1="132" x2="552" y2="111" stroke="var(--good)" stroke-width="1.5"/><text x="552" y="200" text-anchor="middle" font-size="13" fill="var(--fg)">fed</text></g>
+      <text class="a" style="--d:4" x="325" y="240" text-anchor="middle" font-size="12.5" fill="var(--muted)">one word at a time, everything squeezed into a fixed-size memory</text>
+    </svg>
+    <p>Language arrives in order, so <b>recurrent networks</b> read one word at a time and carry a memory forward. Plain RNNs forget quickly, for the same multiplying-gradients reason as deep stacks. The <b>LSTM</b> (Hochreiter and Schmidhuber 1997) adds gates and an additive memory lane that lets information survive many steps. The catch: it must read strictly in order, and everything must fit in one fixed-size memory.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Timeline at 2014; while writing the French word noir, the model looks back mostly at the English word black">
+      <line x1="40" y1="34" x2="600" y2="34" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <line x1="80" y1="30" x2="80" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="80" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1960</text>
+      <line x1="160" y1="30" x2="160" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="160" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1970</text>
+      <line x1="240" y1="30" x2="240" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="240" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1980</text>
+      <line x1="320" y1="30" x2="320" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="320" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1990</text>
+      <line x1="400" y1="30" x2="400" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="400" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2000</text>
+      <line x1="480" y1="30" x2="480" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="480" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2010</text>
+      <line x1="560" y1="30" x2="560" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="560" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2020</text>
+      <circle cx="64" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="288" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="312" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="376" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="496" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle class="pulse" cx="512" cy="34" r="7" fill="var(--accent)"/>
+      <text x="600" y="60" text-anchor="end" font-size="13" font-weight="700" fill="var(--accent)">2014 · attention</text>
+      <g class="a" style="--d:0"><rect x="108" y="88" width="84" height="32" rx="7" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="150" y="109" text-anchor="middle" font-size="13" fill="var(--fg)">le</text></g>
+      <g class="a" style="--d:0"><rect x="228" y="88" width="84" height="32" rx="7" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="270" y="109" text-anchor="middle" font-size="13" fill="var(--fg)">chat</text></g>
+      <g class="a" style="--d:0"><rect x="348" y="88" width="84" height="32" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/><text x="390" y="109" text-anchor="middle" font-size="13" fill="var(--fg)">noir</text></g>
+      <g class="a" style="--d:0"><rect x="468" y="88" width="84" height="32" rx="7" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="510" y="109" text-anchor="middle" font-size="13" fill="var(--fg)">dort</text></g>
+      <g class="a" style="--d:0"><rect x="108" y="196" width="84" height="32" rx="7" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="150" y="217" text-anchor="middle" font-size="13" fill="var(--fg)">the</text></g>
+      <g class="a" style="--d:0"><rect x="228" y="196" width="84" height="32" rx="7" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="270" y="217" text-anchor="middle" font-size="13" fill="var(--fg)">black</text></g>
+      <g class="a" style="--d:0"><rect x="348" y="196" width="84" height="32" rx="7" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="390" y="217" text-anchor="middle" font-size="13" fill="var(--fg)">cat</text></g>
+      <g class="a" style="--d:0"><rect x="468" y="196" width="84" height="32" rx="7" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/><text x="510" y="217" text-anchor="middle" font-size="13" fill="var(--fg)">sleeps</text></g>
+      <line class="a" style="--d:1" x1="390" y1="122" x2="150" y2="194" stroke="var(--accent)" stroke-width="1.2" stroke-opacity="0.45"/>
+      <line class="a" style="--d:2" x1="390" y1="122" x2="270" y2="194" stroke="var(--accent)" stroke-width="7" stroke-opacity="0.9"/>
+      <line class="a" style="--d:3" x1="390" y1="122" x2="390" y2="194" stroke="var(--accent)" stroke-width="2.2" stroke-opacity="0.45"/>
+      <line class="a" style="--d:4" x1="390" y1="122" x2="510" y2="194" stroke="var(--accent)" stroke-width="1.2" stroke-opacity="0.45"/>
+      <text x="40" y="109" font-size="12" fill="var(--muted)">French</text><text x="40" y="217" font-size="12" fill="var(--muted)">English</text>
+      <text class="a" style="--d:5" x="330" y="252" text-anchor="middle" font-size="12.5" fill="var(--accent)">while writing "noir", look back mostly at "black"</text>
+    </svg>
+    <p>Translation with one memory vector forced a whole sentence through a bottleneck. Bahdanau, Cho and Bengio (2014) let the decoder <b>look back</b> at every source word and decide how much each one matters for the word it is writing now. That weighted look-back is <b>attention</b>.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Timeline at 2017; six tokens all connected to each other by arcs">
+      <line x1="40" y1="34" x2="600" y2="34" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <line x1="80" y1="30" x2="80" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="80" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1960</text>
+      <line x1="160" y1="30" x2="160" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="160" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1970</text>
+      <line x1="240" y1="30" x2="240" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="240" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1980</text>
+      <line x1="320" y1="30" x2="320" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="320" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1990</text>
+      <line x1="400" y1="30" x2="400" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="400" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2000</text>
+      <line x1="480" y1="30" x2="480" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="480" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2010</text>
+      <line x1="560" y1="30" x2="560" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="560" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2020</text>
+      <circle cx="64" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="288" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="312" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="376" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="496" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="512" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle class="pulse" cx="536" cy="34" r="7" fill="var(--accent)"/>
+      <text x="600" y="60" text-anchor="end" font-size="13" font-weight="700" fill="var(--accent)">2017 · the Transformer</text>
+      <path class="a" style="--d:1" d="M80 186 Q 128 140 176 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:2" d="M80 186 Q 176 94 272 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:2" d="M80 186 Q 224 48 368 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:3" d="M80 186 Q 272 2 464 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:3" d="M80 186 Q 320 -44 560 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:1" d="M176 186 Q 224 140 272 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:2" d="M176 186 Q 272 94 368 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:2" d="M176 186 Q 320 48 464 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:3" d="M176 186 Q 368 2 560 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:1" d="M272 186 Q 320 140 368 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:2" d="M272 186 Q 368 94 464 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:2" d="M272 186 Q 416 48 560 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:1" d="M368 186 Q 416 140 464 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:2" d="M368 186 Q 464 94 560 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <path class="a" style="--d:1" d="M464 186 Q 512 140 560 186" stroke="var(--accent)" stroke-width="1.4" fill="none" stroke-opacity=".7"/>
+      <g class="a" style="--d:0"><rect x="42" y="188" width="76" height="30" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="80" y="208" text-anchor="middle" font-size="13" fill="var(--fg)">The</text></g>
+      <g class="a" style="--d:0"><rect x="138" y="188" width="76" height="30" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="176" y="208" text-anchor="middle" font-size="13" fill="var(--fg)">model</text></g>
+      <g class="a" style="--d:0"><rect x="234" y="188" width="76" height="30" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="272" y="208" text-anchor="middle" font-size="13" fill="var(--fg)">reads</text></g>
+      <g class="a" style="--d:0"><rect x="330" y="188" width="76" height="30" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="368" y="208" text-anchor="middle" font-size="13" fill="var(--fg)">every</text></g>
+      <g class="a" style="--d:0"><rect x="426" y="188" width="76" height="30" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="464" y="208" text-anchor="middle" font-size="13" fill="var(--fg)">word</text></g>
+      <g class="a" style="--d:0"><rect x="522" y="188" width="76" height="30" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="560" y="208" text-anchor="middle" font-size="13" fill="var(--fg)">at once</text></g>
+      <text class="a" style="--d:4" x="320" y="248" text-anchor="middle" font-size="12.5" fill="var(--muted)">every token attends to every other token, all at the same time</text>
+    </svg>
+    <p>"Attention Is All You Need" (Vaswani et al. 2017) dropped recurrence entirely. Every token looks at every other token in one parallel step, stacked in layers with residual connections and normalisation. No more reading in order means training uses GPUs fully, which made very large models practical.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Timeline 2018 to 2020; bars for GPT-1, GPT-2 and GPT-3 parameter counts on a log scale">
+      <line x1="40" y1="34" x2="600" y2="34" stroke="var(--line-strong)" stroke-width="1.5"/>
+      <line x1="80" y1="30" x2="80" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="80" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1960</text>
+      <line x1="160" y1="30" x2="160" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="160" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1970</text>
+      <line x1="240" y1="30" x2="240" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="240" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1980</text>
+      <line x1="320" y1="30" x2="320" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="320" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">1990</text>
+      <line x1="400" y1="30" x2="400" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="400" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2000</text>
+      <line x1="480" y1="30" x2="480" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="480" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2010</text>
+      <line x1="560" y1="30" x2="560" y2="38" stroke="var(--line-strong)" stroke-width="1"/><text x="560" y="20" text-anchor="middle" font-size="12" fill="var(--muted)">2020</text>
+      <circle cx="64" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="288" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="312" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="376" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="496" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="512" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle cx="536" cy="34" r="4.5" fill="var(--tn)"/>
+      <circle class="pulse" cx="544" cy="34" r="7" fill="var(--accent)"/>
+      <circle class="pulse" cx="560" cy="34" r="7" fill="var(--accent)"/>
+      <text x="600" y="60" text-anchor="end" font-size="13" font-weight="700" fill="var(--accent)">2018–2020 · decoder-only models scale up</text>
+      <text x="40" y="109" font-size="13" fill="var(--fg)">GPT-1 (2018)</text><rect class="grow-x" style="--d:0" x="150" y="92" width="107" height="24" rx="5" fill="var(--accent)"/><text class="a" style="--d:0" x="265" y="109" font-size="13" font-weight="600" fill="var(--fg)">117M</text>
+      <text x="40" y="149" font-size="13" fill="var(--fg)">GPT-2 (2019)</text><rect class="grow-x" style="--d:1" x="150" y="132" width="218" height="24" rx="5" fill="var(--accent)"/><text class="a" style="--d:1" x="376" y="149" font-size="13" font-weight="600" fill="var(--fg)">1.5B</text>
+      <text x="40" y="189" font-size="13" fill="var(--fg)">GPT-3 (2020)</text><rect class="grow-x" style="--d:2" x="150" y="172" width="424" height="24" rx="5" fill="var(--accent)"/><text class="a" style="--d:2" x="582" y="189" font-size="13" font-weight="600" fill="var(--fg)">175B</text>
+      <text x="150" y="226" font-size="12" fill="var(--muted)">parameters, log scale</text>
+      <text class="a" style="--d:3" x="320" y="252" text-anchor="middle" font-size="12.5" fill="var(--fg)">then: mixture of experts, state-space models (Mamba 2023), multimodal models</text>
+    </svg>
+    <p>Keep only the decoder half, train it to predict the next token, and scale it. Parameter counts grew about 1,500-fold in two years (Radford et al. 2018, 2019; Brown et al. 2020), and loss fell along smooth <a href="#scaling">scaling laws</a>. Newer branches change the cost profile: mixture-of-experts uses only part of the model per token, and state-space models such as Mamba (Gu and Dao 2023) replace attention's all-pairs look with a running state.</p>
+  </div>
+</div>
+
+<h3>The common thread: match the bias to the data</h3>
+<div class="story" id="st-fm-shapes">
+  <div class="story-head"><div class="story-title">Four shapes of data, four bets</div><p class="story-sub">Why there is a family of architectures at all: each one is built for a shape of data.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="A 5 by 5 pixel grid with the centre pixel and its eight neighbours highlighted">
+      <rect class="a" style="--d:2" x="70" y="50" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="104" y="50" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="138" y="50" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="172" y="50" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="206" y="50" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="70" y="84" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:1" x="104" y="84" width="30" height="30" rx="3" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:1" x="138" y="84" width="30" height="30" rx="3" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:1" x="172" y="84" width="30" height="30" rx="3" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="206" y="84" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="70" y="118" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:1" x="104" y="118" width="30" height="30" rx="3" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:0" x="138" y="118" width="30" height="30" rx="3" fill="var(--accent)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:1" x="172" y="118" width="30" height="30" rx="3" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="206" y="118" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="70" y="152" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:1" x="104" y="152" width="30" height="30" rx="3" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:1" x="138" y="152" width="30" height="30" rx="3" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:1" x="172" y="152" width="30" height="30" rx="3" fill="var(--accent-soft)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="206" y="152" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="70" y="186" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="104" y="186" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="138" y="186" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="172" y="186" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <rect class="a" style="--d:2" x="206" y="186" width="30" height="30" rx="3" fill="var(--sunk)" stroke="var(--line)" stroke-width="1"/>
+      <text x="310" y="80" font-size="15" font-weight="600" fill="var(--fg)">A photo is a grid</text>
+      <text class="a" style="--d:2" x="310" y="110" font-size="13" fill="var(--fg)">every pixel has the same 8 neighbours</text>
+      <text class="a" style="--d:2" x="310" y="134" font-size="13" fill="var(--fg)">and a pattern means the same thing anywhere</text>
+      <text class="a" style="--d:3" x="310" y="172" font-size="13" font-weight="600" fill="var(--accent)">bet: convolution</text>
+      <text class="a" style="--d:3" x="310" y="196" font-size="13" fill="var(--muted)">one small detector, slid over every position</text>
+    </svg>
+    <p>Every architecture starts from the shape of the data. In a photo, each pixel has the same neighbourhood and a cat's ear is a cat's ear wherever it appears. A convolution bakes in exactly those two facts.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Six word boxes in a row joined by arrows">
+      <g class="a" style="--d:0"><rect x="50" y="70" width="76" height="34" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="88" y="92" text-anchor="middle" font-size="13" fill="var(--fg)">I</text></g>
+      <path class="a" style="--d:0" d="M128 87 L144 87" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+      <g class="a" style="--d:0"><rect x="146" y="70" width="76" height="34" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="184" y="92" text-anchor="middle" font-size="13" fill="var(--fg)">never</text></g>
+      <path class="a" style="--d:0" d="M224 87 L240 87" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+      <g class="a" style="--d:1"><rect x="242" y="70" width="76" height="34" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="280" y="92" text-anchor="middle" font-size="13" fill="var(--fg)">said</text></g>
+      <path class="a" style="--d:1" d="M320 87 L336 87" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+      <g class="a" style="--d:1"><rect x="338" y="70" width="76" height="34" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="376" y="92" text-anchor="middle" font-size="13" fill="var(--fg)">she</text></g>
+      <path class="a" style="--d:1" d="M416 87 L432 87" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+      <g class="a" style="--d:2"><rect x="434" y="70" width="76" height="34" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="472" y="92" text-anchor="middle" font-size="13" fill="var(--fg)">stole</text></g>
+      <path class="a" style="--d:2" d="M512 87 L528 87" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+      <g class="a" style="--d:2"><rect x="530" y="70" width="76" height="34" rx="7" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="568" y="92" text-anchor="middle" font-size="13" fill="var(--fg)">it</text></g>
+      <text x="320" y="146" text-anchor="middle" font-size="15" font-weight="600" fill="var(--fg)">A sentence is a sequence: order changes meaning</text>
+      <text class="a" style="--d:3" x="320" y="182" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">bet: recurrence (carry a memory left to right)</text>
+      <text class="a" style="--d:4" x="320" y="208" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">or attention plus position information</text>
+    </svg>
+    <p>In a sentence, order is meaning: stress a different word and "I never said she stole it" changes sense. Recurrent networks bake in left-to-right reading. Transformers bake in almost nothing and add position information as an extra input.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="An irregular graph of six nodes with one node highlighted">
+      <line class="a" style="--d:0" x1="110" y1="70" x2="70" y2="150" stroke="var(--line-strong)" stroke-width="2"/>
+      <line class="a" style="--d:0" x1="110" y1="70" x2="150" y2="150" stroke="var(--line-strong)" stroke-width="2"/>
+      <line class="a" style="--d:0" x1="70" y1="150" x2="150" y2="150" stroke="var(--line-strong)" stroke-width="2"/>
+      <line class="a" style="--d:0" x1="150" y1="150" x2="230" y2="110" stroke="var(--line-strong)" stroke-width="2"/>
+      <line class="a" style="--d:0" x1="150" y1="150" x2="230" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line class="a" style="--d:0" x1="70" y1="150" x2="110" y2="220" stroke="var(--line-strong)" stroke-width="2"/>
+      <line class="a" style="--d:0" x1="230" y1="200" x2="110" y2="220" stroke="var(--line-strong)" stroke-width="2"/>
+      <circle class="a" style="--d:0" cx="110" cy="70" r="14" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="70" cy="150" r="14" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="150" cy="150" r="14" fill="var(--accent)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="230" cy="110" r="14" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="230" cy="200" r="14" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <circle class="a" style="--d:0" cx="110" cy="220" r="14" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/>
+      <text x="310" y="80" font-size="15" font-weight="600" fill="var(--fg)">A molecule is a graph</text>
+      <text class="a" style="--d:1" x="310" y="110" font-size="13" fill="var(--fg)">atoms are nodes, bonds are edges</text>
+      <text class="a" style="--d:1" x="310" y="134" font-size="13" fill="var(--fg)">each node has its own number of neighbours</text>
+      <text class="a" style="--d:2" x="310" y="172" font-size="13" font-weight="600" fill="var(--accent)">bet: message passing</text>
+      <text class="a" style="--d:2" x="310" y="196" font-size="13" fill="var(--muted)">each node listens only to the nodes it is linked to</text>
+    </svg>
+    <p>Molecules, road maps and friendships have no grid and no single order. Each node has its own neighbours. A graph neural network bakes in only the links: every node updates itself from the nodes it is connected to.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Five tokens all connected to each other">
+      <line class="a" style="--d:1" x1="150" y1="60" x2="226" y2="115" stroke="var(--accent)" stroke-width="1.6" stroke-opacity=".75"/>
+      <line class="a" style="--d:2" x1="150" y1="60" x2="197" y2="205" stroke="var(--accent)" stroke-width="1.6" stroke-opacity=".75"/>
+      <line class="a" style="--d:0" x1="150" y1="60" x2="103" y2="205" stroke="var(--accent)" stroke-width="1.6" stroke-opacity=".75"/>
+      <line class="a" style="--d:1" x1="150" y1="60" x2="74" y2="115" stroke="var(--accent)" stroke-width="1.6" stroke-opacity=".75"/>
+      <line class="a" style="--d:0" x1="226" y1="115" x2="197" y2="205" stroke="var(--accent)" stroke-width="1.6" stroke-opacity=".75"/>
+      <line class="a" style="--d:1" x1="226" y1="115" x2="103" y2="205" stroke="var(--accent)" stroke-width="1.6" stroke-opacity=".75"/>
+      <line class="a" style="--d:2" x1="226" y1="115" x2="74" y2="115" stroke="var(--accent)" stroke-width="1.6" stroke-opacity=".75"/>
+      <line class="a" style="--d:2" x1="197" y1="205" x2="103" y2="205" stroke="var(--accent)" stroke-width="1.6" stroke-opacity=".75"/>
+      <line class="a" style="--d:0" x1="197" y1="205" x2="74" y2="115" stroke="var(--accent)" stroke-width="1.6" stroke-opacity=".75"/>
+      <line class="a" style="--d:1" x1="103" y1="205" x2="74" y2="115" stroke="var(--accent)" stroke-width="1.6" stroke-opacity=".75"/>
+      <circle cx="150" cy="60" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="150" y="64" text-anchor="middle" font-size="12" fill="var(--fg)">t1</text>
+      <circle cx="226" cy="115" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="226" y="119" text-anchor="middle" font-size="12" fill="var(--fg)">t2</text>
+      <circle cx="197" cy="205" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="197" y="209" text-anchor="middle" font-size="12" fill="var(--fg)">t3</text>
+      <circle cx="103" cy="205" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="103" y="209" text-anchor="middle" font-size="12" fill="var(--fg)">t4</text>
+      <circle cx="74" cy="115" r="15" fill="var(--eli5-soft)" stroke="var(--eli5)" stroke-width="1.5"/><text x="74" y="119" text-anchor="middle" font-size="12" fill="var(--fg)">t5</text>
+      <text x="300" y="86" font-size="15" font-weight="600" fill="var(--fg)">A transformer is a GNN where</text>
+      <text x="300" y="108" font-size="15" font-weight="600" fill="var(--fg)">every token links to every token</text>
+      <text class="a" style="--d:3" x="300" y="146" font-size="13" fill="var(--fg)">attention weights decide how much each link counts</text>
+      <text class="a" style="--d:3" x="300" y="170" font-size="13" fill="var(--fg)">the links are learned per input, not given</text>
+      <text class="a" style="--d:4" x="300" y="208" font-size="13" font-weight="600" fill="var(--accent)">weakest bet of all: most data needed, most headroom</text>
+    </svg>
+    <p>Take a graph network and connect every node to every other node: that is a transformer layer, with attention deciding how much each connection counts. It assumes the least, so it needs the most data, and it keeps improving when data and compute are plentiful.</p>
+  </div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">One recipe, many kitchens</span></div>
+  <p>All of these networks are made from the same two ingredients: multiply-and-add, then a simple bend (a nonlinearity). What changes is <b>who gets multiplied with whom</b>. A photo network only mixes nearby pixels. A sentence network mixes words in order. A graph network mixes things that are linked. A transformer lets everything mix with everything and learns which mixes matter.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why the family tree still matters at a transformer lab</span></div>
+  <p>The frontier is dominated by transformers, but the older branches keep coming back in disguise. Residual connections came from CNNs. Gating from LSTMs reappears in modern MLP blocks (SwiGLU) and in state-space models. Recurrent state is back in Mamba-style layers because it makes long-context inference cheap. Graph thinking shows up in protein, materials, weather and agent-tool systems. Knowing which bias each branch encodes lets you judge proposals quickly: "this layer is a convolution over time" or "this is an RNN with a better gate" tells you its cost profile and likely failure modes before you read the paper.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Each branch restricts the same linear map</span></div>
+  <p>Write a layer as \(h' = \phi(W h)\) over all the positions of an input at once. Each architecture constrains \(W\):</p>
+  <ul>
+    <li><b>MLP:</b> \(W\) dense, no constraint.</li>
+    <li><b>CNN:</b> \(W\) is banded and every band holds the same kernel (a Toeplitz structure): locality plus weight sharing.</li>
+    <li><b>RNN:</b> the same \(W\) applied once per time step, with the state threaded through: weight sharing over time, strict order.</li>
+    <li><b>GNN:</b> mixing only along the edges of a given graph, with shared weights per node: \(W\) follows the adjacency matrix.</li>
+    <li><b>Transformer:</b> mixing weights computed from the input itself (attention), over all pairs: a data-dependent, fully connected graph.</li>
+  </ul>
+</div>
+
+<h3>Perceptron and backpropagation: the roots</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A voting machine that learns from mistakes</span></div>
+  <p>A perceptron is a tiny voting machine. Each piece of evidence gets a weight, the weighted votes are added up, and if the total passes a threshold the answer is "yes". When it gets an example wrong, it shifts the weights a little toward the right answer. That is learning in its simplest form.</p>
+  <p>One perceptron can only split the world with a straight line. Stack several in layers and they can carve out any shape, but then you need a way to know which inner weight caused a mistake. <b>Backpropagation</b> is that bookkeeping: it traces the error back through the layers and gives every weight its share of the blame.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Ideas waited decades for compute and data</span></div>
+  <p>The perceptron (1958) and backpropagation (popularised in 1986) were in place long before neural networks dominated. What was missing was compute, data, and a few training tricks. Roughly 25 years passed between backpropagation's popularisation and AlexNet. The lesson for planning research portfolios: an idea that "does not work" may be an idea waiting for scale, and an idea that works at small scale may stop working at large scale. Both are reasons to measure across scales instead of trusting one result.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The perceptron rule and the chain rule</span></div>
+  <div class="eq">\[ \hat y = \mathbb{1}[\,w^\top x + b > 0\,], \qquad w \leftarrow w + \eta\,(y - \hat y)\,x \]<span class="eqcap">\(x\) inputs, \(w\) weights, \(b\) bias, \(\eta\) step size, labels \(y \in \{0,1\}\). The update only fires on mistakes. Rosenblatt's convergence result guarantees it finds a separating line if one exists.</span></div>
+  <p>XOR has no separating line, so no single perceptron learns it. A hidden layer solves it, but the step function has zero gradient almost everywhere. Backpropagation (Rumelhart, Hinton and Williams 1986) uses smooth activations so the chain rule applies: for weights in layer \(l\), \(\partial \mathcal{L}/\partial W_l = \delta_l\, h_{l-1}^\top\) with \(\delta_l = (W_{l+1}^\top \delta_{l+1}) \odot \phi'(z_l)\). The same backward product of Jacobians is what vanishes or explodes in deep stacks (see <a href="#architecture">designing a network</a>) and what <a href="#learning">how networks learn</a> covers step by step.</p>
+</div>
+
+<h3>Convolutional networks: weight sharing for grids</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A flashlight that looks for one pattern</span></div>
+  <p>Imagine searching a big photo for eyes with a small flashlight. You sweep it across every part of the picture, and you use the same idea of "what an eye looks like" everywhere. That is a convolution: one small pattern detector, slid across the whole image. The first layer looks for edges, the next combines edges into corners and curves, the next into eyes and wheels, and so on up to whole objects.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Still the right tool when data is limited</span></div>
+  <p>CNNs dominated computer vision from 2012 until around 2020, and they remain the default for small datasets, edge devices and real-time systems, because their built-in assumptions mean they need less data and less compute. Vision Transformers (Dosovitskiy et al. 2020) matched or beat CNNs only when pretrained on very large datasets; trained on ImageNet alone they lagged comparable ResNets. Modernised CNNs such as ConvNeXt (Liu et al. 2022) showed that much of the remaining gap came from training recipes rather than the architecture. Many multimodal models still use convolutional pieces in their image or audio front ends.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Convolution, receptive fields, and the 2012 recipe</span></div>
+  <div class="eq">\[ y_{i,j,c'} = \sum_{c}\sum_{u=-k}^{k}\sum_{v=-k}^{k} K_{u,v,c,c'}\; x_{i+u,\,j+v,\,c} \]<span class="eqcap">\(x\) input with channels \(c\), \(K\) a \((2k{+}1)\times(2k{+}1)\) kernel shared across all positions \((i,j)\), output channels \(c'\). Parameter count is independent of image size.</span></div>
+  <p>Stacking \(L\) layers of 3×3 kernels gives each output a <b>receptive field</b> of \((2L+1)\times(2L+1)\) pixels; pooling and striding grow it faster. LeNet (LeCun et al. 1989) applied this to handwritten digits. AlexNet (Krizhevsky, Sutskever and Hinton 2012) had five convolutional and three fully connected layers, about 60 million parameters, and used ReLU activations, dropout, data augmentation and two GPUs. Its ImageNet top-5 error of about 15% against 26% for the runner-up was the moment the field switched. ResNets (2015) then pushed CNNs past 100 layers with the residual connection that every transformer now uses.</p>
+</div>
+
+<p>Here is the flashlight in slow motion: one 3×3 filter, one small image, and the output it builds one cell at a time.</p>
+<div class="widget" id="w-fm-conv">
+  <div class="wtitle">A filter sliding over an image</div>
+  <div class="wsub">Pick a filter, then press Step or Run to slide it across the letter T and watch the 9 multiplications at each stop add up to one output cell; click any input or output cell to jump there.</div>
+  <div class="controls">
+    <div class="ctl"><label for="cv-k">Filter</label><select id="cv-k"><option value="v">Vertical edge (Sobel)</option><option value="h">Horizontal edge (Sobel)</option><option value="blur">Blur (average of 9)</option><option value="sharp">Sharpen</option></select></div>
+  </div>
+  <div class="btnrow"><button class="b" type="button" data-step>Step</button><button class="b" type="button" data-run aria-pressed="false">Run</button><button class="b" type="button" data-all>Fill all</button><button class="b" type="button" data-reset>Reset</button></div>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--fg)"></span>bright pixel (1)</span><span><span class="sw" style="background:var(--accent)"></span>positive output</span><span><span class="sw" style="background:var(--lead)"></span>negative output</span><span>outlined box: the 3×3 window being read now</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Weights in this filter</div><div class="v" data-k="w">—</div></div>
+    <div class="mc"><div class="l">Positions that reuse them</div><div class="v" data-k="pos">—</div></div>
+    <div class="mc"><div class="l">Dense layer, same input and output</div><div class="v" data-k="dense">—</div></div>
+    <div class="mc"><div class="l">Output at this position</div><div class="v" data-k="val">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>Recurrent networks and LSTMs: memory for sequences</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Reading a book with one sticky note</span></div>
+  <p>Picture reading a novel one word at a time, and the only thing you may keep is a single sticky note that you rewrite after every word. You must decide, word by word, what to keep on the note and what to rub out. That is a recurrent network. By page 300, details from page 1 are hard to hold on to. An <b>LSTM</b> gives the note a protected section and simple rules (gates) for when to write, keep or erase, so important facts last much longer.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Two bottlenecks, and why recurrence is back</span></div>
+  <p>RNNs and LSTMs powered speech recognition and machine translation through the mid-2010s. They had two structural limits. <b>Training is sequential:</b> step 100 needs step 99, so you cannot spread one sequence across thousands of GPU cores. <b>Memory is fixed-size:</b> everything the model knows about the past must fit in one state vector. The transformer removed both, at the price of attention cost that grows with the square of the context length and a KV cache that grows linearly with it.</p>
+  <p>That price is why recurrence has returned. A recurrent state costs the same per token no matter how long the context is, which is attractive for very long inputs and cheap inference. Modern state-space models and linear-attention layers are recurrent at inference while still training in parallel.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Vanishing through time, and the additive cell</span></div>
+  <div class="eq">\[ h_t = \tanh(W h_{t-1} + U x_t + b), \qquad \frac{\partial h_T}{\partial h_t} = \prod_{k=t+1}^{T} \mathrm{diag}\big(\tanh'(z_k)\big)\, W \]<span class="eqcap">The same matrix \(W\) is multiplied in at every step, so gradients across long gaps shrink or grow geometrically, as analysed by Hochreiter (1991) and Bengio, Simard and Frasconi (1994).</span></div>
+  <p>The LSTM (Hochreiter and Schmidhuber 1997) adds a cell state updated additively, \(c_t = f_t \odot c_{t-1} + i_t \odot \tilde c_t\), with sigmoid gates \(f_t, i_t, o_t\) computed from \(x_t\) and \(h_{t-1}\). When the forget gate \(f_t\) is near 1, the gradient flows back through \(c\) almost unchanged: the same trick as a residual connection, applied through time. (The forget gate itself was added by Gers, Schmidhuber and Cummins in 2000.) The GRU (Cho et al. 2014) is a lighter variant. Sequence-to-sequence models (Sutskever, Vinyals and Le 2014) encoded a whole source sentence into one vector and decoded from it, and that single vector was the bottleneck attention was invented to remove.</p>
+</div>
+
+<h3>Attention and the transformer</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Flip back to any page</span></div>
+  <p>Instead of keeping one sticky note, what if you could flip back to any earlier page whenever you needed it? While translating a word, you look back at the original sentence and focus on the few words that matter for this one. That is <b>attention</b>. The transformer goes all the way: every word in the text looks at every other word at the same time and decides how much to listen to each.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why this branch won language</span></div>
+  <p>Transformers won because their computation fits the hardware. Every position in a training sequence is processed in parallel, so a lab can turn more GPUs into a bigger, better model almost directly, and the gains follow smooth <a href="#scaling">scaling laws</a>. The decoder-only variant (the GPT line) trained on next-token prediction turned out to be general enough for code, maths, dialogue and tool use (see <a href="#pretraining">pretraining</a> and <a href="#llm-inside">inside an LLM</a>). The costs to manage are attention that is quadratic in context length during training and prefill, and a KV cache that dominates serving memory (see <a href="#inference">inference</a>).</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">From additive attention to scaled dot products</span></div>
+  <p>Bahdanau, Cho and Bengio (2014) scored each source state \(h_j\) against the decoder state \(s_{i-1}\) with a small network, \(e_{ij} = v^\top \tanh(W s_{i-1} + U h_j)\), normalised the scores with a softmax, and fed the weighted sum of source states to the decoder. Vaswani et al. (2017) replaced recurrence entirely with stacked self-attention:</p>
+  <div class="eq">\[ \mathrm{Attention}(Q,K,V) = \mathrm{softmax}\!\Big(\frac{QK^\top}{\sqrt{d_k}} + M\Big)V \]<span class="eqcap">\(Q, K, V\) are linear projections of the token vectors; \(d_k\) the key size; \(M\) a mask (\(-\infty\) above the diagonal for a causal decoder). Cost \(O(n^2 d)\) for \(n\) tokens.</span></div>
+  <p>The base Transformer had 6 encoder and 6 decoder layers, width 512, 8 heads and a 2,048-wide MLP. GPT (Radford et al. 2018) kept only the decoder and trained it on next-token prediction; GPT-2 (2019) and GPT-3 (Brown et al. 2020) scaled the same recipe to 1.5B and 175B parameters. Since then most changes have been refinements: pre-norm and RMSNorm, rotary position embeddings, SwiGLU MLPs, grouped-query attention, and mixture-of-experts layers.</p>
+</div>
+
+<h3>Beyond the dense transformer: mixture of experts and state-space models</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A hospital with specialists, and a running summary</span></div>
+  <p>A <b>mixture of experts</b> is like a hospital with a front desk. Each patient is sent to two or three specialists, not to every doctor in the building. The hospital can employ hundreds of specialists, but each visit costs only a few consultations.</p>
+  <p>A <b>state-space model</b> goes back to the sticky-note idea with a much better note: a carefully designed running summary that updates with each word and can choose what to remember based on what it reads. It costs the same per word no matter how long the text is.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Different cost profiles, not different paradigms</span></div>
+  <p>Mixture-of-experts separates <b>total parameters</b> (how much the model can store) from <b>active parameters</b> (what each token costs). Mixtral 8x7B (Jiang et al. 2024) has about 47B parameters but uses about 13B per token; most leading open-weight models released since 2025 are MoE. The costs: all experts must sit in memory, routing can be unstable or unbalanced, and serving needs expert parallelism. State-space models such as Mamba (Gu and Dao 2023) offer linear-time training and constant memory per token at inference; hybrids that interleave a few attention layers with many recurrent layers are the common way to keep attention's precise recall. When a proposal claims a new architecture, ask which of these cost profiles it changes and whether quality holds at matched compute.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Routing and selective scans</span></div>
+  <div class="eq">\[ \text{MoE}(x) = \sum_{i \in \mathrm{TopK}(g(x))} \mathrm{softmax}(g(x))_i \, E_i(x), \qquad h_t = \bar A_t h_{t-1} + \bar B_t x_t,\;\; y_t = C_t h_t \]<span class="eqcap">Left: a router \(g\) scores experts \(E_i\) and only the top \(k\) run (Shazeer et al. 2017; Switch Transformer, Fedus et al. 2021, used \(k=1\)); an auxiliary loss keeps load balanced. Right: a linear recurrence; in Mamba, \(\bar A_t, \bar B_t, C_t\) depend on the input (a "selective" SSM), computed with a parallel scan during training.</span></div>
+  <p>Earlier structured SSMs such as S4 (Gu, Goel and Ré 2022) used fixed, input-independent dynamics, which can be computed as one long convolution but cannot decide what to remember based on content. Making the parameters input-dependent gives that ability back at the cost of the convolution trick, which Mamba recovers with a hardware-aware scan. A fixed-size state still cannot recall arbitrary earlier tokens exactly, which is the main argument for hybrids.</p>
+</div>
+
+<h3>How GNNs came to life</h3>
+<div class="story" id="st-fm-gossip">
+  <div class="story-head"><div class="story-title">Gossip in a small town</div><p class="story-sub">How graph neural networks pass messages, how far information travels, and why too many rounds wash everything out.</p></div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Eight houses joined by roads; only house A is lit">
+      <text x="320" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Round 0: only house A has heard the news</text>
+      <line x1="70" y1="80" x2="70" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="70" y1="80" x2="170" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="70" y1="200" x2="170" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="170" y1="140" x2="280" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="280" y1="140" x2="380" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="380" y1="140" x2="480" y2="80" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="380" y1="140" x2="480" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="80" x2="480" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="80" x2="580" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="200" x2="580" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <g class="a" style="--d:0"><circle cx="70" cy="80" r="22" fill="var(--accent)" stroke="var(--accent)" stroke-width="2"/><text x="70" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="var(--surface)">A</text></g>
+      <text x="70" y="50" text-anchor="middle" font-size="12" fill="var(--accent)">source</text>
+      <g class="a" style="--d:0"><circle cx="70" cy="200" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="70" y="205" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">B</text></g>
+      <text x="70" y="240" text-anchor="middle" font-size="12" fill="var(--muted)">1 hop</text>
+      <g class="a" style="--d:0"><circle cx="170" cy="140" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="170" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">C</text></g>
+      <text x="170" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">1 hop</text>
+      <g class="a" style="--d:0"><circle cx="280" cy="140" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="280" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">D</text></g>
+      <text x="280" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">2 hops</text>
+      <g class="a" style="--d:0"><circle cx="380" cy="140" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="380" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">E</text></g>
+      <text x="380" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">3 hops</text>
+      <g class="a" style="--d:0"><circle cx="480" cy="80" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="480" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">F</text></g>
+      <text x="480" y="50" text-anchor="middle" font-size="12" fill="var(--muted)">4 hops</text>
+      <g class="a" style="--d:0"><circle cx="480" cy="200" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="480" y="205" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">G</text></g>
+      <text x="480" y="240" text-anchor="middle" font-size="12" fill="var(--muted)">4 hops</text>
+      <g class="a" style="--d:0"><circle cx="580" cy="140" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="580" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">H</text></g>
+      <text x="580" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">5 hops</text>
+    </svg>
+    <p>A town where houses are linked by roads is a graph. One house hears some news. Each evening, every house chats only with the houses it is directly linked to. That evening chat is one round of <b>message passing</b>.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="After one round, houses A, B and C are lit">
+      <text x="320" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Round 1: A's neighbours B and C know</text>
+      <line x1="70" y1="80" x2="70" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="70" y1="80" x2="170" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="70" y1="200" x2="170" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="170" y1="140" x2="280" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="280" y1="140" x2="380" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="380" y1="140" x2="480" y2="80" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="380" y1="140" x2="480" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="80" x2="480" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="80" x2="580" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="200" x2="580" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <g class="a" style="--d:0"><circle cx="70" cy="80" r="22" fill="var(--accent)" stroke="var(--accent)" stroke-width="2"/><text x="70" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="var(--surface)">A</text></g>
+      <text x="70" y="50" text-anchor="middle" font-size="12" fill="var(--accent)">source</text>
+      <g class="a" style="--d:1"><circle cx="70" cy="200" r="22" fill="var(--accent)" stroke="var(--accent)" stroke-width="2"/><text x="70" y="205" text-anchor="middle" font-size="13" font-weight="600" fill="var(--surface)">B</text></g>
+      <text x="70" y="240" text-anchor="middle" font-size="12" fill="var(--accent)">1 hop</text>
+      <g class="a" style="--d:1"><circle cx="170" cy="140" r="22" fill="var(--accent)" stroke="var(--accent)" stroke-width="2"/><text x="170" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--surface)">C</text></g>
+      <text x="170" y="180" text-anchor="middle" font-size="12" fill="var(--accent)">1 hop</text>
+      <g class="a" style="--d:0"><circle cx="280" cy="140" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="280" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">D</text></g>
+      <text x="280" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">2 hops</text>
+      <g class="a" style="--d:0"><circle cx="380" cy="140" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="380" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">E</text></g>
+      <text x="380" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">3 hops</text>
+      <g class="a" style="--d:0"><circle cx="480" cy="80" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="480" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">F</text></g>
+      <text x="480" y="50" text-anchor="middle" font-size="12" fill="var(--muted)">4 hops</text>
+      <g class="a" style="--d:0"><circle cx="480" cy="200" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="480" y="205" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">G</text></g>
+      <text x="480" y="240" text-anchor="middle" font-size="12" fill="var(--muted)">4 hops</text>
+      <g class="a" style="--d:0"><circle cx="580" cy="140" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="580" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">H</text></g>
+      <text x="580" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">5 hops</text>
+    </svg>
+    <p>After one evening, the news has reached A's direct neighbours, one hop away, and no further. In a graph neural network, one layer lets each node gather information from its 1-hop neighbourhood.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="After three rounds, houses A through E are lit; F, G and H are not">
+      <text x="320" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Round 3: everything within 3 hops</text>
+      <line x1="70" y1="80" x2="70" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="70" y1="80" x2="170" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="70" y1="200" x2="170" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="170" y1="140" x2="280" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="280" y1="140" x2="380" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="380" y1="140" x2="480" y2="80" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="380" y1="140" x2="480" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="80" x2="480" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="80" x2="580" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="200" x2="580" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <g class="a" style="--d:0"><circle cx="70" cy="80" r="22" fill="var(--accent)" stroke="var(--accent)" stroke-width="2"/><text x="70" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="var(--surface)">A</text></g>
+      <text x="70" y="50" text-anchor="middle" font-size="12" fill="var(--accent)">source</text>
+      <g class="a" style="--d:1"><circle cx="70" cy="200" r="22" fill="var(--accent)" stroke="var(--accent)" stroke-width="2"/><text x="70" y="205" text-anchor="middle" font-size="13" font-weight="600" fill="var(--surface)">B</text></g>
+      <text x="70" y="240" text-anchor="middle" font-size="12" fill="var(--accent)">1 hop</text>
+      <g class="a" style="--d:1"><circle cx="170" cy="140" r="22" fill="var(--accent)" stroke="var(--accent)" stroke-width="2"/><text x="170" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--surface)">C</text></g>
+      <text x="170" y="180" text-anchor="middle" font-size="12" fill="var(--accent)">1 hop</text>
+      <g class="a" style="--d:2"><circle cx="280" cy="140" r="22" fill="var(--accent)" stroke="var(--accent)" stroke-width="2"/><text x="280" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--surface)">D</text></g>
+      <text x="280" y="180" text-anchor="middle" font-size="12" fill="var(--accent)">2 hops</text>
+      <g class="a" style="--d:3"><circle cx="380" cy="140" r="22" fill="var(--accent)" stroke="var(--accent)" stroke-width="2"/><text x="380" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--surface)">E</text></g>
+      <text x="380" y="180" text-anchor="middle" font-size="12" fill="var(--accent)">3 hops</text>
+      <g class="a" style="--d:0"><circle cx="480" cy="80" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="480" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">F</text></g>
+      <text x="480" y="50" text-anchor="middle" font-size="12" fill="var(--muted)">4 hops</text>
+      <g class="a" style="--d:0"><circle cx="480" cy="200" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="480" y="205" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">G</text></g>
+      <text x="480" y="240" text-anchor="middle" font-size="12" fill="var(--muted)">4 hops</text>
+      <g class="a" style="--d:0"><circle cx="580" cy="140" r="22" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/><text x="580" y="145" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">H</text></g>
+      <text x="580" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">5 hops</text>
+    </svg>
+    <p>After three evenings the news has crossed the bridge to E, three hops out. F, G and H are four and five hops away and still have not heard. <b>k rounds reach exactly k hops</b>, so a GNN needs as many layers as the distance information must travel.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Left four houses hold plus one, right four hold minus one">
+      <text x="320" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Opinions: west side starts at +1, east side at −1</text>
+      <line x1="70" y1="80" x2="70" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="70" y1="80" x2="170" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="70" y1="200" x2="170" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="170" y1="140" x2="280" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="280" y1="140" x2="380" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="380" y1="140" x2="480" y2="80" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="380" y1="140" x2="480" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="80" x2="480" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="80" x2="580" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="200" x2="580" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <circle cx="70" cy="80" r="22" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/><circle class="a" style="--d:1" cx="70" cy="80" r="22" fill="var(--accent)" fill-opacity="0.85"/><text x="70" y="85" text-anchor="middle" font-size="12" font-weight="600" fill="var(--surface)">+1.00</text><text x="70" y="50" text-anchor="middle" font-size="12" fill="var(--muted)">A</text>
+      <circle cx="70" cy="200" r="22" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/><circle class="a" style="--d:1" cx="70" cy="200" r="22" fill="var(--accent)" fill-opacity="0.85"/><text x="70" y="205" text-anchor="middle" font-size="12" font-weight="600" fill="var(--surface)">+1.00</text><text x="70" y="240" text-anchor="middle" font-size="12" fill="var(--muted)">B</text>
+      <circle cx="170" cy="140" r="22" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/><circle class="a" style="--d:1" cx="170" cy="140" r="22" fill="var(--accent)" fill-opacity="0.85"/><text x="170" y="145" text-anchor="middle" font-size="12" font-weight="600" fill="var(--surface)">+1.00</text><text x="170" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">C</text>
+      <circle cx="280" cy="140" r="22" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/><circle class="a" style="--d:1" cx="280" cy="140" r="22" fill="var(--accent)" fill-opacity="0.85"/><text x="280" y="145" text-anchor="middle" font-size="12" font-weight="600" fill="var(--surface)">+1.00</text><text x="280" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">D</text>
+      <circle cx="380" cy="140" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="380" cy="140" r="22" fill="var(--fp)" fill-opacity="0.85"/><text x="380" y="145" text-anchor="middle" font-size="12" font-weight="600" fill="var(--surface)">-1.00</text><text x="380" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">E</text>
+      <circle cx="480" cy="80" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="480" cy="80" r="22" fill="var(--fp)" fill-opacity="0.85"/><text x="480" y="85" text-anchor="middle" font-size="12" font-weight="600" fill="var(--surface)">-1.00</text><text x="480" y="50" text-anchor="middle" font-size="12" fill="var(--muted)">F</text>
+      <circle cx="480" cy="200" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="480" cy="200" r="22" fill="var(--fp)" fill-opacity="0.85"/><text x="480" y="205" text-anchor="middle" font-size="12" font-weight="600" fill="var(--surface)">-1.00</text><text x="480" y="240" text-anchor="middle" font-size="12" fill="var(--muted)">G</text>
+      <circle cx="580" cy="140" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="580" cy="140" r="22" fill="var(--fp)" fill-opacity="0.85"/><text x="580" y="145" text-anchor="middle" font-size="12" font-weight="600" fill="var(--surface)">-1.00</text><text x="580" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">H</text>
+    </svg>
+    <p>Now make it opinions. Each evening every house replaces its view with the average of its own and its neighbours'. The west side starts at +1 and the east side at −1. At first the two sides are easy to tell apart, which is what you want a GNN to learn from.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="All eight houses hold values between minus 0.05 and minus 0.09">
+      <text x="320" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">After 60 rounds: everyone thinks the same</text>
+      <line x1="70" y1="80" x2="70" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="70" y1="80" x2="170" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="70" y1="200" x2="170" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="170" y1="140" x2="280" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="280" y1="140" x2="380" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="380" y1="140" x2="480" y2="80" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="380" y1="140" x2="480" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="80" x2="480" y2="200" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="80" x2="580" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <line x1="480" y1="200" x2="580" y2="140" stroke="var(--line-strong)" stroke-width="2"/>
+      <circle cx="70" cy="80" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="70" cy="80" r="22" fill="var(--fp)" fill-opacity="0.04"/><text x="70" y="85" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">-0.05</text><text x="70" y="50" text-anchor="middle" font-size="12" fill="var(--muted)">A</text>
+      <circle cx="70" cy="200" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="70" cy="200" r="22" fill="var(--fp)" fill-opacity="0.04"/><text x="70" y="205" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">-0.05</text><text x="70" y="240" text-anchor="middle" font-size="12" fill="var(--muted)">B</text>
+      <circle cx="170" cy="140" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="170" cy="140" r="22" fill="var(--fp)" fill-opacity="0.04"/><text x="170" y="145" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">-0.05</text><text x="170" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">C</text>
+      <circle cx="280" cy="140" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="280" cy="140" r="22" fill="var(--fp)" fill-opacity="0.06"/><text x="280" y="145" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">-0.07</text><text x="280" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">D</text>
+      <circle cx="380" cy="140" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="380" cy="140" r="22" fill="var(--fp)" fill-opacity="0.07"/><text x="380" y="145" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">-0.08</text><text x="380" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">E</text>
+      <circle cx="480" cy="80" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="480" cy="80" r="22" fill="var(--fp)" fill-opacity="0.08"/><text x="480" y="85" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">-0.09</text><text x="480" y="50" text-anchor="middle" font-size="12" fill="var(--muted)">F</text>
+      <circle cx="480" cy="200" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="480" cy="200" r="22" fill="var(--fp)" fill-opacity="0.08"/><text x="480" y="205" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">-0.09</text><text x="480" y="240" text-anchor="middle" font-size="12" fill="var(--muted)">G</text>
+      <circle cx="580" cy="140" r="22" fill="var(--surface)" stroke="var(--fp)" stroke-width="2"/><circle class="a" style="--d:1" cx="580" cy="140" r="22" fill="var(--fp)" fill-opacity="0.08"/><text x="580" y="145" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">-0.09</text><text x="580" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">H</text>
+    </svg>
+    <p>After 60 evenings everyone holds almost the same opinion, between −0.05 and −0.09. You can no longer tell which side a house started on. This is <b>over-smoothing</b>, and it is why plain GNNs are usually only 2 to 4 layers deep, unlike 100-layer transformers.</p>
+  </div>
+  <div class="step">
+    <svg viewBox="0 0 640 260" role="img" aria-label="Three small graphs: a molecule, a road network and a social network">
+      <g class="a" style="--d:0"><line x1="140" y1="110" x2="125" y2="135" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="125" y1="135" x2="96" y2="135" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="96" y1="135" x2="80" y2="110" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="80" y1="110" x2="95" y2="85" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="95" y1="85" x2="124" y2="85" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="124" y1="85" x2="140" y2="110" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="140" y1="110" x2="170" y2="110" stroke="var(--line-strong)" stroke-width="1.8"/><circle cx="140" cy="110" r="8" fill="var(--accent)"/><circle cx="125" cy="135" r="8" fill="var(--accent)"/><circle cx="96" cy="135" r="8" fill="var(--accent)"/><circle cx="80" cy="110" r="8" fill="var(--accent)"/><circle cx="95" cy="85" r="8" fill="var(--accent)"/><circle cx="124" cy="85" r="8" fill="var(--accent)"/><circle cx="170" cy="110" r="8" fill="var(--accent)"/><text x="120" y="176" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">molecules</text><text x="120" y="196" text-anchor="middle" font-size="12" fill="var(--muted)">atoms and bonds:</text><text x="120" y="212" text-anchor="middle" font-size="12" fill="var(--muted)">drug discovery</text></g>
+      <g class="a" style="--d:1"><line x1="270" y1="90" x2="310" y2="80" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="310" y1="80" x2="350" y2="95" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="350" y1="95" x2="375" y2="130" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="375" y1="130" x2="325" y2="130" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="325" y1="130" x2="280" y2="135" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="280" y1="135" x2="270" y2="90" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="310" y1="80" x2="325" y2="130" stroke="var(--line-strong)" stroke-width="1.8"/><circle cx="270" cy="90" r="8" fill="var(--good)"/><circle cx="310" cy="80" r="8" fill="var(--good)"/><circle cx="350" cy="95" r="8" fill="var(--good)"/><circle cx="375" cy="130" r="8" fill="var(--good)"/><circle cx="325" cy="130" r="8" fill="var(--good)"/><circle cx="280" cy="135" r="8" fill="var(--good)"/><text x="320" y="176" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">road networks</text><text x="320" y="196" text-anchor="middle" font-size="12" fill="var(--muted)">road segments:</text><text x="320" y="212" text-anchor="middle" font-size="12" fill="var(--muted)">arrival-time (ETA) prediction</text></g>
+      <g class="a" style="--d:2"><line x1="520" y1="115" x2="475" y2="90" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="520" y1="115" x2="565" y2="90" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="520" y1="115" x2="470" y2="140" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="520" y1="115" x2="570" y2="140" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="475" y1="90" x2="520" y2="75" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="565" y1="90" x2="520" y2="75" stroke="var(--line-strong)" stroke-width="1.8"/><line x1="470" y1="140" x2="570" y2="140" stroke="var(--line-strong)" stroke-width="1.8"/><circle cx="520" cy="115" r="8" fill="var(--lead)"/><circle cx="475" cy="90" r="8" fill="var(--lead)"/><circle cx="565" cy="90" r="8" fill="var(--lead)"/><circle cx="470" cy="140" r="8" fill="var(--lead)"/><circle cx="570" cy="140" r="8" fill="var(--lead)"/><circle cx="520" cy="75" r="8" fill="var(--lead)"/><text x="520" y="176" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">people and items</text><text x="520" y="196" text-anchor="middle" font-size="12" fill="var(--muted)">who likes what:</text><text x="520" y="212" text-anchor="middle" font-size="12" fill="var(--muted)">recommendations</text></g>
+      <text x="320" y="40" text-anchor="middle" font-size="14" font-weight="600" fill="var(--fg)">Where the graph is the data</text>
+    </svg>
+    <p>Anywhere the links are the point, graph networks fit: atoms and bonds for drug discovery, road segments for travel-time prediction, people and items for recommendations, and mesh points on the globe for weather forecasting.</p>
+  </div>
+</div>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Some data is a web, not a picture or a sentence</span></div>
+  <p>A molecule is atoms joined by bonds. A city is junctions joined by roads. A social network is people joined by friendships. None of these is a grid like a photo or a line like a sentence: each item has its own set of connections, and the connections are the important part. A <b>graph neural network</b> (GNN) is built for this. Each item (a <b>node</b>) keeps a small description of itself, and in every round it updates that description using messages from the nodes it is linked to. After a few rounds, each node's description reflects its neighbourhood.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">A short history and where GNNs earn their keep</span></div>
+  <ol class="steps">
+    <li><div><b>First graph neural networks (2005 to 2009).</b> Gori, Monfardini and Scarselli (2005) and Scarselli et al. (2009, "The Graph Neural Network Model") let each node repeatedly update its state from its neighbours until the states settled.</div></li>
+    <li><div><b>Spectral methods (2014 to 2016).</b> Bruna et al. (2014) defined convolution on graphs through the eigenvectors of the graph Laplacian, a graph version of the Fourier transform. Defferrard et al. (2016, ChebNet) made it cheaper with polynomial filters.</div></li>
+    <li><div><b>GCN (Kipf and Welling 2017).</b> A first-order simplification of those filters became a one-line layer: average over neighbours, multiply by a weight matrix. It was simple, fast and strong, and it made GNNs mainstream.</div></li>
+    <li><div><b>Message passing as the unifying frame (Gilmer et al. 2017).</b> Applied to molecular property prediction, it showed most GNNs fit one template: compute messages along edges, aggregate them, update each node.</div></li>
+    <li><div><b>Scaling and attention (2017 to 2018).</b> GraphSAGE (Hamilton, Ying and Leskovec 2017) sampled neighbours so GNNs could run on huge graphs and on nodes never seen in training. GAT (Veličković et al. 2018) let each node learn how much attention to pay to each neighbour.</div></li>
+  </ol>
+  <p>Real deployments: Pinterest's PinSage (Ying et al. 2018) ran a GraphSAGE-style model over a graph of billions of pins and boards for recommendations. DeepMind and Google Maps (Derrow-Pinion et al. 2021) used a GNN over road segments for arrival-time prediction and reported reducing poor ETA predictions by over 40% in cities such as Sydney compared with the previous production system. Stokes et al. (2020) trained a directed message-passing network on molecules, screened large chemical libraries, and identified the antibiotic candidate halicin. GraphCast (Lam et al. 2023) runs message passing over a mesh covering the globe and beat the leading operational deterministic forecast system on about 90% of the targets the authors evaluated. AlphaFold 2 (Jumper et al. 2021) is related but not a standard GNN: it keeps a learned representation for every pair of amino-acid residues and refines it with attention and "triangle" updates, which can be read as reasoning over a dense graph of residues.</p>
+  <div class="callout warn"><span class="tag">Watch out</span><div>Plain message-passing GNNs get worse, not better, when stacked deep. Each layer averages neighbours, so after many layers all nodes look alike (<b>over-smoothing</b>), and information from far away must squeeze through narrow bridges in the graph (<b>over-squashing</b>). Most production GNNs are 2 to 4 layers deep. A proposal for a 50-layer GNN needs residual connections, normalisation, or a graph-transformer design, and evidence that the extra depth helps.</div></div>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">GCN, message passing, attention over neighbours</span></div>
+  <div class="eq">\[ H^{(l+1)} = \sigma\!\Big(\tilde D^{-1/2} \tilde A\, \tilde D^{-1/2} H^{(l)} W^{(l)}\Big), \qquad \tilde A = A + I \]<span class="eqcap">GCN layer (Kipf and Welling 2017). \(A\) is the adjacency matrix, \(I\) adds self-loops, \(\tilde D\) is the degree matrix of \(\tilde A\), \(H^{(l)}\) holds one row of features per node, \(W^{(l)}\) is shared by all nodes.</span></div>
+  <div class="eq">\[ m_v^{(t+1)} = \sum_{u \in \mathcal N(v)} M_t\big(h_v^{(t)}, h_u^{(t)}, e_{uv}\big), \qquad h_v^{(t+1)} = U_t\big(h_v^{(t)}, m_v^{(t+1)}\big) \]<span class="eqcap">Message passing (Gilmer et al. 2017): a message function \(M_t\) on each edge (with edge features \(e_{uv}\)), a permutation-invariant aggregate (sum, mean, max), and an update \(U_t\). GAT makes the aggregate a learned softmax over neighbours.</span></div>
+  <p>Two theoretical results frame what GNNs can and cannot do. Xu et al. (2019) showed message-passing GNNs are at most as powerful as the 1-dimensional Weisfeiler–Lehman graph isomorphism test at telling graphs apart, and that sum aggregation reaches that bound where mean and max do not. Li, Han and Wu (2018) showed a GCN layer is a form of Laplacian smoothing, so repeated layers drive node features toward a constant on each connected component: over-smoothing. The update in the code below, with the weights and nonlinearity removed, is exactly that smoothing operator \(\tilde D^{-1}\tilde A\), and its repeated application converges to a constant vector on a connected graph. Over-squashing (Alon and Yahav 2021) is the complementary problem: the number of nodes within \(k\) hops grows fast, but all their information must pass through fixed-size vectors along a few edges.</p>
+  <div class="codetabs">
+<pre class="code" data-lang="python"><code># A 6-node graph as an adjacency list: a path 0-1-2-3-4 with a branch 2-5.
+graph = {0: [1], 1: [0, 2], 2: [1, 3, 5], 3: [2, 4], 4: [3], 5: [2]}
+
+def message_pass(h, graph):
+    """One round: each node's new value is the mean of itself and its neighbours.
+    This is the GCN-style update with the weights and nonlinearity left out."""
+    new = {}
+    for v, nbrs in graph.items():
+        msgs = [h[v]] + [h[u] for u in nbrs]   # self-loop keeps the node's own value
+        new[v] = sum(msgs) / len(msgs)
+    return new
+
+h = {v: 0.0 for v in graph}
+h[0] = 1.0                                     # only node 0 knows something
+for k in range(1, 31):
+    h = message_pass(h, graph)
+    if k in (1, 2, 3, 30):
+        reached = sum(1 for v in h if h[v] &gt; 0)      # nodes within k hops
+        spread = max(h.values()) - min(h.values())   # how different nodes still are
+        print(k, reached, f"{spread:.3f}")
+# 1 2 0.500
+# 2 3 0.417
+# 3 5 0.347    node 5 is 3 hops away (0-1-2-5); node 4 is 4 hops away
+# 30 6 0.003   over-smoothed: every node holds nearly the same value</code></pre>
+<pre class="code" data-lang="rust"><code>/// One round: each node's new value is the mean of itself and its neighbours.
+/// This is the GCN-style update with the weights and nonlinearity left out.
+fn message_pass(h: &amp;[f64], graph: &amp;[Vec&lt;usize&gt;]) -&gt; Vec&lt;f64&gt; {
+    graph
+        .iter()
+        .enumerate()
+        .map(|(v, nbrs)| {
+            let mut sum = h[v]; // self-loop keeps the node's own value
+            for &amp;u in nbrs {
+                sum += h[u];
+            }
+            sum / (1 + nbrs.len()) as f64
+        })
+        .collect()
+}
+
+fn main() {
+    // A 6-node graph as an adjacency list: a path 0-1-2-3-4 with a branch 2-5.
+    let graph: Vec&lt;Vec&lt;usize&gt;&gt; = vec![vec![1], vec![0, 2], vec![1, 3, 5], vec![2, 4], vec![3], vec![2]];
+    let mut h = vec![0.0; graph.len()];
+    h[0] = 1.0; // only node 0 knows something
+    for k in 1..=30 {
+        h = message_pass(&amp;h, &amp;graph);
+        if [1, 2, 3, 30].contains(&amp;k) {
+            let reached = h.iter().filter(|&amp;&amp;x| x &gt; 0.0).count(); // nodes within k hops
+            let max = h.iter().cloned().fold(f64::MIN, f64::max);
+            let min = h.iter().cloned().fold(f64::MAX, f64::min);
+            println!("{} {} {:.3}", k, reached, max - min); // how different nodes still are
+        }
+    }
+    // 1 2 0.500
+    // 2 3 0.417
+    // 3 5 0.347    node 5 is 3 hops away (0-1-2-5); node 4 is 4 hops away
+    // 30 6 0.003   over-smoothed: every node holds nearly the same value
+}</code></pre>
+  </div>
+</div>
+
+<div class="widget" id="w-fm-mp">
+  <div class="wtitle">Message passing on a small graph</div>
+  <div class="wsub">Each round, every node replaces its value with the average of itself and its neighbours. In "one node knows", watch information reach exactly k hops in k rounds. In "two groups", watch the groups blur together as rounds pile up. The narrow chain C–D–E between the two groups slows everything down.</div>
+  <div class="btnrow"><button class="b" type="button" data-mode="one" aria-pressed="true">One node knows</button><button class="b" type="button" data-mode="two" aria-pressed="false">Two groups</button><button class="b" type="button" data-next>Next round</button><button class="b" type="button" data-reset>Reset</button></div>
+  <div class="controls">
+    <div class="ctl"><label for="fm-k">Rounds (layers): <output id="fm-k-o">2</output></label><input type="range" id="fm-k" min="0" max="60" step="1" value="2"></div>
+  </div>
+  <svg viewBox="0 0 650 250" role="img" aria-label="An eight-node graph whose node values update each round" style="width:100%;height:auto;display:block"></svg>
+  <canvas></canvas>
+  <div class="legend"><span><span class="sw" style="background:var(--accent)"></span>left group (A–D)</span><span><span class="sw" style="background:var(--fp)"></span>right group (E–H)</span></div>
+  <div class="cards">
+    <div class="mc"><div class="l">Nodes reached</div><div class="v" data-k="reach">—</div></div>
+    <div class="mc"><div class="l">Spread (max − min)</div><div class="v" data-k="spread">—</div></div>
+    <div class="mc"><div class="l">Left avg − right avg</div><div class="v" data-k="gap">—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>A transformer is a GNN on a fully connected graph</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Everyone is everyone's neighbour</span></div>
+  <p>In the gossip town, each house only talks to houses it is linked to by a road. Now imagine a town where everyone can talk to everyone, and each person decides for themselves how much attention to pay to each other person. That is exactly what a transformer layer does with the words of a sentence. The words are the nodes, every pair is connected, and attention decides how loud each connection is.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why this view is useful</span></div>
+  <p>Seeing a transformer as a graph network explains several design facts at once. Attention ignores order unless you add position information, because graphs have no inherent order. Adding a known graph to a transformer (through attention masks or structural encodings) is how graph transformers inject domain structure, and causal masking is itself a graph: each token links only to earlier tokens. And the over-smoothing worry partly carries over: deep transformers can collapse token representations toward each other ("rank collapse"), which residual connections and normalisation help prevent. When a team proposes a GNN for structured data, a fair baseline is a transformer with the structure encoded, and the reverse also holds.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Side by side</span></div>
+  <div class="eq">\[ \text{GAT: } h_v' = \sigma\Big(\sum_{u \in \mathcal N(v)} \alpha_{vu} W h_u\Big), \qquad \text{self-attention: } h_v' = \sum_{u=1}^{n} \mathrm{softmax}_u\!\Big(\frac{q_v^\top k_u}{\sqrt{d_k}}\Big)\, W_V h_u \]<span class="eqcap">Both are attention-weighted message passing. The transformer sets \(\mathcal N(v)\) to every token (or every earlier token under a causal mask), uses dot-product scores, adds residuals, normalisation and an MLP per node, and runs several heads in parallel.</span></div>
+  <p>Two consequences. First, a transformer's attention weights are a learned, input-dependent adjacency matrix, recomputed for every input and every layer, while a GNN's graph is given. Second, the cost is \(O(n^2)\) edges instead of \(O(|E|)\), which is why sparse attention patterns (local windows, a few global tokens) are graph sparsification in disguise.</p>
+</div>
+
+<h3>The family at a glance</h3>
+<div class="tw"><table>
+  <thead><tr><th>Architecture</th><th>Data shape</th><th>Inductive bias</th><th>Strengths</th><th>Weaknesses</th><th>Where used</th></tr></thead>
+  <tbody>
+    <tr><td>MLP</td><td>Fixed-length vector</td><td>None beyond smoothness</td><td>Simple; universal approximator</td><td>Parameters explode with input size; no structure reuse</td><td>Tabular data; the per-token block inside every transformer</td></tr>
+    <tr><td>CNN</td><td>Grids: images, spectrograms, video</td><td>Locality, weight sharing, translation equivariance</td><td>Data-efficient; fast; hardware-friendly</td><td>Long-range relations need depth or pooling</td><td>Vision on limited data, edge devices, image and audio front ends</td></tr>
+    <tr><td>RNN / LSTM</td><td>Sequences</td><td>Order; one state carried forward</td><td>Constant memory per step; streaming</td><td>Sequential training; fixed-size memory; forgets long range</td><td>Legacy speech and translation; on-device streaming</td></tr>
+    <tr><td>Transformer</td><td>Sets of tokens (sequences with positions)</td><td>Very weak: all pairs may interact, weights from data</td><td>Parallel training; scales smoothly; general</td><td>Quadratic attention; large KV cache; data-hungry</td><td>LLMs, vision transformers, speech, multimodal</td></tr>
+    <tr><td>Mixture of experts</td><td>Same as transformer</td><td>Different tokens need different sub-networks</td><td>More capacity per FLOP</td><td>Memory for all experts; routing instability; serving complexity</td><td>Many frontier-scale LLMs</td></tr>
+    <tr><td>State-space model (Mamba)</td><td>Long sequences</td><td>Compressible running state with input-dependent updates</td><td>Linear time; constant inference memory</td><td>Exact recall of arbitrary past tokens is hard</td><td>Long-context and efficient models, often hybrids with attention</td></tr>
+    <tr><td>GNN</td><td>Graphs: molecules, roads, social and item graphs, meshes</td><td>Only linked nodes interact; permutation invariance</td><td>Uses known structure; works on irregular data</td><td>Over-smoothing, over-squashing; usually shallow; WL expressivity limit</td><td>Drug and materials discovery, recommendations, ETA, weather</td></tr>
+  </tbody>
+</table></div>
+
+<div class="callout eval"><span class="tag">Eval lens</span><div>Claims that one architecture beats another are only as good as the comparison. Check that models were <b>compute-matched and data-matched</b>: the ViT result flips depending on whether pretraining data is ImageNet-scale or hundreds of millions of images, and historical "architecture" wins often bundled more data, more compute and better training recipes (ConvNeXt recovered much of the gap to vision transformers by modernising the training recipe and design of a CNN). For GNNs, Shchur et al. (2018) showed that rankings on standard citation-graph benchmarks changed with different train/test splits, so single-split leaderboards are weak evidence. Ask for several seeds, several splits, and the strongest tuned baseline of the other family.</div></div>
+
+<div class="callout ask"><span class="tag">Principal asks</span><div>What structure does this data have, and which architecture's bias matches it? Is the baseline the best-tuned transformer (with the structure encoded), at matched compute and data? Does the advantage survive at larger scale and more data, or is it a small-data effect of a stronger bias? What does the design cost at inference: memory per token, latency, and how it behaves on long inputs? For a GNN: how many layers, how was over-smoothing handled, and were results averaged over several splits?</div></div>
+
+<div class="callout key"><span class="tag">Key idea</span><div>The family tree is a history of fixing bottlenecks. Perceptrons could not learn non-linear boundaries, so came hidden layers and backpropagation. Dense layers wasted parameters on images, so came convolutions. Language arrives in order, so came RNNs, then LSTMs to remember longer. One memory vector was a bottleneck, so came attention, and then the transformer, which removed recurrence and scaled. Graphs needed their own bias, so came GNNs, and a transformer turns out to be a GNN on a fully connected graph. Each step traded a built-in assumption for more data and compute.</div></div>
+</section>

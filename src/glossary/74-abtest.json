@@ -1,0 +1,192 @@
+[
+{
+"term": "A/B test",
+"def": "A randomized controlled experiment on live users: units are split at random between the current version (A) and a change (B), and the difference in outcomes estimates the change's causal effect.",
+"see": "abtest"
+},
+{
+"term": "A/A test",
+"def": "An experiment in which both arms get the identical product. About 5% of metrics should come out significant at p &lt; 0.05; many more reveals broken variance estimates, assignment, or logging.",
+"see": "metrics"
+},
+{
+"term": "Overall evaluation criterion (OEC)",
+"def": "The single metric, or agreed weighted combination, that defines success for a product and that experiments are ultimately judged against; also called the north star metric.",
+"see": "metrics"
+},
+{
+"term": "North star metric",
+"def": "The top-level metric that captures long-run value for a product, such as weekly users with a successful task. Usually too slow to test against directly, so experiments use drivers that predict it.",
+"see": "metrics"
+},
+{
+"term": "Driver metric",
+"def": "A faster, more sensitive metric that is known from past experiments to move the north star, and is used as the primary metric of most tests.",
+"see": "metrics"
+},
+{
+"term": "Guardrail metric",
+"def": "A metric that must not get worse whatever else improves, such as latency, cost, or safety violations; trust guardrails such as sample ratio decide whether the test can be believed at all.",
+"see": "abtest"
+},
+{
+"term": "Diagnostic metric",
+"def": "A metric that explains why something moved, such as tokens per answer or tool calls per task. Useful for debugging, never a launch criterion.",
+"see": "metrics"
+},
+{
+"term": "Minimum detectable effect (MDE)",
+"def": "The smallest true effect a test has a stated power (usually 80%) to detect at its significance level. Required sample size scales with one over the MDE squared.",
+"see": "abtest"
+},
+{
+"term": "Sample ratio mismatch (SRM)",
+"def": "Observed arm sizes that differ from the configured split by more than chance allows, tested with a chi-square goodness-of-fit test. It means something adds or drops users unevenly, and results should not be read until it is explained.",
+"see": "abtest"
+},
+{
+"term": "Peeking",
+"def": "Checking a running test repeatedly and stopping the first time it looks significant. With 20 looks at a nominal 5% level, the false positive rate rises to about 25%.",
+"see": "abtest"
+},
+{
+"term": "Optional stopping",
+"def": "Letting the decision to stop data collection depend on the results seen so far. Without a sequential design it inflates false positives.",
+"see": "abtest"
+},
+{
+"term": "Sequential testing",
+"def": "Testing designs that allow repeated looks at accumulating data while controlling the overall false positive rate, through planned boundaries or always-valid p-values.",
+"see": "abtest"
+},
+{
+"term": "Group sequential design",
+"def": "A plan with a fixed number of interim analyses and critical values chosen so the overall error rate is alpha, such as Pocock or O'Brien–Fleming boundaries.",
+"see": "abtest"
+},
+{
+"term": "Alpha spending function",
+"def": "A rule, introduced by Lan and DeMets (1983), for how much of the type I error budget is used up by each fraction of the planned sample, so interim looks need not be scheduled exactly.",
+"see": "abtest"
+},
+{
+"term": "Always-valid p-value",
+"def": "A p-value that stays valid however often it is checked, such as one built from a mixture sequential probability ratio test; the price is lower power at any fixed sample size.",
+"see": "abtest"
+},
+{
+"term": "Novelty effect",
+"def": "A temporary boost because a change is new, which fades as users get used to it. A short test overstates the long-run effect.",
+"see": "abtest"
+},
+{
+"term": "Primacy effect",
+"def": "A temporary dip, also called change aversion, because users are used to the old way. A short test understates or reverses the long-run effect.",
+"see": "abtest"
+},
+{
+"term": "CUPED",
+"def": "Controlled-experiment Using Pre-Experiment Data (Deng et al., 2013): subtract θ times each unit's centred pre-period covariate from its outcome, cutting variance by a factor of 1 − ρ² without bias.",
+"see": "abtest"
+},
+{
+"term": "Variance reduction",
+"def": "Techniques such as CUPED, regression adjustment, stratification, or capping that shrink the noise in a metric so the same test detects smaller effects.",
+"see": "abtest"
+},
+{
+"term": "Twyman's law",
+"def": "\"Any figure that looks interesting or different is usually wrong.\" In experimentation: treat a surprisingly large result as a likely bug until logging, SRM, and metric definitions check out.",
+"see": "abtest"
+},
+{
+"term": "Holdout",
+"def": "A small group kept on the old version after a launch, often for a quarter, to measure long-run and cumulative effects.",
+"see": "abtest"
+},
+{
+"term": "Ramp",
+"def": "Raising a change's traffic share in stages (for example 1%, 5%, 50%, 100%) so that crashes and guardrail breaches are caught while few users are exposed.",
+"see": "abtest"
+},
+{
+"term": "Triggered analysis",
+"def": "Analysing only the units that reached the point where treatment and control differ, with the trigger logged in both arms, to avoid diluting the effect with unaffected users.",
+"see": "abtest"
+},
+{
+"term": "Exposure logging",
+"def": "Recording the moment a user actually experienced the change (for example when the first new-model answer rendered), as opposed to when they were assigned.",
+"see": "metrics"
+},
+{
+"term": "Assignment logging",
+"def": "Recording each time a unit is bucketed into an experiment arm, with unit ID, experiment, arm, and timestamp. It is what SRM checks count.",
+"see": "metrics"
+},
+{
+"term": "Trace ID",
+"def": "An identifier created once at the start of a request and copied onto every event it produces (model calls, tool calls, client events, feedback) so they can be joined.",
+"see": "metrics"
+},
+{
+"term": "Ratio metric",
+"def": "A metric defined as a sum over a sum, such as thumbs-up over rated responses. Its variance must be computed at the randomization unit, for example with the delta method, and its numerator and denominator reported separately.",
+"see": "metrics"
+},
+{
+"term": "Delta method",
+"def": "A first-order Taylor approximation for the variance of a function of estimates, such as a ratio of means; the standard way to get correct error bars on ratio metrics randomized by user.",
+"see": "metrics"
+},
+{
+"term": "Proxy metric",
+"def": "A measurable stand-in for an outcome that is hard to measure directly. Optimizing it hard tends to break its link to the real outcome (Goodhart's law).",
+"see": "metrics"
+},
+{
+"term": "Metric sensitivity",
+"def": "How often a metric moves detectably when a change matters, determined by the effect size relative to the metric's noise.",
+"see": "metrics"
+},
+{
+"term": "Metric directionality",
+"def": "Whether a metric's movement reliably means better or worse for users; messages per session, for example, can rise for good or bad reasons.",
+"see": "metrics"
+},
+{
+"term": "Interleaving",
+"def": "An online comparison for rankers in which results from two systems are merged into one list and user clicks are credited to the system that contributed each result. Each user compares both, so it needs far less traffic than an A/B test.",
+"see": "ai-experiments"
+},
+{
+"term": "Team-draft interleaving",
+"def": "An interleaving method (Radlinski, Kurup and Joachims, 2008) where two rankers take turns, in coin-flip order, picking their best unchosen result, and clicks are credited to the team that placed each result.",
+"see": "ai-experiments"
+},
+{
+"term": "Non-inferiority test",
+"def": "A test of whether a change is no worse than a pre-set margin, H0: Δ ≤ −m. The right framing for launches meant to save cost or latency.",
+"see": "ai-experiments"
+},
+{
+"term": "Pre-registration",
+"def": "Writing down the hypothesis, primary metric, analysis plan, and decision rule, timestamped, before seeing the data, so exploratory findings cannot be passed off as planned tests.",
+"see": "ai-experiments"
+},
+{
+"term": "Analysis plan",
+"def": "The pre-specified estimand, test, variance method, covariates, error control and look schedule, exclusions, segments, and decision rule for an experiment.",
+"see": "ai-experiments"
+},
+{
+"term": "Blinding",
+"def": "Hiding which system produced an output from raters (and ideally from analysts) so expectations cannot influence the judgments.",
+"see": "ai-experiments"
+},
+{
+"term": "Rater calibration",
+"def": "Training and checking human raters against a rubric, worked examples, and gold items so their judgments are consistent with each other and stable over time.",
+"see": "ai-experiments"
+}
+]
