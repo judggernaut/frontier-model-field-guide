@@ -247,6 +247,9 @@ svg.mjx-svg{overflow:visible}
 /* ---------- figures ---------- */
 figure{margin:20px 0 24px;padding:14px;background:var(--figbg);border:1px solid var(--border);border-radius:calc(var(--radius) + 2px);max-width:100%;box-shadow:var(--shadow-xs)}
 figure img{display:block;width:100%;height:auto;border-radius:4px}
+figure.svgfig{background:var(--card)}
+figure.svgfig svg{display:block;width:100%;height:auto}
+figure.svgfig figcaption{color:var(--muted)}
 figcaption{font-size:13px;color:#535A57;margin-top:10px;line-height:1.55}
 
 .zoo{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:0 0 24px;background:var(--card)}
