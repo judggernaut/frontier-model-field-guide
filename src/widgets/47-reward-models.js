@@ -97,3 +97,44 @@ G.widget('w-rm-oo', function (root) {
   G.on([sq, sk], 'input', draw);
   return draw;
 });
+
+/* Best-of-N with an imperfect, length-biased reward model */
+G.widget('w-rm-bon', function (root) {
+  var rs = G.$(root, '#bn-rho'), bs = G.$(root, '#bn-b'), cv = G.$(root, 'canvas');
+  var Ns = [1, 2, 4, 8, 16, 32, 64, 128, 256], P_ = 300, M = 256;
+  // fixed draws so the curves move smoothly with the sliders
+  var r = G.rng(47), Q = [], L = [], E = [];
+  for (var p = 0; p < P_; p++) { var q = [], l = [], e = []; for (var i = 0; i < M; i++) { q.push(G.gauss(r)); l.push(G.gauss(r)); e.push(G.gauss(r)); } Q.push(q); L.push(l); E.push(e); }
+  function draw() {
+    var rho = +rs.value, b = +bs.value, P = G.pal();
+    G.$(root, '#bn-rho-o').textContent = G.fmt(rho, 2); G.$(root, '#bn-b-o').textContent = G.fmt(b, 1);
+    var noise = Math.sqrt(Math.max(0, 1 - rho * rho));
+    var gold = [], proxy = [];
+    Ns.forEach(function (N) {
+      var g = 0, s = 0;
+      for (var p = 0; p < P_; p++) {
+        var best = -1e9, bi = 0;
+        for (var i = 0; i < N; i++) { var sc = rho * Q[p][i] + noise * E[p][i] + b * L[p][i]; if (sc > best) { best = sc; bi = i; } }
+        var pad = Math.max(0, L[p][bi]); g += Q[p][bi] - 0.5 * pad * pad;   // true quality: content minus a growing penalty for padding
+        s += best;
+      }
+      gold.push(g / P_); proxy.push(s / P_);
+    });
+    var c = G.canvas(cv, 240), ctx = c.ctx, lo = Math.min(-0.5, Math.min.apply(null, gold) - 0.1), hi = Math.max.apply(null, proxy.concat(gold)) + 0.2;
+    var ax = G.axes(ctx, c.w, c.h, { l: 44, r: 16, t: 14, b: 34 }, { x: [0, 8], y: [lo, hi], xt: [0, 1, 2, 3, 4, 5, 6, 7, 8], xf: function (t) { return String(Ns[t]); }, yt: [0, 1, 2, 3].filter(function (t) { return t >= lo && t <= hi; }), xl: 'N candidates per prompt (log scale)', yl: 'mean score of the pick' });
+    G.line(ctx, proxy.map(function (v, i) { return [ax.X(i), ax.Y(v)]; }), P.lead, 2.5, [6, 4]);
+    G.line(ctx, gold.map(function (v, i) { return [ax.X(i), ax.Y(v)]; }), P.accent, 2.5);
+    var bi = 0; gold.forEach(function (v, i) { if (v > gold[bi]) bi = i; });
+    G.dot(ctx, ax.X(bi), ax.Y(gold[bi]), 6, P.accent, P.surface);
+    G.text(ctx, 'reward model score', ax.X(8) - 4, ax.Y(proxy[8]) - 12, P.lead, 'right', 12);
+    G.text(ctx, 'true quality', ax.X(8) - 4, ax.Y(gold[8]) - 14, P.accent, 'right', 12);
+    G.$(root, '[data-q1]').textContent = G.fmt(gold[0], 2);
+    G.$(root, '[data-best]').textContent = 'N = ' + Ns[bi];
+    G.$(root, '[data-q256]').textContent = G.fmt(gold[8], 2);
+    G.$(root, '[data-out]').textContent = bi === Ns.length - 1
+      ? 'True quality keeps rising up to N = 256: the reward model is safe to push this hard. Its own score rises faster, so the gap between the two curves is the part of each gain that is not real.'
+      : 'True quality peaks at N = ' + Ns[bi] + ' and then falls: beyond that, extra candidates mostly give the reward model more padded answers to prefer. The reward model\u2019s own score keeps rising, so it cannot tell you where to stop. Only a gold signal can.';
+  }
+  G.on([rs, bs], 'input', draw);
+  return draw;
+});

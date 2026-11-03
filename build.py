@@ -183,7 +183,7 @@ def main(pdf=False, secret=False):
 
     if secret:
         page = page.replace(f'<span class="bt">{TITLE}</span>', f'<span class="bt">{TITLE} · Part VII</span>')
-    head = ('<meta name="robots" content="noindex,nofollow">\n' if secret else '') + f'<title>{TITLE}</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n<meta name="description" content="{html.escape(DESC)}">\n'
+    head = '<meta charset="utf-8">\n' + ('<meta name="robots" content="noindex,nofollow">\n' if secret else '') + f'<title>{TITLE}</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n<meta name="description" content="{html.escape(DESC)}">\n'
     frag = head + f'<style>\n{css}\n</style>\n{page}\n<script>\n{js}\n{gl_js}\n</script>\n'
     os.makedirs(DIST, exist_ok=True)
     if only:
