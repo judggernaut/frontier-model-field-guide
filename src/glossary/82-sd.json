@@ -1,0 +1,247 @@
+[
+ {
+  "term": "vLLM",
+  "def": "An open-source inference engine that serves many generate requests at once on one or more GPUs, with a paged KV cache and continuous batching.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Ray",
+  "def": "A Python library for running one program across a cluster: a driver starts actors and tasks on any node and calls them through futures.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Docker",
+  "def": "The tool that builds container images and runs containers from them, through a background service (the Docker daemon) on each node.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Kubernetes",
+  "def": "A cluster manager that keeps declared pods running on a fleet of machines and restarts what dies.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Slurm",
+  "def": "The batch scheduler of most supercomputer-style clusters: a job waits until all its nodes are free, then starts on all of them at once.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Actor (Ray)",
+  "def": "A long-lived process with state, such as an engine or a trainer rank, called through futures.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Placement group",
+  "def": "A Ray reservation of several bundles, each a set of resources that must fit on one node (such as 8 GPUs and 64 CPUs), placed together (PACK) or apart (SPREAD), all or nothing.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Ray Direct Transport (RDT)",
+  "def": "Ray's way of passing GPU tensors between actors directly over NCCL or NIXL, with only a reference going through Ray.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Gloo",
+  "def": "PyTorch's collective library for CPU tensors, used beside NCCL, for example by asynchronous checkpoints.",
+  "see": "sd-method"
+ },
+ {
+  "term": "All-or-nothing admission",
+  "def": "Start a job only when every pod or rank can run; also called gang scheduling.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Container image",
+  "def": "A frozen filesystem with code and libraries, built in layers; a container is a running instance of one, an ordinary process sharing the host kernel.",
+  "see": "sd-method"
+ },
+ {
+  "term": "System call",
+  "def": "A process's request to the operating-system kernel, such as opening a file or a socket; gVisor intercepts them, runc lets them reach the host kernel.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Namespace",
+  "def": "In Linux, a container's private view of files, processes or the network; in Kubernetes, a team's folder of objects with its own permissions.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Egress",
+  "def": "Outbound network traffic; sandboxes block it except to an internal package mirror.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Engine core, block table",
+  "def": "vLLM's scheduler-and-cache process, which runs one engine step (one forward pass over the batch) at a time; a block table lists the 16-token cache blocks that hold one request.",
+  "see": "sd-method"
+ },
+ {
+  "term": "CUDA graph",
+  "def": "A recording of an engine step's GPU kernel launches, replayed in one call; it holds fixed memory addresses, so new weights are copied in place.",
+  "see": "sd-method"
+ },
+ {
+  "term": "CUDA IPC",
+  "def": "Sharing GPU memory between processes on one machine through handles; how colocated engines read the trainer's weights.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Sleep mode",
+  "def": "vLLM freeing its GPU memory for a colocated trainer: level 1 moves the weights to CPU memory and drops the cache, level 2 drops both.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Routing replay",
+  "def": "Making the trainer use the experts the engine's MoE router chose for each token, so both compute the same function.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Pod",
+  "def": "Kubernetes' unit: one or more containers scheduled together on a node.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Operator",
+  "def": "An add-on that teaches Kubernetes a new kind of object and keeps it running, such as KubeRay (Ray clusters), JobSet (a group of pods run as one job, which Kueue admits as a gang) or LeaderWorkerSet (multi-node inference replicas).",
+  "see": "sd-method"
+ },
+ {
+  "term": "Kueue",
+  "def": "Kubernetes job queueing: quotas per ClusterQueue, borrowing within a cohort, priorities, preemption.",
+  "see": "sd-method"
+ },
+ {
+  "term": "NCCL",
+  "def": "NVIDIA's collective library (all-reduce, broadcast, all-gather) over NVLink and the network.",
+  "see": "sd-method"
+ },
+ {
+  "term": "RDMA",
+  "def": "One machine's network card (NIC) reading or writing another machine's memory directly, without either CPU; InfiniBand (a dedicated cluster network) and RoCE (RDMA over Ethernet) carry it.",
+  "see": "sd-method"
+ },
+ {
+  "term": "NIXL",
+  "def": "NVIDIA's library for moving tensors directly between GPUs, across machines over RDMA; used for KV-cache transfer and weight sync.",
+  "see": "sd-method"
+ },
+ {
+  "term": "DeviceMesh",
+  "def": "PyTorch's n-dimensional grid of ranks with named dimensions, such as replicate, shard and tp.",
+  "see": "sd-method"
+ },
+ {
+  "term": "DTensor",
+  "def": "A tensor that knows how it is split or replicated across a DeviceMesh; FSDP2 parameters are DTensors.",
+  "see": "sd-method"
+ },
+ {
+  "term": "FSDP2",
+  "def": "<code>fully_shard</code>: shard parameters, gradients and optimizer state across data-parallel ranks, gathering one block at a time.",
+  "see": "sd-method"
+ },
+ {
+  "term": "HSDP",
+  "def": "Hybrid sharding: shard within a group of GPUs, replicate across groups, all-reduce gradient shards between them.",
+  "see": "sd-method"
+ },
+ {
+  "term": "DCP",
+  "def": "PyTorch Distributed Checkpoint: each rank saves its shards in parallel; loads reshard to a new layout.",
+  "see": "sd-method"
+ },
+ {
+  "term": "TP, EP, PP, CP",
+  "def": "Tensor, expert, pipeline and context parallelism; <a class=\"ext\" href=\"https://claude.ai/artifact/AbUPRz8w2pURfYbthYsiBn#s2\" rel=\"noopener\" target=\"_blank\">Field Guide §2</a> covers each.",
+  "see": "sd-method"
+ },
+ {
+  "term": "MTBF",
+  "def": "Mean time between failures; for a job, the per-GPU value divided by the number of GPUs.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Young–Daly interval",
+  "def": "The checkpoint interval √(2 × blocking time × MTBF) that minimizes expected lost time.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Little's law",
+  "def": "Items in a system = arrival rate × time each spends there.",
+  "see": "sd-method"
+ },
+ {
+  "term": "TTFT, TPOT",
+  "def": "Time to first token; time per output token after it.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Goodput",
+  "def": "Requests per second that meet every latency target. The Field Guide also uses it for RL: tokens that reach the loss per GPU-hour, the inverse of <a class=\"xref\" href=\"#rl-s10\">§10</a>'s GPU-hours per useful token.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Prefix cache",
+  "def": "Reusing the KV cache of a shared prefix (a system prompt, earlier turns) instead of recomputing it.",
+  "see": "sd-method"
+ },
+ {
+  "term": "P/D disaggregation",
+  "def": "Running prefill and decode on separate pools and moving the KV cache between them.",
+  "see": "sd-method"
+ },
+ {
+  "term": "KV offload",
+  "def": "Moving cache blocks to host memory or disk so they survive eviction from GPU memory.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Token-in, token-out",
+  "def": "Exchanging token IDs with the engine instead of text, so nothing is re-tokenized.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Weight version",
+  "def": "A counter bumped on every sync; the orchestrator attaches it to every generated token span.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Void sample",
+  "def": "A sample removed from training because the infrastructure failed, as distinct from a reward of zero.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Windowed FIFO",
+  "def": "Taking whichever groups have finished from a small window at the head of the submission-ordered queue (completion order inside the window, input order behind it), so batches don't skew toward short trajectories.",
+  "see": "sd-method"
+ },
+ {
+  "term": "k3 KL",
+  "def": "The low-variance KL estimator r − 1 − log r, where r is the trainer-to-engine probability ratio of a sampled token; used here to compare the two on the same tokens.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Warm pool",
+  "def": "Sandboxes started ahead of demand so a trajectory doesn't wait for start-up.",
+  "see": "sd-method"
+ },
+ {
+  "term": "runc, gVisor, Firecracker",
+  "def": "Container runtimes for the same images: runc, Docker's default, runs on the shared host kernel; gVisor answers system calls in a user-space kernel; Firecracker gives each sandbox its own small VM.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Backpressure",
+  "def": "A full stage making its upstream wait, instead of letting work pile up.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Idempotency key",
+  "def": "A request ID that makes retries safe: the second attempt returns the first result.",
+  "see": "sd-method"
+ },
+ {
+  "term": "Canary",
+  "def": "A change applied to a small part of the fleet first, or a fixed probe whose result must not change; canary log-probs are the Field Guide's parity probe.",
+  "see": "sd-method"
+ }
+]

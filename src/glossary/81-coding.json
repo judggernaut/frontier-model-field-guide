@@ -1,0 +1,8 @@
+[
+ {"term": "Dead-letter queue (DLQ)", "def": "Where a job goes after it has failed or timed out more than the allowed number of attempts, so it stops cycling through the main queue.", "see": "coding"},
+ {"term": "Write-ahead log", "def": "An append-only record of each change, made durable before the change is applied, so state can be rebuilt by replaying it after a crash.", "see": "coding"},
+ {"term": "Backfilling", "def": "Running small jobs on idle resources while a large job waits for its reservation, but only if they will finish before the reservation starts.", "see": "sd-prompts"},
+ {"term": "Gang scheduling", "def": "Starting all processes of a job together or not at all, so a job that needs eight GPUs never holds four while waiting for the rest.", "see": "sd-prompts"},
+ {"term": "Arithmetic intensity", "def": "FLOPs per byte moved from memory. Above the GPU's peak FLOP/s divided by its memory bandwidth a kernel is compute-bound; below it, memory-bound (the roofline model).", "see": "sd-prompts"},
+ {"term": "Values round", "def": "Anthropic's culture interview: reflective and hypothetical questions on ethics, disagreement and AI safety, with follow-ups on how you felt. Reported as where most candidates fail.", "see": "loops"}
+]

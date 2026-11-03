@@ -1,0 +1,87 @@
+[
+ {
+  "term": "Logical query order",
+  "def": "The order SQL clauses take effect: FROM/JOIN, WHERE, GROUP BY, HAVING, SELECT (window functions), DISTINCT, ORDER BY, LIMIT. Explains why SELECT aliases are not visible in WHERE.",
+  "see": "sql"
+ },
+ {
+  "term": "HAVING",
+  "def": "A filter on groups, applied after GROUP BY and the aggregates; WHERE filters rows before grouping.",
+  "see": "sql"
+ },
+ {
+  "term": "Window function",
+  "def": "An aggregate or ranking computed over a partition of rows while keeping every row, written f(...) OVER (PARTITION BY ... ORDER BY ...).",
+  "see": "sql"
+ },
+ {
+  "term": "Common table expression (CTE)",
+  "def": "A named subquery introduced with WITH, used to write a query as readable steps.",
+  "see": "sql"
+ },
+ {
+  "term": "Masking (outliers)",
+  "def": "An extreme value inflates the mean and standard deviation of its own group so much that a z-score rule cannot flag it; with n points |z| can never exceed (n−1)/√n.",
+  "see": "sql"
+ },
+ {
+  "term": "Cache-aside",
+  "def": "Read from the cache, fall back to the database and fill the cache on a miss; on writes update the database and delete the cache key.",
+  "see": "sysdesign"
+ },
+ {
+  "term": "Sharding",
+  "def": "Splitting data across machines by a key so writes and storage scale horizontally.",
+  "see": "sysdesign"
+ },
+ {
+  "term": "Idempotency key",
+  "def": "A client-supplied ID stored with a request's result so a retried request returns the first result instead of acting twice.",
+  "see": "sysdesign"
+ },
+ {
+  "term": "Token bucket",
+  "def": "A rate-limiting algorithm: a bucket of capacity C refills at r tokens per second and each request takes one, allowing short bursts.",
+  "see": "sysdesign"
+ },
+ {
+  "term": "Retrieval-augmented generation (RAG)",
+  "def": "Fetching relevant documents at query time and putting them in the prompt so the model can answer from them and cite them.",
+  "see": "assistant"
+ },
+ {
+  "term": "Model Context Protocol (MCP)",
+  "def": "A protocol (Anthropic, 2024) for exposing tools, resources and prompt templates from servers to model applications.",
+  "see": "assistant"
+ },
+ {
+  "term": "Faithfulness",
+  "def": "The share of an answer's claims supported by the retrieved sources; measured separately from retrieval recall and answer correctness.",
+  "see": "assistant"
+ },
+ {
+  "term": "FlashAttention",
+  "def": "An exact attention algorithm that tiles the computation in on-chip SRAM with an online softmax, avoiding writing the T×T score matrix to GPU memory.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Linear attention",
+  "def": "Attention with softmax replaced by a feature map so cost is linear in sequence length and the state is fixed-size, at some cost in recall.",
+  "see": "llm-inside"
+ },
+ {
+  "term": "Roofline model",
+  "def": "Attainable throughput is the minimum of peak FLOP/s and arithmetic intensity times memory bandwidth; the ridge point separates memory-bound from compute-bound work.",
+  "see": "inference"
+ },
+ {
+  "term": "k-means",
+  "def": "Clustering by alternately assigning points to the nearest centre and moving centres to their points' mean; a hard-assignment limit of a Gaussian mixture.",
+  "see": "learning"
+ },
+ {
+  "term": "Gaussian mixture model",
+  "def": "A density that is a weighted sum of Gaussians, fitted by expectation–maximisation with soft cluster responsibilities.",
+  "see": "learning"
+ }
+]

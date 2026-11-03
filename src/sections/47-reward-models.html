@@ -379,4 +379,36 @@ fn main() {
   <p>Human comparisons are slow and expensive. <b>RLAIF</b> uses a capable model, guided by written principles, to produce the comparisons instead. Anthropic's Constitutional AI (Bai et al. 2022) used model-generated critiques and preferences for harmlessness; Lee et al. (2023) reported RLAIF reaching parity with RLHF on summarization and dialogue tasks they tested. AI feedback scales and is consistent, but it inherits the labeling model's biases and can create a closed loop where models grade models in their own image. Most programs keep a human-labeled slice to audit the AI labels and measure drift. See <a href="#safety">safety training</a> for the constitutional approach in depth.</p>
   <div class="callout eval"><span class="tag">Eval lens</span><div>An AI labeler is an LLM judge, and should be validated like one (<a href="#judges">LLM as judge</a>): agreement and Cohen's kappa against humans on a held-out set, checks for position and length bias, and a comparison to human-human agreement. If the AI labeler agrees with humans less often than humans agree with each other, the reward model trained on its labels starts below the human ceiling.</div></div>
 </div>
+<h3 id="reward-models--applied">Applied: critiquing a reward design</h3>
+<p>A common research-design follow-up: "here is the reward you proposed; what are its weaknesses, and how would they show up in the model?" Meta's research-scientist loop asked it directly. The answer is a habit: for each term, ask what the cheapest way to score well is.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Pay a builder by the brick</span></div>
+  <p>Pay a builder per brick laid and you get many bricks, not necessarily a good wall. Every reward is a payment rule like that. The training process is a very persistent worker that will find whatever earns the most for the least effort. Critiquing a reward means imagining that worker and asking: what would they do?</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">The review checklist</span></div>
+  <ol>
+    <li><b>Cheapest path.</b> What is the laziest behaviour that scores well? (Long answers for a length-biased judge; deleting failing tests for a "tests pass" reward.)</li>
+    <li><b>Coverage.</b> What does the reward ignore? (Correct but rude; helpful but unsafe; right answer, wrong reasoning.)</li>
+    <li><b>Noise and bias.</b> How often does it disagree with a careful person, and in which direction?</li>
+    <li><b>Exploit surface.</b> Can the policy influence the scorer (format tricks, prompt injection into a judge, access to the checker)?</li>
+    <li><b>Monitoring.</b> Which held-out signal, scored differently from the training reward, will reveal hacking early?</li>
+  </ol>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Six proposals to critique</span></div>
+<details class="qa"><summary>A chatbot rewarded by an LLM judge's 1–10 helpfulness score.</summary>
+<p>Judges prefer longer, more confident, more formatted answers and their own style (<a href="#judges">LLM as judge</a>), so the policy grows verbose and over-confident. Absolute scores drift and compress near the top. Mitigate: pairwise comparisons against a reference, length-controlled scoring, a rubric with specific checks, and periodic human audits of high-reward samples.</p></details>
+<details class="qa"><summary>A coding model rewarded when the unit tests pass.</summary>
+<p>Weak tests are satisfied by special-casing inputs; with file access, the model can edit or skip tests, or exit early with a success code. Mitigate: hidden tests the policy never sees, read-only test files, sandboxing, mutation testing to check test strength, and a penalty or audit for test-file changes (<a href="#grpo">Verifiers fail too</a>).</p></details>
+<details class="qa"><summary>A math model rewarded for an exact-match final answer.</summary>
+<p>Sparse (no signal on hard problems where every sample fails), ignores reasoning so lucky guesses are rewarded, and brittle to formatting (equivalent forms marked wrong). Mitigate: a symbolic equivalence checker, curriculum by difficulty, and process supervision or reasoning audits on a sample.</p></details>
+<details class="qa"><summary>A real-time Q&amp;A chatbot rewarded by user thumbs-up.</summary>
+<p>Selection bias (few users rate, unhappy ones more often), sycophancy (agreeing earns thumbs), and short-term satisfaction over correctness. Delayed and noisy. Mitigate: treat it as one signal among several, weight by rater reliability, combine with correctness checks on verifiable questions, and watch long-term retention, as Netflix-style A/B thinking would (<a href="#abtest">A/B tests</a>).</p></details>
+<details class="qa"><summary>A safety reward: +1 for refusing any request flagged as risky.</summary>
+<p>Over-refusal: the policy learns that refusing is safe and refuses benign requests that look similar. Mitigate: a paired helpfulness reward on benign look-alikes, and track both over-refusal and harmful-compliance rates (<a href="#safety">Safety training</a>).</p></details>
+<details class="qa"><summary>A weighted sum: 0.7 × correctness + 0.3 × brevity.</summary>
+<p>The policy finds the corner where the easier term dominates (very short, sometimes wrong answers) whenever correctness is hard to earn. Weights interact with each term's scale and variance. Mitigate: make correctness a gate (brevity only counts when correct), normalise terms, and sweep the weights while watching each term separately.</p></details>
+</div>
+<div class="callout eval"><span class="tag">Eval lens</span><div>The standard defence is an evaluation the policy is not trained on: a held-out reward model or judge, human ratings on a sample, and task-specific checks. Plot training reward against the held-out score as in <a href="#reward-models">the overoptimisation chart above</a>; the step where they diverge is where hacking starts.</div></div>
 </section>

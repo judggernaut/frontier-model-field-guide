@@ -1,0 +1,10 @@
+<p>This chapter and the next three are imported from the companion <i>RL Infra System Design</i> playbook: how to answer an ML-systems design question about RL infrastructure, inference or training in 45 minutes. It assumes the algorithms from Part IV (<a href="#grpo">GRPO</a>, <a href="#rlhf">PPO</a>, <a href="#inference">inference</a>) and teaches the systems around them. Links marked “Field Guide §n” go to the companion RL Infrastructure Field Guide.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A kitchen that cooks, tastes and learns</span></div>
+  <p>RL training is a kitchen where cooks (the rollout fleet) try recipes, tasters (reward services) score each dish, and a head chef (the trainer) rewrites the recipe book after every round and hands new copies to every cook (weight sync). Every design question is the same kitchen at a different size: how many cooks, how many tasters, how long the slowest dish takes, and how fast you can hand out new recipe books.</p>
+  <p>The method: ask a few questions that change the kitchen, do the arithmetic, draw the kitchen, then dig into the part the arithmetic says will break.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What a strong answer shows</span></div>
+  <p>Scoping that finds the two or three answers that change the architecture; numbers that choose between designs rather than decorate them; a complete end-to-end design; depth on the real bottleneck; failure handling and cost raised before the interviewer asks; and a path from v1 to v3. Managers add teams, staffing and risk. The worked plan below (a 70B coding agent on 1,024 H100s) is the reference every later problem resizes.</p>
+</div>

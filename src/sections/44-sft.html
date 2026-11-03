@@ -231,4 +231,24 @@ fn main() {
   <li>Which checkpoint did we pick, and was it chosen on the same data we are now reporting? (If so, the number is optimistically biased.)</li>
   <li>If we removed the 10% lowest-quality examples, would the result change?</li>
 </ul></div></div>
+<h3 id="sft--applied">Applied: can you add a KL term during SFT?</h3>
+<p>A question from an ML-fundamentals screen, and a useful one, because the answer connects SFT to the RL chapters. Yes: you can penalise the fine-tuned model for drifting from the model you started from.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Learn the new job without forgetting the old one</span></div>
+  <p>Fine-tuning on a narrow dataset can make a model forget things it used to do well. A KL term is a leash: on every training example the model is rewarded for matching the new answers and also charged a little for every way its predictions move away from the original model's. The leash length is one number you choose.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">When it is worth the cost</span></div>
+  <p>It costs one extra forward pass of a frozen reference model per batch (about a third more compute) and memory to hold it. It pays off when you fine-tune hard on a narrow domain and must keep general behaviour, safety behaviour or calibration intact. Cheaper alternatives often do the same job: mixing general data into the SFT set, LoRA, a lower learning rate, fewer epochs. Ask to see the general-capability evals before and after, whichever method is used.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The loss and its choices</span></div>
+<div class="eq">\[ \mathcal{L}(\theta) = \underbrace{-\sum_{t \in \text{resp}} \log \pi_\theta(y_t \mid y_{&lt;t}, x)}_{\text{SFT cross-entropy}} \;+\; \beta \sum_{t \in \text{resp}} \mathrm{KL}\!\big(\pi_\theta(\cdot \mid y_{&lt;t}, x)\,\big\|\,\pi_\text{ref}(\cdot \mid y_{&lt;t}, x)\big) \]<span class="eqcap">Both terms use the same loss mask (response tokens only). \(\pi_\text{ref}\) is the frozen starting model; \(\beta\) sets the leash length. The KL is computed over the full vocabulary at each position, which is exact and cheap because both models already produce full logits.</span></div>
+<ul>
+<li><b>Direction.</b> \(\mathrm{KL}(\pi_\theta\|\pi_\text{ref})\) (reverse) penalises putting mass where the reference had little; \(\mathrm{KL}(\pi_\text{ref}\|\pi_\theta)\) (forward) penalises dropping mass the reference had, which protects coverage of old behaviours. Distillation uses the forward form for the same reason (see <a href="#distillation">Distillation</a>).</li>
+<li><b>Relation to RLHF.</b> RLHF and GRPO add the same penalty to the reward (<a href="#rlhf">RLHF and PPO</a>); DPO has it built into its derivation (<a href="#dpo">DPO</a>). In SFT it is optional because cross-entropy on good data does not push towards exploits, only towards the narrow distribution.</li>
+<li><b>On which data?</b> Applying the KL on general prompts (not just the SFT set) protects general behaviour more directly; this is close to replaying general data with the reference model as teacher.</li>
+</ul>
+</div>
+<div class="callout eval"><span class="tag">Eval lens</span><div>Report the KL to the reference alongside target-task gains and a fixed general-capability suite. A run that gains 5 points on the target and loses 3 on general evals at high KL is a different decision from one that gains 4 and loses nothing.</div></div>
 </section>

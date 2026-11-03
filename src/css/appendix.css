@@ -1,0 +1,8 @@
+/* Appendix widgets: SQL execution order */
+pre.sqlq{font-family:var(--font-mono);font-size:13px;line-height:1.7;background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:0 0 12px;white-space:pre-wrap}
+pre.sqlq .sql-todo{color:var(--faint)}
+pre.sqlq .sql-done{color:var(--fg)}
+pre.sqlq .sql-now{background:var(--accent-soft);color:var(--accent);font-weight:600;border-radius:4px;padding:1px 4px}
+tr.sql-gone td{opacity:.3;text-decoration:line-through}
+/* Roofline widget */
+#w-in-roof canvas{display:block}

@@ -232,3 +232,42 @@ G.widget('w-in-passk', function (root) {
   G.on([sn, sc, sk], 'input', draw);
   return draw;
 });
+
+/* Applied: roofline */
+G.widget('w-in-roof', function (root) {
+  var GPU = { h100: { n: 'H100', f: 989e12, bw: 3.35e12 }, h200: { n: 'H200', f: 989e12, bw: 4.8e12 }, b200: { n: 'B200', f: 2250e12, bw: 8e12 } };
+  var gs = G.$(root, '#rf-gpu'), bs = G.$(root, '#rf-b'), ds = G.$(root, '#rf-d'), cv = G.$(root, 'canvas');
+  function draw() {
+    var P = G.pal(), g = GPU[gs.value], B = Math.pow(2, +bs.value), d = +ds.value;
+    G.$(root, '#rf-b-o').textContent = B;
+    var ridge = g.f / g.bw;
+    var Imm = 2 * B * d * d / (2 * d * d + 4 * B * d);   // BF16 weight matmul [B,d]x[d,d]
+    var Ipre = 2 * 2048 * d * d / (2 * d * d + 4 * 2048 * d);
+    var Iatt = 1;                                         // decode attention: ~2 FLOPs per 2-byte KV element
+    var att = function (I) { return Math.min(g.f, I * g.bw); };
+    var c = G.canvas(cv, 260), ctx = c.ctx, pad = { l: 56, r: 16, t: 16, b: 38 };
+    var xlo = -0.3, xhi = 4, ylo = 11.5, yhi = Math.log10(5e15);
+    var X = function (I) { return pad.l + (Math.log10(I) - xlo) / (xhi - xlo) * (c.w - pad.l - pad.r); };
+    var Y = function (f) { return c.h - pad.b - (Math.log10(f) - ylo) / (yhi - ylo) * (c.h - pad.t - pad.b); };
+    ctx.strokeStyle = P.line; ctx.lineWidth = 1;
+    [1, 10, 100, 1000, 10000].forEach(function (t) { ctx.globalAlpha = .6; ctx.beginPath(); ctx.moveTo(X(t), pad.t); ctx.lineTo(X(t), c.h - pad.b); ctx.stroke(); ctx.globalAlpha = 1; G.text(ctx, G.big(t), X(t), c.h - pad.b + 12, P.faint, 'center', 11); });
+    [1e12, 1e13, 1e14, 1e15].forEach(function (t) { ctx.globalAlpha = .6; ctx.beginPath(); ctx.moveTo(pad.l, Y(t)); ctx.lineTo(c.w - pad.r, Y(t)); ctx.stroke(); ctx.globalAlpha = 1; G.text(ctx, G.fmt(t / 1e12, 0) + ' TF/s', pad.l - 6, Y(t), P.faint, 'right', 11); });
+    G.text(ctx, 'arithmetic intensity (FLOP per byte, log scale)', (pad.l + c.w - pad.r) / 2, c.h - 8, P.muted, 'center', 12);
+    var pts = []; for (var e = xlo; e <= xhi + 1e-9; e += 0.02) { var I = Math.pow(10, e); pts.push([X(I), Y(att(I))]); }
+    G.line(ctx, pts, P.fg, 2.5);
+    G.line(ctx, [[X(ridge), Y(g.f)], [X(ridge), c.h - pad.b]], P.faint, 1, [4, 4]);
+    G.text(ctx, 'ridge ≈ ' + G.fmt(ridge, 0), X(ridge) + 6, Y(g.f) + 14, P.muted, 'left', 11);
+    function pt(I, col, lab, up) { G.dot(ctx, X(I), Y(att(I)), 6, col, P.surface); G.text(ctx, lab, X(I) + (up ? -8 : 8), Y(att(I)) + (up ? -14 : 14), col, up ? 'right' : 'left', 12); }
+    pt(Iatt, P.fp, 'attention decode', false);
+    pt(Ipre, P.tp, 'prefill, 2,048 tokens', true);
+    pt(Imm, P.accent, 'decode matmul, B = ' + B, Imm < ridge);
+    G.$(root, '[data-ridge]').textContent = G.fmt(ridge, 0) + ' FLOP/B';
+    G.$(root, '[data-int]').textContent = G.fmt(Imm, Imm < 10 ? 1 : 0) + ' FLOP/B';
+    G.$(root, '[data-share]').textContent = G.pct(att(Imm) / g.f, 0);
+    G.$(root, '[data-out]').textContent = Imm < ridge
+      ? 'At batch ' + B + ' the decode matmul is memory-bound: the ' + g.n + ' reaches only ' + G.pct(att(Imm) / g.f, 0) + ' of peak because each weight byte read from memory feeds about ' + G.fmt(Imm, 0) + ' FLOPs. Batching more sequences raises intensity almost one-for-one until about B = ' + G.fmt(ridge, 0) + '.'
+      : 'At batch ' + B + ' the decode matmul is past the ridge and compute-bound. Attention over the KV cache still runs at intensity about 1, so long contexts stay memory-bound however large the batch.';
+  }
+  G.on([gs, bs, ds], 'input', draw); G.on([gs, ds], 'change', draw);
+  return draw;
+});

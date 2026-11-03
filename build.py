@@ -25,11 +25,20 @@ PARTS = [  # (first prefix, last prefix, part id, label, title, blurb)
      'How training and evaluation connect, the questions a principal asks, and the red flags to look for.'),
     (70, 79, 'part-6', 'Part VI', 'Experimental design',
      'Correlation and causation, who is really in your sample, random assignment and its alternatives, measuring the right thing with the right formula, A/B tests end to end, metrics and logging, and designing experiments for AI systems.'),
+    (80, 89, 'part-7', 'Part VII', 'Interviews: coding and system design',
+     'What frontier-lab and big-tech ML loops actually test, practical coding rounds with worked solutions, and a full method for ML-systems design rounds on RL infrastructure, inference and training.'),
     (90, 99, 'appendix', 'Appendix', 'Reference',
      'Every term in the guide, defined in a sentence or two.'),
 ]
 
 def read(p): return open(p, encoding='utf-8').read()
+
+# Part VII is private: left out of the public guide and built into its own unlisted page.
+SECRET = (80, 89)
+SECRET_PAGE = os.environ.get('GUIDE_SECRET_PAGE', 'p7-interviews-4c9e1b.html')
+def is_secret(path):
+    n = os.path.basename(path).split('-')[0]
+    return n.isdigit() and SECRET[0] <= int(n) <= SECRET[1]
 
 def part_for(prefix):
     for p in PARTS:
@@ -56,9 +65,10 @@ def fonts_css():
             out.append(f"@font-face{{font-family:'{fam}';font-style:{st};font-weight:{w};font-display:swap;src:url({b64(p, 'font/woff2')}) format('woff2')}}")
     return '\n'.join(out)
 
-def glossary_html():
+def glossary_html(ids=None):
     terms = {}
     for f in sorted(glob.glob(os.path.join(SRC, 'glossary', '*.json'))):
+        if is_secret(f): continue
         try: items = json.load(open(f, encoding='utf-8'))
         except Exception as e: print('glossary parse error', f, e); continue
         for it in items:
@@ -69,12 +79,13 @@ def glossary_html():
     rows = []
     for key in sorted(terms, key=lambda s: re.sub(r'[^a-z0-9]', '', s)):
         it = terms[key]
-        see = f' <a href="#{it["see"]}" class="small">→ section</a>' if it.get('see') else ''
+        see = f' <a href="#{it["see"]}" class="small">→ section</a>' if it.get('see') and (ids is None or it['see'] in ids) else ''
         rows.append(f'<div class="gl" data-k="{html.escape(key)}"><dt>{html.escape(it["term"])}</dt><dd>{it["def"]}{see}</dd></div>')
     return f'<p class="muted">{len(rows)} terms. Type to filter.</p><input id="glq" type="search" placeholder="Filter terms, e.g. KL" class="noprint" style="width:100%;max-width:420px;font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);margin:0 0 14px"><dl class="glossary">' + '\n'.join(rows) + '</dl>'
 
-def main(pdf=False):
+def main(pdf=False, secret=False):
     files = sorted(f for f in glob.glob(os.path.join(SRC, 'sections', '*.html')) if not os.path.basename(f).startswith('_'))
+    files = [f for f in files if is_secret(f) == secret]
     only = os.environ.get('GUIDE_ONLY')
     if only:
         keep = [x.strip() for x in only.split(',')]
@@ -86,7 +97,7 @@ def main(pdf=False):
         prefix = int(name.split('-')[0])
         part = part_for(prefix)
         s = read(f)
-        if '<!--GLOSSARY-->' in s: s = s.replace('<!--GLOSSARY-->', glossary_html())
+        if '<!--GLOSSARY-->' in s: s = s.replace('<!--GLOSSARY-->', '<!--GLOSSARY-->')
         m = re.search(r'<section\s+id="([^"]+)"([^>]*)>', s)
         if not m: print('!! no <section id> in', name); continue
         sid, attrs = m.group(1), m.group(2)
@@ -109,6 +120,15 @@ def main(pdf=False):
         toc.append(f'<li><span>{chap}</span>{html.escape(title)}</li>')
 
     content = '\n'.join(body)
+    ids = set(re.findall(r'\bid="([^"]+)"', content))
+    content = content.replace('<!--GLOSSARY-->', glossary_html(ids))
+    ids = set(re.findall(r'\bid="([^"]+)"', content)) | {'top'}
+    def fixlink(mm):
+        tgt, inner = mm.group(2), mm.group(3)
+        if tgt in ids: return mm.group(0)
+        if secret: return mm.group(1).replace(f'href="#{tgt}"', f'href="index.html#{tgt}"') + inner + '</a>'
+        return inner                      # public page: never point at the private part
+    content = re.sub(r'(<a\b[^>]*href="#([^"]+)"[^>]*>)(.*?)</a>', fixlink, content, flags=re.S)
     # inline figures
     def fig(mm):
         p = os.path.join(SRC, 'figs', mm.group(1))
@@ -118,6 +138,8 @@ def main(pdf=False):
     content = re.sub(r'src="figs/([^"]+)"', fig, content)
 
     hero = read(os.path.join(SRC, 'hero.html')) if os.path.exists(os.path.join(SRC, 'hero.html')) else ''
+    if secret:
+        hero = '<div class="hero"><h1>Part VII · Interviews</h1><p>Private companion to the <a href="index.html">Frontier Model Field Guide</a>: interview loops, coding rounds and ML-systems design. Not linked from the public guide.</p></div>'
     page = f'''<div class="topbar">
   <a class="brand" href="#top"><span class="logo">FM</span><span class="bt">{TITLE}</span></a>
   <div class="grow"><button class="searchbtn" id="searchbtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span class="t">Search the guide…</span><kbd>⌘K</kbd></button></div>
@@ -147,30 +169,41 @@ def main(pdf=False):
     mjx_css = read(tmp_css)
 
     scripts = [read(os.path.join(SRC, 'core.js'))]
-    for f in sorted(glob.glob(os.path.join(SRC, 'legacy', '*.js'))) + sorted(glob.glob(os.path.join(SRC, 'widgets', '*.js'))):
+    for f in sorted(glob.glob(os.path.join(SRC, 'legacy', '*.js'))) + [w for w in sorted(glob.glob(os.path.join(SRC, 'widgets', '*.js'))) if is_secret(w) == secret]:
         nm = os.path.relpath(f, SRC)
         scripts.append(f";(function(){{try{{\n{read(f)}\n}}catch(e){{console.error('{nm}',e)}}}})();")
     scripts.append(read(os.path.join(SRC, 'ui.js')))
     js = '\n'.join(scripts)
 
-    css = fonts_css() + '\n' + read(os.path.join(SRC, 'styles.css')) + '\n' + mjx_css + '\n' + \
+    extra_css = '\n'.join(read(f) for f in sorted(glob.glob(os.path.join(SRC, 'css', '*.css'))))
+    css = fonts_css() + '\n' + read(os.path.join(SRC, 'styles.css')) + '\n' + extra_css + '\n' + mjx_css + '\n' + \
         'mjx-container[jax="SVG"][display="true"]{overflow-x:auto;overflow-y:hidden;max-width:100%;padding:2px 0}\n' + \
         '.glossary .gl{display:grid;grid-template-columns:220px minmax(0,1fr);gap:14px;padding:9px 0;border-bottom:1px solid var(--line)}.glossary dt{font-weight:700}.glossary dd{margin:0;max-width:70ch}@media(max-width:640px){.glossary .gl{grid-template-columns:minmax(0,1fr);gap:2px}}'
     gl_js = "(function(){var q=document.getElementById('glq');if(!q)return;q.addEventListener('input',function(){var v=q.value.toLowerCase().trim();document.querySelectorAll('.glossary .gl').forEach(function(r){r.hidden=v&&r.textContent.toLowerCase().indexOf(v)<0;});});})();"
 
-    head = f'<title>{TITLE}</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n<meta name="description" content="{html.escape(DESC)}">\n'
+    if secret:
+        page = page.replace(f'<span class="bt">{TITLE}</span>', f'<span class="bt">{TITLE} · Part VII</span>')
+    head = ('<meta name="robots" content="noindex,nofollow">\n' if secret else '') + f'<title>{TITLE}</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n<meta name="description" content="{html.escape(DESC)}">\n'
     frag = head + f'<style>\n{css}\n</style>\n{page}\n<script>\n{js}\n{gl_js}\n</script>\n'
     os.makedirs(DIST, exist_ok=True)
     if only:
         full_c = '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n' + head + f'<style>\n{css}\n</style>\n</head>\n<body>\n{page}\n<script>\n{js}\n{gl_js}\n</script>\n</body>\n</html>\n'
         out = os.path.join(DIST, f'check-{tag}.html'); open(out, 'w', encoding='utf-8').write(full_c); print('check build ->', out); return
-    open(os.path.join(DIST, 'index.html'), 'w', encoding='utf-8').write(frag)
     full = '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n' + \
         head + f'<style>\n{css}\n</style>\n</head>\n<body>\n{page}\n<script>\n{js}\n{gl_js}\n</script>\n</body>\n</html>\n'
+    if secret:
+        open(os.path.join(DIST, SECRET_PAGE), 'w', encoding='utf-8').write(full)
+        print(f'built private Part VII: {chap} chapters -> dist/{SECRET_PAGE}'); return
+    open(os.path.join(DIST, 'index.html'), 'w', encoding='utf-8').write(frag)
     open(os.path.join(DIST, 'standalone.html'), 'w', encoding='utf-8').write(full)
     print(f'built {chap} chapters, {len(frag)/1e6:.2f} MB')
     if pdf:
         subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'pdf.py')], check=True)
 
 if __name__ == '__main__':
-    main(pdf='--pdf' in sys.argv)
+    only = os.environ.get('GUIDE_ONLY')
+    if only:
+        main(secret=all(k.strip().isdigit() and SECRET[0] <= int(k) <= SECRET[1] for k in only.split(',')))
+    else:
+        main(pdf='--pdf' in sys.argv)
+        main(secret=True)

@@ -381,4 +381,38 @@ fn main() {
   <div class="readout" data-out></div>
 </div>
 
+<h3 id="inference--applied">Applied: the roofline, or is this compute-bound or memory-bound?</h3>
+<p>Performance and infrastructure rounds ask candidates to reason about a matrix multiply or an inference step with a roofline model. One picture answers most of these questions: is the chip waiting on arithmetic, or on memory?</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A fast cook with a slow fridge</span></div>
+  <p>A cook can chop very fast, but every ingredient has to come from a fridge down the hall. If each ingredient needs lots of chopping, the cook is the bottleneck. If each needs one quick cut, the cook spends most of the time walking to the fridge. A GPU is the same: <b>arithmetic intensity</b> is how much work you do per byte you fetch. Generating one token for one user is "one quick cut per ingredient": the whole model is fetched from memory to do very little maths, which is why serving many users at once (batching) is so much cheaper per user.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What the roofline decides</span></div>
+  <p>It tells you which optimisation can help. Memory-bound work (decoding at small batch, attention over a long KV cache) gets faster with bigger batches, quantised weights and caches, and faster memory; buying more FLOPs does nothing. Compute-bound work (training, prefill of long prompts) gets faster with better kernels, lower precision arithmetic and more chips. Ask which side of the ridge a workload sits on before approving work to speed it up.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Intensity, the ridge, and three workloads</span></div>
+<div class="eq">\[ I = \frac{\text{FLOPs}}{\text{bytes moved}}, \qquad \text{attainable} = \min\big(\text{peak FLOP/s},\ I \times \text{bandwidth}\big), \qquad I_\text{ridge} = \frac{\text{peak FLOP/s}}{\text{bandwidth}} \]<span class="eqcap">An H100 SXM has about 989 TFLOP/s of dense BF16 and 3.35 TB/s of HBM, so the ridge is about 295 FLOP/byte. Below it, memory-bound; above it, compute-bound.</span></div>
+<p><b>A weight matmul</b> \([B, d] \times [d, d]\) in BF16: FLOPs \(2Bd^2\); bytes \(2d^2\) for weights plus \(4Bd\) for input and output. For \(B \ll d\), \(I \approx B\). So decoding a batch of \(B\) sequences has intensity about \(B\): memory-bound until \(B\) approaches 300, which is why serving engines pack as many sequences as the KV cache allows. Prefill of a 2,048-token prompt has \(B\) = 2,048 tokens: compute-bound.</p>
+<p><b>Attention during decode</b> reads every cached key and value once and does about 2 FLOPs per element: intensity near 1 regardless of batch, because each sequence has its own cache. That is why long contexts make decoding slower even at large batch, and why KV-cache size and precision matter so much.</p>
+<p><b>Sharding</b> changes the bytes term: splitting a matmul across GPUs adds communication (bytes ÷ interconnect bandwidth) that must be compared with compute time. The test is the same as for a single matmul: whichever of compute time and communication time is larger sets the speed.</p>
+</div>
+
+<div class="widget" id="w-in-roof">
+  <div class="wtitle">Roofline: where does each workload sit?</div>
+  <div class="wsub">Raise the decode batch and watch the weight-matmul point climb the slanted roof until it reaches the flat compute ceiling. Attention decode stays near the floor.</div>
+  <div class="controls">
+    <div class="ctl"><label for="rf-gpu">GPU</label><select id="rf-gpu"><option value="h100">H100 SXM</option><option value="h200">H200</option><option value="b200">B200</option></select></div>
+    <div class="ctl"><label for="rf-b">Decode batch B: <output id="rf-b-o">16</output></label><input type="range" id="rf-b" min="0" max="10" step="1" value="4"></div>
+    <div class="ctl"><label for="rf-d">Model width d</label><select id="rf-d"><option value="4096">4,096 (8B class)</option><option value="8192" selected>8,192 (70B class)</option></select></div>
+  </div>
+  <canvas></canvas>
+  <div class="cards">
+    <div class="mc"><div class="l">Ridge point</div><div class="v" data-ridge>—</div></div>
+    <div class="mc"><div class="l">Decode matmul intensity</div><div class="v" data-int>—</div></div>
+    <div class="mc"><div class="l">Attainable share of peak</div><div class="v" data-share>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
 </section>

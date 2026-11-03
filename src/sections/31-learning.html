@@ -471,4 +471,23 @@ fn main() {
 </div>
 
 <div class="callout key"><span class="tag">Key idea</span><div>Learning is a loop: forward pass to get the loss, backward pass to get every gradient at once, a small step against the gradient, repeat. Local minima matter less than one-dimensional pictures suggest because, in billions of dimensions, most flat spots are saddles and most minima are about equally good. What actually goes wrong in practice is step size, plateaus, and instability, which is why <a href="#optimization">optimisation</a> is its own chapter.</div></div>
+<h3 id="learning--applied">Applied: classical questions that still come up</h3>
+<p>ML-fundamentals rounds for research and ML engineering roles still ask a few pre-deep-learning questions: L1 against L2, and k-means against Gaussian mixtures. Each connects to the gradient-descent picture above.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Two kinds of penalty, two kinds of grouping</span></div>
+  <p><b>L1 and L2</b> are two ways of measuring size. L1 adds up absolute values (how far you walk on a city grid); L2 is straight-line distance. Used as a penalty on a model's weights, L1 pushes many weights to exactly zero, so the model uses fewer inputs; L2 shrinks every weight a little and rarely to zero.</p>
+  <p><b>k-means</b> puts each point into exactly one group, the one with the nearest centre. A <b>Gaussian mixture</b> says each point belongs to each group with some probability, and lets groups be stretched ovals of different sizes instead of equal round blobs.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Where these show up in LLM work</span></div>
+  <p>Weight decay in every LLM optimiser is L2-style regularisation (decoupled in AdamW, see <a href="#optimization">Optimisation</a>). L2-normalised embeddings make cosine similarity a dot product, which is how retrieval indexes work. Clustering embeddings with k-means is a standard step in deduplicating training data, building diverse eval sets, and finding failure clusters in production logs.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The math behind each answer</span></div>
+<p><b>L1 against L2 regularisation.</b></p>
+<div class="eq">\[ \min_w\ \mathcal{L}(w) + \lambda\|w\|_1 \quad\text{vs}\quad \min_w\ \mathcal{L}(w) + \tfrac{\lambda}{2}\|w\|_2^2 \]<span class="eqcap">L1's gradient is \(\lambda\,\mathrm{sign}(w)\), a constant push towards zero regardless of size, so small weights reach exactly zero (sparsity; the optimum sits on a corner of the L1 diamond). L2's gradient is \(\lambda w\), proportional to size, so weights shrink but rarely vanish. Bayesian view: L1 is a Laplace prior, L2 a Gaussian prior.</span></div>
+<p><b>L1 against L2 normalisation of a vector</b> divides by \(\sum|x_i|\) (entries sum to one in absolute value, like a probability vector) or by \(\sqrt{\sum x_i^2}\) (unit length, so dot products become cosines). L2 loss on errors is the mean and is sensitive to outliers; L1 loss gives the median and is robust, the same contrast as in <a href="#tails">Long tails</a>.</p>
+<p><b>k-means.</b> Minimise within-cluster squared distance \(\sum_i \|x_i - \mu_{c(i)}\|^2\) by alternating: assign each point to its nearest centre, move each centre to its points' mean. Each step lowers the objective, so it converges, but to a local optimum: initialise with k-means++ (pick centres far apart, with probability proportional to squared distance) and run several seeds. Choose \(k\) with the elbow of the objective, silhouette score, or the downstream use.</p>
+<p><b>Gaussian mixture.</b> Model \(p(x) = \sum_k \pi_k\,\mathcal{N}(x \mid \mu_k, \Sigma_k)\) and fit by expectation–maximisation: the E-step computes soft responsibilities \(r_{ik} \propto \pi_k \mathcal{N}(x_i\mid\mu_k,\Sigma_k)\); the M-step re-estimates \(\pi, \mu, \Sigma\) as responsibility-weighted averages. k-means is the limit of a GMM with equal, spherical covariances shrinking to zero, where soft responsibilities become hard assignments. Choose a GMM when clusters differ in shape or size, or when you need a probability of membership; k-means when you need speed at scale.</p>
+</div>
 </section>

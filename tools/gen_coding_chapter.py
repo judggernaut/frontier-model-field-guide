@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+# One-off generator for src/sections/81-coding.html (keeps code blocks escaped and identical to the tested versions).
+import html, os
+OUT = __import__('os').path.join(__import__('os').path.dirname(__import__('os').path.dirname(__import__('os').path.abspath(__file__))), 'src', 'sections', '81-coding.html')
+
+def code(s): return f'<pre class="code" data-lang="python"><code>{html.escape(s.strip(chr(10)), quote=False)}</code></pre>'
+
+CRAWL = r'''
+from concurrent.futures import ThreadPoolExecutor, FIRST_COMPLETED, wait
+from urllib.parse import urlsplit, urlunsplit
+
+def norm(url):
+    p = urlsplit(url)
+    return urlunsplit((p.scheme, p.netloc, p.path, p.query, ''))   # drop the #fragment
+
+def crawl(start, get_urls, workers=8):
+    start = norm(start)
+    host = urlsplit(start).hostname          # exact match: sub.alpha.com is a different host
+    seen = {start}                           # only the coordinating thread touches it: no lock
+    with ThreadPoolExecutor(workers) as pool:
+        pending = {pool.submit(get_urls, start)}
+        while pending:                       # nothing in flight and nothing queued = done
+            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            for f in done:
+                for raw in f.result():
+                    u = norm(raw)
+                    if urlsplit(u).hostname == host and u not in seen:
+                        seen.add(u)          # mark BEFORE submitting: no double fetch
+                        pending.add(pool.submit(get_urls, u))
+    return sorted(seen)
+'''
+
+CRAWL_LOCK = r'''
+import threading, queue
+
+def crawl_workers(start, get_urls, n=8):
+    start = norm(start); host = urlsplit(start).hostname
+    seen, lock, q = {start}, threading.Lock(), queue.Queue()
+    q.put(start)
+    def worker():
+        while True:
+            url = q.get()
+            if url is None: return
+            try:
+                for raw in get_urls(url):
+                    u = norm(raw)
+                    if urlsplit(u).hostname != host: continue
+                    with lock:                       # check-and-insert must be one atomic step
+                        if u in seen: continue
+                        seen.add(u)
+                    q.put(u)
+            finally:
+                q.task_done()                        # counts outstanding work for join()
+    ts = [threading.Thread(target=worker) for _ in range(n)]
+    for t in ts: t.start()
+    q.join()                                         # returns when every put has a task_done
+    for _ in ts: q.put(None)                         # poison pills stop the workers
+    for t in ts: t.join()
+    return sorted(seen)
+'''
+
+QUEUE = r'''
+import heapq, itertools
+
+class WorkQueue:
+    def __init__(self, max_attempts=3):
+        self.max_attempts, self.seq = max_attempts, itertools.count()
+        self.ready = []        # heap of (first-enqueue order, job_id): a retry keeps its place
+        self.jobs = {}         # job_id -> {state, attempts, deadline, t0}
+        self.dlq = []
+
+    def enqueue(self, jid):
+        self.jobs[jid] = dict(state="ready", attempts=0, deadline=None, t0=next(self.seq))
+        heapq.heappush(self.ready, (self.jobs[jid]["t0"], jid))
+
+    def reserve(self, now, timeout):
+        self._expire(now)
+        while self.ready:
+            _, jid = heapq.heappop(self.ready)
+            j = self.jobs[jid]
+            if j["state"] != "ready": continue           # stale heap entry, skip it
+            j.update(state="running", deadline=now + timeout); j["attempts"] += 1
+            return jid
+        return None
+
+    def complete(self, jid):
+        if self.jobs[jid]["state"] == "running": self.jobs[jid]["state"] = "done"
+
+    def fail(self, jid):
+        if self.jobs[jid]["state"] == "running": self._retry(jid)
+
+    def _retry(self, jid):
+        j = self.jobs[jid]
+        if j["attempts"] >= self.max_attempts:
+            j["state"] = "dead"; self.dlq.append(jid)
+        else:
+            j["state"] = "ready"; heapq.heappush(self.ready, (j["t0"], jid))
+
+    def _expire(self, now):                              # lazy timeouts: checked on reserve
+        for jid, j in self.jobs.items():
+            if j["state"] == "running" and now >= j["deadline"]: self._retry(jid)
+'''
+
+CYCLE = r'''
+def creates_cycle(deps, new_job, new_deps):
+    """deps: job -> jobs it waits on. Unknown ids are fine (not enqueued yet)."""
+    stack, seen = list(new_deps), set()
+    while stack:
+        d = stack.pop()
+        if d == new_job: return True                     # a path leads back to the new job
+        if d in seen: continue
+        seen.add(d); stack.extend(deps.get(d, []))
+    return False
+'''
+
+LRU = r'''
+import json, os
+from collections import OrderedDict
+
+class DurableLRU:
+    def __init__(self, cap, path):
+        self.cap, self.path, self.d = cap, path, OrderedDict()
+        if os.path.exists(path):                        # recovery = replay the log
+            with open(path) as f:
+                for line in f:
+                    try: op = json.loads(line)
+                    except json.JSONDecodeError: break  # torn final write: stop there
+                    self._apply(op)
+        self.log = open(path, "a")
+
+    def _apply(self, op):
+        if op[0] == "put":
+            self.d[op[1]] = op[2]; self.d.move_to_end(op[1])
+            if len(self.d) > self.cap: self.d.popitem(last=False)
+        elif op[0] == "get" and op[1] in self.d:
+            self.d.move_to_end(op[1])                   # recency is state too: log it
+
+    def _write(self, op):                               # write-ahead: durable, then apply
+        self.log.write(json.dumps(op) + "\n"); self.log.flush(); os.fsync(self.log.fileno())
+        self._apply(op)
+
+    def get(self, k):
+        if k not in self.d: return None
+        self._write(["get", k]); return self.d[k]
+
+    def put(self, k, v): self._write(["put", k, v])
+
+    def compact(self):                                  # bound the log: snapshot + atomic rename
+        tmp = self.path + ".tmp"
+        with open(tmp, "w") as f:
+            for k, v in self.d.items(): f.write(json.dumps(["put", k, v]) + "\n")
+            f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, self.path); self.log = open(self.path, "a")
+'''
+
+INTERP = r'''
+def first_repeat(prog):
+    """prog: ["acc +1", "jmp -3", "nop +0", ...]. Returns (index executed twice, acc) or (None, acc)."""
+    acc, pc, seen = 0, 0, set()
+    while pc != len(prog):                       # exactly one past the end = normal exit
+        if pc in seen or not 0 <= pc < len(prog): return pc, acc
+        seen.add(pc)
+        op, arg = prog[pc].split(); arg = int(arg)
+        if op == "acc": acc += arg; pc += 1
+        elif op == "jmp": pc += arg
+        else: pc += 1
+    return None, acc
+'''
+
+DIST = r'''
+from collections import Counter
+
+def distributed_mode(shards):
+    partial = [Counter(s) for s in shards]       # each worker counts its own shard
+    total = Counter()
+    for p in partial: total.update(p)            # in practice a tree reduce: log2(W) rounds
+    return total.most_common(1)[0][0]
+
+def distributed_median(shards):
+    n = sum(len(s) for s in shards); k = (n - 1) // 2          # rank of the lower median
+    lo = min(min(s) for s in shards if s); hi = max(max(s) for s in shards if s)
+    while lo < hi:                               # binary search on VALUE, not on data
+        mid = (lo + hi) // 2
+        below = sum(sum(1 for x in s if x <= mid) for s in shards)   # each worker sends one int
+        if below > k: hi = mid
+        else: lo = mid + 1
+    return lo
+'''
+
+PROF = r'''
+def to_events(samples):
+    """samples: [(t, [outer, ..., inner])]. Returns [(t, "start"|"end", frame)]."""
+    events, prev = [], []
+    for t, stack in samples + [(samples[-1][0], [])]:          # empty stack closes everything
+        i = 0
+        while i < min(len(prev), len(stack)) and prev[i] == stack[i]:
+            i += 1                                             # common prefix BY POSITION
+        for f in reversed(prev[i:]): events.append((t, "end", f))   # inner frames end first
+        for f in stack[i:]: events.append((t, "start", f))
+        prev = stack
+    return events
+
+# [A,B,C] -> [A,B,D] -> [A,E]: C ends and D starts at t=1; D and B end, E starts at t=2.
+# Recursion [f,f] -> [f]: comparing by position, only the inner f ends.
+'''
+
+MHA = r'''
+import numpy as np
+
+def mha(x, Wq, Wk, Wv, Wo, h, causal=True):
+    T, d = x.shape; dh = d // h
+    q, k, v = (x @ W for W in (Wq, Wk, Wv))
+    q, k, v = (a.reshape(T, h, dh).transpose(1, 0, 2) for a in (q, k, v))   # (h, T, dh)
+    s = q @ k.transpose(0, 2, 1) / np.sqrt(dh)                              # (h, T, T)
+    if causal:
+        s = np.where(np.triu(np.ones((T, T), bool), 1), -np.inf, s)        # no peeking ahead
+    s = s - s.max(-1, keepdims=True)                                        # stable softmax
+    p = np.exp(s); p /= p.sum(-1, keepdims=True)
+    return (p @ v).transpose(1, 0, 2).reshape(T, d) @ Wo
+# Test you can state aloud: with causal=True, mha(x[:3])[:3] equals mha(x)[:3].
+'''
+
+TOPP = r'''
+def top_p_sample(logits, p=0.9, temperature=1.0, rng=np.random.default_rng()):
+    z = logits / temperature
+    probs = np.exp(z - z.max()); probs /= probs.sum()
+    order = np.argsort(-probs)
+    cum = np.cumsum(probs[order])
+    keep = order[: np.searchsorted(cum, p) + 1]      # smallest prefix with mass >= p
+    q = probs[keep] / probs[keep].sum()              # renormalise over the nucleus
+    return keep[rng.choice(len(keep), p=q)]
+'''
+
+KMEANS = r'''
+def kmeans(X, k, iters=50, rng=np.random.default_rng(0)):
+    C = X[rng.choice(len(X), k, replace=False)]                 # k-means++ is the better init
+    for _ in range(iters):
+        lab = ((X[:, None, :] - C[None]) ** 2).sum(-1).argmin(1)   # assign: (n, k) distances
+        newC = np.array([X[lab == j].mean(0) if (lab == j).any() else C[j] for j in range(k)])
+        if np.allclose(newC, C): break                           # converged
+        C = newC
+    return C, lab
+'''
+
+COIN = r'''
+import random
+from concurrent.futures import ProcessPoolExecutor
+
+def fair(flip):
+    while True:
+        a, b = flip(), flip()
+        if a != b: return a          # P(HT) = P(TH) = p(1-p), whatever p is
+
+def estimate(n, seed):
+    rnd = random.Random(seed)        # one RNG per worker: no shared state, no lock
+    flip = lambda: rnd.random() < 0.8
+    return sum(fair(flip) for _ in range(n))
+
+def parallel_estimate(n, workers=8):
+    with ProcessPoolExecutor(workers) as ex:     # CPU-bound Python: processes, not threads
+        parts = ex.map(estimate, [n // workers] * workers, range(workers))
+    return sum(parts) / (n // workers * workers)
+'''
+
+page = f'''<section id="coding" data-title="Coding rounds">
+<h2>Coding rounds: build it, make it concurrent, make it survive</h2>
+<p>The coding rounds at frontier labs rarely ask for a clever algorithm. They hand you a small, realistic task, then keep changing the requirements: now handle duplicates, now make it concurrent, now survive a crash. This chapter works the problems candidates reported most often in 2026, with Python that runs, and names the follow-up each one invites.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A kitchen during a dinner rush</span></div>
+  <p>A puzzle interview asks whether you know a recipe. These rounds ask whether you can run a kitchen. First cook one dish correctly. Then the interviewer adds three more cooks (concurrency): who is allowed to touch the order board, and how do you know when every order is out? Then the power fails (durability): what do you write down so that you can pick up where you left off? Then a dish keeps getting sent back (retries): how many times do you try before you give up and set it aside?</p>
+  <p>The skill being scored is noticing the shared thing everyone touches, and the moment something can happen twice.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">What the rounds score</span></div>
+  <ul>
+    <li><b>Correctness on stated edge cases.</b> The crawler round lives or dies on exact hostname matching, fragment stripping and cycles. Ask about them before typing.</li>
+    <li><b>Clean extension.</b> Multi-level tasks (the CodeSignal "bank" or "in-memory database", the vLLM-like server) reward code you can extend without rewriting: one data model, small methods, no copy-paste between levels. Read the whole spec first; run the black-box tests often, because the spec is partly in the failures.</li>
+    <li><b>Concurrency judgment.</b> Name the shared state, protect it with one lock or remove it by design, and define termination. Know when threads help (I/O-bound) and when you need processes (CPU-bound Python, because of the GIL).</li>
+    <li><b>Failure semantics.</b> Timeouts, retries, dead-letter queues, write-ahead logs, idempotency. These come up in Anthropic and OpenAI rounds alike.</li>
+    <li><b>Narration.</b> Several candidates who "solved everything" were rejected. Say the plan, the invariant and the test before writing code.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">A 45-minute routine</span></div>
+<ol class="steps">
+<li><div><b>2 minutes: restate and list edge cases.</b> Inputs, outputs, what "same" means, what to do on bad input, ordering guarantees.</div></li>
+<li><div><b>3 minutes: data model and invariant.</b> One sentence: "<code>seen</code> holds every URL ever scheduled; nothing is scheduled twice."</div></li>
+<li><div><b>15 minutes: simplest correct version,</b> with a tiny test you run.</div></li>
+<li><div><b>15 minutes: the extension</b> (concurrency, persistence, retries). Change as little as possible.</div></li>
+<li><div><b>5 minutes: complexity, failure modes, what you would do in production.</b></div></li>
+</ol>
+</div>
+
+<h3>1 · Concurrent same-host web crawler</h3>
+<p>Reported as an Anthropic phone screen for senior SWE. Given <code>start_url</code> and <code>get_urls(url)</code> (slow), return every reachable URL with exactly the same hostname. Strip <code>#fragments</code> before comparing; the link graph has cycles. Part 1 is single-threaded BFS; part 2 makes fetching concurrent.</p>
+{code(CRAWL)}
+<p>The trick is structural: one coordinating thread owns <code>seen</code>, and workers only fetch. That removes the race on "check then insert" without a lock, and termination is simply "no futures pending". If the interviewer insists on worker threads that enqueue their own discoveries, the lock and the termination test come back:</p>
+{code(CRAWL_LOCK)}
+<div class="callout ask"><span class="tag">Principal asks</span><div>Why threads and not processes here? (The work is network I/O, so the GIL is released while waiting.) How would you rate-limit per host? (A semaphore or token bucket around <code>get_urls</code>.) What if the crawl is across 1,000 machines? (Partition URLs by hash, the owner of a URL decides whether it is new: the same idea as the single coordinator, sharded.) What if <code>get_urls</code> raises? (Catch per future, record the failure, do not lose termination.)</div></div>
+
+<h3>2 · Work queue with timeouts, retries, a dead-letter queue and dependencies</h3>
+<p>Reported in two OpenAI senior SWE onsites. Jobs are reserved, then completed or failed; a reservation that times out becomes eligible again; after the maximum attempts a job goes to the DLQ. A retried job keeps its original place in line, which rules out a plain FIFO.</p>
+{code(QUEUE)}
+<p>Part 2 adds dependencies: a job runs only when each dependency has finished or been dead-lettered, a dependency may not be enqueued yet, and an enqueue that would create a cycle is rejected. The cycle check is a depth-first search from the new job's dependencies looking for the new job:</p>
+{code(CYCLE)}
+<div class="callout key"><span class="tag">Key idea</span><div>Write the state machine first: <code>ready → running → done</code>, <code>running → ready</code> on fail or timeout, <code>running → dead</code> past the attempt limit. Every method is then one guarded transition, and the bugs interviewers probe (completing a job that already timed out, double-retrying) become impossible states. Lazy deletion from the heap (skip entries whose state is no longer <code>ready</code>) avoids an O(n) removal.</div></div>
+
+<h3>3 · An LRU cache that survives a crash</h3>
+<p>Reported in an Anthropic senior SWE onsite: build an LRU cache, then make its state recoverable after the process dies. The standard answer is a write-ahead log plus periodic compaction.</p>
+{code(LRU)}
+<p>Points to raise unprompted: logging <code>get</code> is required because recency is state; <code>fsync</code> per operation is slow, so batch it (group commit) and state the durability window you accept; the torn last line is expected after a crash; compaction writes a snapshot to a temporary file and swaps it in with an atomic rename. Thread safety is one lock around <code>_write</code>.</p>
+
+<h3>4 · Instruction interpreter: find the first repeated instruction</h3>
+<p>Reported as an Anthropic coding screen and, as "bootloader repair", in a Sr Staff onsite. Simulate <code>acc</code>, <code>jmp</code> and <code>nop</code>; return the first index that would run twice, or finish normally when the pointer lands exactly one past the end.</p>
+{code(INTERP)}
+<p>The usual follow-up is repair: change exactly one <code>jmp</code> to <code>nop</code> or back so the program terminates. Brute force is O(n²); the O(n) answer builds the reverse graph from the end and finds which instructions can reach termination.</p>
+
+<h3>5 · Distributed mode and median</h3>
+<p>Reported as an Anthropic infra and performance screen: about ten nodes hold 1,000 numbers between them, with <code>send</code> and <code>recv</code> primitives. The interviewer cares about bytes on the wire and how skew changes the answer.</p>
+{code(DIST)}
+<p>Mode: each node sends a histogram, so the cost is the number of distinct values, which is small for skewed data and large for uniform data; heavy hitters (Misra–Gries) cap it at the price of exactness. Median: never gather the data. Binary search on the value range costs one integer per node per round, about log₂(range) rounds; with known bounds and a sorted local shard each count is O(log n). A sampled pivot (quickselect across nodes) converges in fewer rounds.</p>
+
+<h3>6 · Profiler: from sampled call stacks to start and end events</h3>
+<p>Reported in the Anthropic infra onsite. Given stack samples at increasing timestamps, emit function start and end events.</p>
+{code(PROF)}
+<p>Compare stacks by position, not by name, or recursion breaks. State the assumption that a frame present in two consecutive samples ran continuously; the follow-up is what that hides (a function that returned and was called again between samples).</p>
+
+<h3>7 · ML coding: attention, top-p, k-means</h3>
+<p>Meta MSL and Meta Research Scientist loops asked for attention and multi-head attention forward passes; Scale AI asked for multi-head attention and top-p sampling in NumPy; Meta asked for k-means. Netflix and Scale screens open with "what is a KV cache?". The math lives in <a href="#llm-inside">Inside an LLM</a> and <a href="#inference">Inference</a>; here is the code you should be able to write in ten minutes.</p>
+{code(MHA)}
+{code(TOPP)}
+{code(KMEANS)}
+<div class="callout ask"><span class="tag">Principal asks</span><div><b>Complexity of attention?</b> O(T²·d) time and O(T²) memory per head for the scores. <b>Why is FlashAttention faster?</b> It computes the same result tile by tile in on-chip SRAM with an online softmax, so the T×T matrix is never written to HBM: fewer memory reads, not fewer FLOPs. <b>Linear attention?</b> Replace softmax(QKᵀ) with a kernel feature map φ(Q)(φ(K)ᵀV), which is O(T·d²) and can run as an RNN, at a cost in quality. <b>KV cache?</b> Keep each past token's keys and values so a decode step computes only the new token's query; memory per token is 2 × layers × KV heads × head dim × bytes.</div></div>
+
+<h3>8 · Biased coin to fair coin, then Monte Carlo, then threads</h3>
+<p>A newer Anthropic question: make a fair coin from a biased one, find a bug in provided uniform-random code, estimate something by simulation, then parallelise it.</p>
+{code(COIN)}
+<p>Each round consumes 2 flips and succeeds with probability 2p(1−p), so the expected flips per fair bit are 1/(p(1−p)), 6.25 at p = 0.8. The parallel follow-up is about independent random streams (one seeded generator per worker, never a shared one) and processes rather than threads for CPU-bound Python.</p>
+
+<h3>Formats to practise</h3>
+<div class="four">
+  <div class="tile"><h4>Multi-level spec</h4><p>Bank, in-memory DB, file store: 4 levels in 90 min. Practise reading the full spec first and designing one data model that survives all levels.</p></div>
+  <div class="tile"><h4>Unfamiliar codebase</h4><p>Fellows OA1 (vLLM-like server), OpenAI scheduler debugging, Anthropic "code with Claude". Practise tracing call paths and reading tests before editing.</p></div>
+  <div class="tile"><h4>Code review</h4><p>Netflix feature-pipeline PR with passing tests. Look for silent data problems: time zones, nulls, leakage, train–serve skew, non-idempotent writes.</p></div>
+  <div class="tile"><h4>Image or file pipeline</h4><p>Anthropic image-processing screen with Pillow: correctness first, then speed with a process pool sized to cores; explain why not threads.</p></div>
+</div>
+</section>
+'''
+open(OUT, 'w').write(page)
+print('wrote', OUT, len(page))

@@ -1,0 +1,9 @@
+<p>Each service in the reference design, built from what vLLM, PyTorch Distributed, Ray and containers on Kubernetes or Slurm provide today: what to call, what to configure, and where the library stops and your code starts.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Name the part, then say what it does here</span></div>
+  <p>Interviewers do not reward a list of product names. “We use Ray” is not an answer; “one Ray driver owns every engine, so it can pause them all before a weight update” is. Each section below gives you that second sentence for one part of the machine.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Where the libraries stop</span></div>
+  <p>vLLM generates and can be paused and updated in place; it does not tag tokens with weight versions or decide staleness. FSDP2 shards the trainer and DCP checkpoints it asynchronously; it does not know about rollouts. Ray starts and calls processes; the buffer, the staleness policy and the failure policy are your code. Sandboxes and weight sync are where most of the engineering, and most of the interview depth, sits.</p>
+</div>
