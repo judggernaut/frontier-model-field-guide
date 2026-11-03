@@ -55,7 +55,8 @@ tools/pdf.py              PDF rendering
 tools/check.py            per-chapter preview and error check
 tools/import_rl_sysdesign.py  regenerates chapters 82–85 from the RL Infra System Design HTML (framing in src/sections/_sd-intros/)
 tools/gen_sql_story.py, tools/gen_sd_story.py  regenerate the step-through stories in the appendix chapters
-tools/gen_coding_chapter.py   regenerates chapter 81 so its code blocks stay identical to the tested versions
+tools/worked/               fully worked Part VII examples: swe.py and ml.py hold tested code (run them), content_*.py hold the write-ups, build_chapters.py regenerates chapters 81, 86 and 88
+tools/reddit_fetch.py       reads Reddit posts by id through a proxy (anonymous app OAuth, sticky sessions)
 src/css/*.css             extra stylesheets appended after styles.css (rlx.css scopes the imported playbook)
 ```
 

@@ -83,5 +83,45 @@
   "term": "Gaussian mixture model",
   "def": "A density that is a weighted sum of Gaussians, fitted by expectation–maximisation with soft cluster responsibilities.",
   "see": "learning"
+ },
+ {
+  "term": "Bit and byte",
+  "def": "A bit is one binary digit; a byte is 8 bits. Network links are quoted in bits per second (10 Gb/s = 1.25 GB/s); storage and memory in bytes.",
+  "see": "sysdesign--units"
+ },
+ {
+  "term": "NDCG",
+  "def": "Normalised discounted cumulative gain: graded relevance discounted by log of position, divided by the same for the ideal ordering.",
+  "see": "classification--ranking"
+ },
+ {
+  "term": "Mean reciprocal rank (MRR)",
+  "def": "Average over queries of 1 / position of the first relevant result.",
+  "see": "classification--ranking"
+ },
+ {
+  "term": "Intersection over union (IoU)",
+  "def": "Overlap area of two boxes divided by the area of their union; a detection counts as correct above a threshold such as 0.5.",
+  "see": "classification--ranking"
+ },
+ {
+  "term": "InfoNCE",
+  "def": "Contrastive loss that treats each query's paired positive as the correct class among in-batch and mined negatives, with a temperature.",
+  "see": "assistant--embeddings"
+ },
+ {
+  "term": "Flat minimum",
+  "def": "A minimum where loss changes little when parameters move; associated with better generalisation than sharp minima.",
+  "see": "optimization--applied"
+ },
+ {
+  "term": "Linear scaling rule",
+  "def": "Scale the learning rate by k when the batch size grows by k (with warmup), keeping SGD's noise level roughly constant up to the critical batch size.",
+  "see": "optimization--applied"
+ },
+ {
+  "term": "Triton",
+  "def": "A Python-embedded language and compiler for writing GPU kernels at the level of tiles rather than threads.",
+  "see": "inference--gpu"
  }
 ]

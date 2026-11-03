@@ -395,6 +395,18 @@ fn main() {
 </div>
 
 <div class="callout eval"><span class="tag">Eval lens</span><div>Build the golden set before the system. Label, per query, which chunks are relevant and what a correct answer or action is. Then every change gets three numbers: retrieval recall@k, faithfulness, and end-task success. A change that raises one and lowers another is a trade-off to decide, not a win to report.</div></div>
+<h3 id="assistant--embeddings">Applied: training retrieval embeddings</h3>
+<p>When a design discussion reaches "we'll embed the documents", the next question is often "how would you make the embeddings better for this domain?" The answer is contrastive training.</p>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Put matching pairs close together</span></div>
+  <p>An embedding model turns text into a point on a map so that similar meanings sit close together. To teach it your domain, show it pairs that should match (a question and the passage that answers it) and pull them together, while pushing apart passages that do not match. The most useful non-matches are the tricky ones that look relevant but are not.</p>
+</div>
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">When fine-tuning embeddings pays</span></div>
+  <p>Off-the-shelf embeddings miss domain vocabulary (internal product names, legal or clinical terms). If retrieval recall@k on your golden set is the bottleneck, a few thousand labelled question–passage pairs, or pairs mined from logs, usually move it more than a bigger generator model. Check that the evaluation queries are not in the training pairs.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">InfoNCE, in-batch and hard negatives</span></div>
+<div class="eq">\[ \mathcal{L} = -\frac{1}{B}\sum_{i=1}^{B}\log\frac{\exp(q_i\cdot p_i/\tau)}{\sum_{j=1}^{B}\exp(q_i\cdot p_j/\tau)+\sum_{n}\exp(q_i\cdot p^-_{i,n}/\tau)} \]<span class="eqcap">\(q_i, p_i\) unit-length query and positive embeddings; the other positives in the batch serve as negatives (in-batch negatives); \(p^-_{i,n}\) are mined hard negatives; \(\tau\) a temperature (often 0.01–0.1) that sets how sharply near-misses are penalised.</span></div>
+<p>Larger batches give more negatives per step. Hard negatives, mined with BM25 or the current model, teach far more than random ones, but many mined "negatives" are actually relevant and unlabelled: filter them with a cross-encoder or a score margin. Duplicate passages within a batch become false negatives; deduplicate. Evaluate with recall@k and MRR (<a href="#classification--ranking">ranking metrics</a>) on held-out queries, then on end-to-end answer quality.</p>
+</div>
 <details class="qa"><summary>Interview case: "Our Claude pilot doesn't work." How do you diagnose it?</summary>
 <p>Start with discovery, not architecture: which users, which tasks, what "doesn't work" means to them (wrong answers, slow, refuses, not used), and 20 concrete failing examples. Classify each failure: retrieval missed the source, the source was retrieved but ignored or misread, the tool call failed, the task was outside what the system was built for, or the expectation was wrong. Fix the largest bucket, add those examples to the golden set, and re-measure. Report the before and after on the same set.</p></details>
 <details class="qa"><summary>Interview case: executives want an agent that acts in production systems; security is sceptical.</summary>

@@ -415,4 +415,17 @@ fn main() {
   </div>
   <div class="readout" data-out></div>
 </div>
+<h3 id="inference--gpu">Applied: GPU memory, kernels and Triton</h3>
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A desk, a bookshelf and a warehouse</span></div>
+  <p>A GPU has a tiny, very fast desk next to each group of workers, a bigger shelf shared by the whole chip, and a large but slower warehouse (the HBM). Fast code carries a block of data from the warehouse to the desk once and does as much work on it as possible before fetching the next block.</p>
+</div>
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The hierarchy, and what a kernel does with it</span></div>
+<div class="tw"><table><thead><tr><th>Level</th><th>Size (H100, approximate)</th><th>Shared by</th></tr></thead><tbody>
+<tr><td>Registers</td><td>256 KB per streaming multiprocessor (SM)</td><td>one thread each</td></tr>
+<tr><td>Shared memory / L1</td><td>up to 228 KB per SM, programmer-managed</td><td>one thread block</td></tr>
+<tr><td>L2 cache</td><td>50 MB</td><td>whole chip</td></tr>
+<tr><td>HBM</td><td>80 GB at 3.35 TB/s</td><td>whole chip</td></tr>
+</tbody></table></div>
+<p>A matmul kernel loads a tile of each input into shared memory, multiplies it many times from there, and writes the output tile once; FlashAttention applies the same idea to attention so the \(T\times T\) score matrix never reaches HBM. The roofline above says when this matters: below the ridge point, every avoided HBM byte is speed. <b>Triton</b> is a Python-embedded language for writing such kernels at the level of tiles ("blocks") rather than individual threads; its compiler handles thread mapping, memory coalescing and shared-memory staging, which is why research teams use it for custom fused kernels.</p>
+</div>
 </section>

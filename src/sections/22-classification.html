@@ -802,4 +802,27 @@ fn best_threshold(y_true: &amp;[u8], scores: &amp;[f64], c_fp: f64, c_fn: f64) -
 </table></div>
 <div class="callout warn"><span class="tag">Watch out</span><div>Your metric cannot exceed your label quality. If two humans agree at kappa 0.7 on a taxonomy, a classifier scoring 0.85 against one human's labels is not beating humans; it is fitting one annotator. Measure human-to-human agreement first and report every classifier number against that ceiling. The full decision guide is in <a href="#choosing">Which metric or test, when</a>.</div></div>
 <div class="callout eval"><span class="tag">Eval lens</span><div>Every number in this chapter is itself an estimate from a finite sample. A precision of 0.85 on 40 flagged items has a 95% interval roughly 0.71 to 0.93. Put intervals on classifier metrics the same way you would on pass rates; see <a href="#evalstats">statistics for eval sets</a> and <a href="#bigideas">sampling distributions</a>.</div></div>
+<h3 id="classification--ranking">Ranking and detection: NDCG, MRR, recall@k, IoU and mAP</h3>
+<p>Classification metrics score one decision per item. Search, recommendation, retrieval-augmented generation and object detection produce ranked lists or boxes, and use their own metrics built from the same parts.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">The first page of results is what counts</span></div>
+  <p>A search that finds the right answer at position 50 is nearly useless; at position 1 it is perfect. Ranking metrics give more credit for good results near the top. Detection is similar for pictures: a predicted box counts as a hit only if it overlaps the real object enough.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Which one to ask for</span></div>
+  <ul>
+    <li><b>Recall@k</b> for retrieval feeding an LLM: did the right passage make it into the k the model sees? If not, nothing downstream can fix it.</li>
+    <li><b>MRR</b> when there is one right answer and users take the first good result.</li>
+    <li><b>NDCG@k</b> when relevance is graded (perfect, good, fair) and order matters.</li>
+    <li><b>mAP at an IoU threshold</b> for detection. COCO-style mAP averages thresholds from 0.5 to 0.95 and is much stricter than mAP@0.5.</li>
+    <li>Offline ranking gains do not guarantee online gains: confirm with an <a href="#abtest">A/B test</a>.</li>
+  </ul>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Definitions</span></div>
+<div class="eq">\[ \text{DCG@}k=\sum_{i=1}^{k}\frac{2^{\text{rel}_i}-1}{\log_2(i+1)},\quad \text{NDCG@}k=\frac{\text{DCG@}k}{\text{IDCG@}k},\quad \text{MRR}=\frac{1}{|Q|}\sum_{q}\frac{1}{\text{rank}_q},\quad \text{recall@}k=\frac{|\text{relevant}\cap\text{top-}k|}{|\text{relevant}|} \]<span class="eqcap">\(\text{rel}_i\) is the graded relevance of the item at position \(i\); IDCG is the DCG of the best possible ordering of all relevant items (computing it from only the returned items inflates NDCG); \(\text{rank}_q\) is the position of the first relevant item for query \(q\) (contributing 0 if none).</span></div>
+<p><b>Worked example.</b> Relevances in ranked order (0, 2, 3): DCG@3 = 0 + 3/log₂3 + 7/2 = 1.89 + 3.5 = 5.39. Ideal order (3, 2, 0): 7 + 3/1.585 + 0 = 8.89. NDCG@3 = 5.39 / 8.89 = 0.61.</p>
+<div class="eq">\[ \text{IoU}(A,B)=\frac{|A\cap B|}{|A\cup B|},\qquad \text{AP}=\sum_n (r_n - r_{n-1})\,p^{\text{interp}}_n \]<span class="eqcap">Detections are sorted by score and matched greedily to unmatched ground-truth boxes with IoU above a threshold; a second detection of the same object is a false positive. \(p^{\text{interp}}\) is the precision envelope (the highest precision at any equal or higher recall). mAP averages AP over classes, and for COCO over IoU thresholds 0.5:0.05:0.95.</span></div>
+<p>Boxes (0,0,2,2) and (1,1,3,3) overlap in a 1×1 square: IoU = 1 / (4 + 4 − 1) = 1/7 ≈ 0.14, a miss at threshold 0.5. Report these metrics with intervals across queries or images, as in <a href="#intervals">Intervals and the bootstrap</a>.</p>
+</div>
 </section>

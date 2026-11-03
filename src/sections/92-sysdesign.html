@@ -41,6 +41,56 @@
   </ul>
 </div>
 
+<h3 id="sysdesign--units">Units and back-of-envelope maths</h3>
+<p>Most estimation mistakes in design rounds are unit mistakes: bits for bytes, decimal for binary prefixes, per second for per day. This section is the habit that prevents them, then four worked scale-outs.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">A bit is a single yes/no; a byte is eight of them</span></div>
+  <p>A <b>bit</b> is the smallest unit of information: one 0 or 1. A <b>byte</b> is 8 bits, enough for one letter. Network speeds are advertised in bits per second (a "1 gig" home connection is 1 gigabit per second), while files and memory are measured in bytes. So a 1 Gb/s connection moves at most 125 megabytes per second, and a 1 GB file takes at least 8 seconds on it, not 1.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Read every number with its unit</span></div>
+  <p>Lowercase <b>b</b> is bits, uppercase <b>B</b> is bytes. Mb/s or Mbps is megabits per second; MB/s is megabytes per second. A design that confuses them is off by 8×, which is the difference between "fits on one NIC" and "needs eight". Ask for the arithmetic, not just the conclusion.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">The conversion table</span></div>
+<div class="tw"><table><thead><tr><th>Unit</th><th>Means</th><th>In bytes</th></tr></thead><tbody>
+<tr><td>1 b (bit)</td><td>one binary digit</td><td class="n">1/8 B</td></tr>
+<tr><td>1 B (byte)</td><td>8 bits</td><td class="n">1 B</td></tr>
+<tr><td>1 KB / 1 MB / 1 GB / 1 TB / 1 PB (decimal, SI)</td><td>10³ / 10⁶ / 10⁹ / 10¹² / 10¹⁵ bytes</td><td>used for disks, network, cloud billing</td></tr>
+<tr><td>1 KiB / 1 MiB / 1 GiB / 1 TiB (binary)</td><td>2¹⁰ / 2²⁰ / 2³⁰ / 2⁴⁰ bytes</td><td>used for RAM; 1 GiB = 1.074 GB, 1 TiB = 1.10 TB</td></tr>
+<tr><td>1 Gb/s link</td><td>10⁹ bits per second</td><td class="n">125 MB/s</td></tr>
+<tr><td>10 / 25 / 100 / 400 Gb/s</td><td>common NIC speeds</td><td class="n">1.25 / 3.1 / 12.5 / 50 GB/s</td></tr>
+<tr><td>Usable fraction</td><td>protocol overhead, TCP, contention</td><td>plan for 70–90% of line rate</td></tr>
+</tbody></table></div>
+<div class="eq">\[ \text{time} = \frac{\text{bytes} \times 8}{\text{link in bits/s} \times \text{efficiency}}, \qquad \text{QPS}_\text{avg} = \frac{\text{events per day}}{86{,}400}, \qquad \text{QPS}_\text{peak} \approx 2\text{–}5 \times \text{QPS}_\text{avg} \]<span class="eqcap">Convert to one unit system first. 86,400 seconds per day ≈ 10⁵ is close enough for estimates: 1 million per day ≈ 12 per second.</span></div>
+<p><b>Sizes worth memorising</b> (illustrative): a character of English text ≈ 1 byte; a token ≈ 4 characters; a tweet-sized message with metadata ≈ 300 bytes; a 512-dimensional float32 embedding = 2 KB; a 1080p frame uncompressed ≈ 6 MB; a minute of 1080p video ≈ 50–100 MB compressed; a model parameter in BF16 = 2 bytes, so 70B parameters = 140 GB.</p>
+</div>
+
+<div class="widget" id="w-sd-xfer">
+  <div class="wtitle">How long does it take to move this?</div>
+  <div class="wsub">Pick a size and a link. The widget converts bits and bytes for you and shows how many parallel links you need to hit a deadline.</div>
+  <div class="controls">
+    <div class="ctl"><label for="xf-size">Data size: <output id="xf-size-o">500 GB</output></label><input type="range" id="xf-size" min="0" max="12" step="1" value="8"></div>
+    <div class="ctl"><label for="xf-link">Link</label><select id="xf-link"><option value="1e9">1 Gb/s</option><option value="1e10" selected>10 Gb/s</option><option value="2.5e10">25 Gb/s</option><option value="1e11">100 Gb/s</option><option value="4e11">400 Gb/s</option></select></div>
+    <div class="ctl"><label for="xf-eff">Usable fraction: <output id="xf-eff-o">80%</output></label><input type="range" id="xf-eff" min="0.5" max="1" step="0.05" value="0.8"></div>
+    <div class="ctl"><label for="xf-dl">Deadline</label><select id="xf-dl"><option value="60">1 minute</option><option value="600" selected>10 minutes</option><option value="3600">1 hour</option><option value="86400">1 day</option></select></div>
+  </div>
+  <div class="cards">
+    <div class="mc"><div class="l">Link in bytes</div><div class="v" data-bps>—</div></div>
+    <div class="mc"><div class="l">Time on one link</div><div class="v" data-t>—</div></div>
+    <div class="mc"><div class="l">Links needed for the deadline</div><div class="v" data-n>—</div></div>
+  </div>
+  <div class="readout" data-out></div>
+</div>
+
+<h3>Scaling out, worked</h3>
+<div class="callout example"><span class="tag">Worked problem</span><div>
+<p><b>1. Photo uploads.</b> 10M uploads/day at 3 MB each. QPS ≈ 10⁷ ÷ 86,400 ≈ 116/s average, ~400/s peak. Ingress ≈ 400 × 3 MB = 1.2 GB/s = 9.6 Gb/s at peak: one 10 Gb/s link is not enough with headroom, so spread across several front ends. Storage: 30 TB/day, ×3 replication = 90 TB/day ≈ 33 PB/year; erasure coding (1.5× instead of 3×) cuts that to ≈ 16 PB/year.</p>
+<p><b>2. Chat messages.</b> 100M users × 40 messages × 300 B = 1.2 TB/day; peak QPS ≈ 4B ÷ 86,400 × 3 ≈ 140K/s, but bandwidth is only 140K × 300 B = 42 MB/s ≈ 0.34 Gb/s. Bytes are not the problem; 30M open connections are.</p>
+<p><b>3. Model weights to a fleet.</b> 140 GB (70B in BF16) to one server over 10 Gb/s at 80%: 140 × 8 ÷ 8 = 140 s. To 100 servers from one source: 14,000 s ≈ 3.9 h; with peer-to-peer copying the time stays near 2 × 140 s.</p>
+<p><b>4. How many shards?</b> 5 TB of hot data, 200K reads/s, 20K writes/s. If one node holds 1 TB comfortably and serves 20K reads/s and 5K writes/s: storage needs 5 shards, reads 10 nodes, writes 4 primaries. The largest wins: 10 nodes (for example 5 shards × 2 replicas). Recompute at 3× growth before committing.</p>
+</div></div>
+<div class="callout warn"><span class="tag">Watch out</span><div>Three classic slips: using 1 GB/s for a "1 gig" link (it is 125 MB/s); forgetting replication when sizing storage; and sizing for the daily average instead of the peak hour.</div></div>
 <h3>The method in six steps</h3>
 <ol class="steps">
 <li><div><b>Requirements (5 min).</b> Functional: the three or four things users do. Non-functional: scale (daily users, requests per second at peak), latency, availability, consistency, durability. Write down what is out of scope.</div></li>

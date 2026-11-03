@@ -6,3 +6,6 @@ pre.sqlq .sql-now{background:var(--accent-soft);color:var(--accent);font-weight:
 tr.sql-gone td{opacity:.3;text-decoration:line-through}
 /* Roofline widget */
 #w-in-roof canvas{display:block}
+/* Worked examples (Part VII) */
+p.wk-src{color:var(--muted);font-size:14px;margin:-6px 0 10px}
+section h4{margin:22px 0 8px}

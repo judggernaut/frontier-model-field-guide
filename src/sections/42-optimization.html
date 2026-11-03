@@ -258,4 +258,25 @@ fn main() {
   <canvas></canvas>
   <div class="readout" data-out></div>
 </div>
+<h3 id="optimization--applied">Applied: noise, convexity, and flat minima</h3>
+<p>ML-fundamentals screens (NVIDIA's ran 45 minutes on exactly this) ask why stochastic gradient descent works as well as it does. Four ideas answer most of the questions.</p>
+
+<div class="layer eli5"><div class="lh"><span class="badge">Plain words</span><span class="lt">Walking downhill in fog, on a slightly different hill</span></div>
+  <p>Gradient descent walks downhill. With the whole dataset it knows the exact slope; with a small batch it guesses the slope from a few examples, so each step wobbles. The wobble is not all bad: it can shake the walker out of a small dip that is not the real bottom. And because the hill you train on is only a sample of the real one, it is safer to stop in a wide, flat valley than in a narrow pit: if the real hill is shifted a little, a wide valley is still low, a narrow pit is not.</p>
+</div>
+
+<div class="layer lead"><div class="lh"><span class="badge">For leaders</span><span class="lt">Why batch size and learning rate move together</span></div>
+  <p>Bigger batches mean fewer, steadier steps and better GPU use, but also less noise. Past a point the run needs a higher learning rate to keep the same behaviour, and very large batches can generalise slightly worse unless tuned. When a team changes batch size, ask whether they rescaled the learning rate and re-checked held-out loss, not just training loss.</p>
+</div>
+
+<div class="layer deep"><div class="lh"><span class="badge">Under the hood</span><span class="lt">Four answers, with the math</span></div>
+<p><b>1. Global optimum.</b> Gradient descent finds a point where the gradient is zero. If the loss is convex and \(L\)-smooth, a step size \(\eta \le 1/L\) converges to a global minimum, with error \(O(1/t)\); strongly convex losses converge linearly. Neural-network losses are not convex, so there is no such guarantee; in high dimensions most bad critical points are saddles rather than poor local minima, and noise helps escape them.</p>
+<p><b>2. Mini-batch noise is variance, not bias.</b></p>
+<div class="eq">\[ g_B = \frac{1}{B}\sum_{i \in B} \nabla \ell_i(\theta), \qquad \mathbb{E}[g_B] = \nabla L_\text{train}(\theta), \qquad \mathrm{Cov}[g_B] \approx \frac{\Sigma}{B} \]<span class="eqcap">A random mini-batch gradient is an unbiased estimate of the full training gradient; its noise covariance shrinks as \(1/B\). \(\Sigma\) is the per-example gradient covariance.</span></div>
+<p><b>3. Training gradient is not the population gradient.</b> \(\nabla L_\text{train}\) estimates \(\nabla L_\text{pop}\) from a finite sample, so even full-batch descent optimises a slightly wrong surface. A minimum whose loss barely changes under small perturbations of \(\theta\) (a flat minimum, small Hessian eigenvalues) keeps low loss when the surface shifts; a sharp one does not. That is the usual explanation of the generalisation gap.</p>
+<p><b>4. Batch size, learning rate and sharpness.</b> The noise SGD injects scales roughly with \(\eta / B\). More noise prevents settling into narrow basins, so smaller batches (or larger learning rates) tend to find flatter minima; very large batches tend toward sharper minima and a larger generalisation gap unless the learning rate is raised (Keskar et al. 2017). The linear scaling rule, multiply \(\eta\) by \(k\) when \(B\) grows by \(k\), with warmup, keeps \(\eta/B\) and so the noise level roughly constant (Goyal et al. 2017). It holds up to the critical batch size above.</p>
+<details class="qa"><summary>Started near a shallow local minimum: which escapes, full-batch or SGD?</summary>
+<p>Full-batch descent with a small step slides into the shallow basin and stays: the gradient there is zero. SGD's noisy steps can carry it over a low barrier into the deeper basin, with probability that rises with the noise level \(\eta/B\) and falls with the barrier height.</p></details>
+</div>
+<div class="callout eval"><span class="tag">Eval lens</span><div>Sharpness and generalisation claims are about held-out loss. When comparing runs with different batch sizes, compare at matched compute or matched tokens, and report held-out loss with seed variation, not training loss.</div></div>
 </section>
