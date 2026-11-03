@@ -13,7 +13,7 @@ window.G = (function () {
       roc: css('--roc', '#5850C8'), pr: css('--pr', '#14906A'),
       eli5: css('--eli5', '#2F6FB0'), lead: css('--lead', '#A3640F'), deep: css('--deep', '#463EAE'),
       good: css('--good', '#14906A'), warn: css('--warn', '#C0571F'),
-      series: [css('--accent', '#463EAE'), css('--tp', '#14906A'), css('--fp', '#D4552B'), css('--eli5', '#2F6FB0'), css('--fn', '#B97A18'), css('--tn', '#8A929A')]
+      series: [css('--accent', '#4E3591'), css('--lead', '#7F5F0A'), css('--fp', '#C2410C'), css('--eli5', '#2B6E80'), css('--tp', '#26774B'), css('--tn', '#AEB7B3')]
     };
   }
   function canvas(el, h) {
