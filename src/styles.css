@@ -1,55 +1,55 @@
 /* Layout: shadcn/ui docs layout. Sticky header with command search, a left sidebar of parts and chapters, one reading column.
-   Tokens follow shadcn's zinc theme (background, foreground, card, muted, border, ring, radius), extended with semantic colours
+   Tokens follow shadcn's structure on a custom palette (background, foreground, card, muted, border, ring, radius), extended with semantic colours
    for TP/FP/FN/TN and the three reading layers. Everything is plain CSS so the page stays a single self-contained file. */
 :root{
-  /* shadcn core tokens (zinc) */
-  --background:#ffffff; --foreground:#09090b; --card:#ffffff; --card-foreground:#09090b;
-  --primary:#18181b; --primary-foreground:#fafafa; --secondary:#f4f4f5; --secondary-foreground:#18181b;
-  --muted-bg:#f4f4f5; --muted-foreground:#71717a; --accent-bg:#f4f4f5; --border:#e4e4e7; --input:#e4e4e7; --ring:#a1a1aa;
-  --destructive:#dc2626; --radius:0.625rem;
-  --chart-1:#e76e50; --chart-2:#2a9d90; --chart-3:#274754; --chart-4:#e8c468; --chart-5:#f4a462;
+  /* palette: #160C28 deep purple, #EFCB68 gold, #E1EFE6 mint, #AEB7B3 sage, #000411 near-black */
+  --background:#F8FBF9; --foreground:#160C28; --card:#FFFFFF; --card-foreground:#160C28;
+  --primary:#160C28; --primary-foreground:#EFCB68; --secondary:#E1EFE6; --secondary-foreground:#160C28;
+  --muted-bg:#E1EFE6; --muted-foreground:#535A57; --accent-bg:#E9F3ED; --border:#D5DDD8; --input:#C3CCC7; --ring:#AEB7B3;
+  --destructive:#C2410C; --radius:0.625rem;
+  --chart-1:#160C28; --chart-2:#EFCB68; --chart-3:#2F7A68; --chart-4:#AEB7B3; --chart-5:#C2410C;
   /* guide tokens (read by every widget) */
-  --bg:#ffffff; --surface:#ffffff; --sunk:#f4f4f5; --fg:#09090b; --muted:#71717a; --faint:#a1a1aa; --line:#e4e4e7; --line-strong:#d4d4d8;
-  --accent:#7c3aed; --accent-soft:#f5f3ff;
-  --tp:#059669; --fp:#ea580c; --fn:#d97706; --tn:#a1a1aa; --roc:#7c3aed; --pr:#0891b2;
-  --eli5:#0284c7; --eli5-soft:#f0f9ff; --lead:#d97706; --lead-soft:#fffbeb; --deep:#7c3aed; --deep-soft:#f5f3ff;
-  --good:#059669; --good-soft:#ecfdf5; --warn:#ea580c; --warn-soft:#fff7ed; --ask:#0d9488; --ask-soft:#f0fdfa;
-  --code-bg:#fafafa; --figbg:#ffffff; --sidebar:#fafafa;
-  --hl-key:#7c3aed; --hl-str:#059669; --hl-num:#c2410c; --hl-com:#a1a1aa; --hl-fn:#2563eb; --hl-bi:#0891b2;
+  --bg:#F8FBF9; --surface:#FFFFFF; --sunk:#EEF5F0; --fg:#160C28; --muted:#535A57; --faint:#8A938F; --line:#D5DDD8; --line-strong:#AEB7B3;
+  --accent:#4E3591; --accent-soft:#EDE9F5;
+  --tp:#26774B; --fp:#C2410C; --fn:#B7791F; --tn:#AEB7B3; --roc:#4E3591; --pr:#2B6E80;
+  --eli5:#2B6E80; --eli5-soft:#E1EFE6; --lead:#7F5F0A; --lead-soft:#FBF3D9; --deep:#4E3591; --deep-soft:#EDE9F5;
+  --good:#26774B; --good-soft:#E3F1E8; --warn:#C2410C; --warn-soft:#FBEDE6; --ask:#2B6E80; --ask-soft:#E1EFE6;
+  --code-bg:#F4F9F6; --figbg:#FFFFFF; --sidebar:#F1F7F3;
+  --hl-key:#5B3FA0; --hl-str:#26774B; --hl-num:#8C6A0E; --hl-com:#8A938F; --hl-fn:#2F7A68; --hl-bi:#4E3591;
   --font-display:"Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-body:"Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono:"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --shadow-xs:0 1px 2px 0 rgb(0 0 0 / .05); --shadow-sm:0 1px 3px 0 rgb(0 0 0 / .08), 0 1px 2px -1px rgb(0 0 0 / .08);
-  --shadow-lg:0 10px 15px -3px rgb(0 0 0 / .1), 0 4px 6px -4px rgb(0 0 0 / .1);
+  --shadow-xs:0 1px 2px 0 rgb(22 12 40 / .06); --shadow-sm:0 1px 3px 0 rgb(22 12 40 / .08), 0 1px 2px -1px rgb(22 12 40 / .08);
+  --shadow-lg:0 10px 15px -3px rgb(22 12 40 / .12), 0 4px 6px -4px rgb(22 12 40 / .1);
   --ink:var(--fg); --panel:var(--surface); --blue:var(--eli5); --green:var(--good);
   --eli5-line:var(--eli5); --ask-line:var(--ask); --adv-line:var(--deep); --warn-line:var(--warn);
   --topbar-h:56px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --background:#09090b; --foreground:#fafafa; --card:#111113; --card-foreground:#fafafa;
-  --primary:#fafafa; --primary-foreground:#18181b; --secondary:#27272a; --secondary-foreground:#fafafa;
-  --muted-bg:#27272a; --muted-foreground:#a1a1aa; --accent-bg:#27272a; --border:#27272a; --input:#3f3f46; --ring:#52525b;
-  --bg:#09090b; --surface:#111113; --sunk:#1c1c1f; --fg:#fafafa; --muted:#a1a1aa; --faint:#71717a; --line:#27272a; --line-strong:#3f3f46;
-  --accent:#a78bfa; --accent-soft:#1e1730;
-  --tp:#34d399; --fp:#fb923c; --fn:#fbbf24; --tn:#71717a; --roc:#a78bfa; --pr:#22d3ee;
-  --eli5:#38bdf8; --eli5-soft:#0c1d2b; --lead:#fbbf24; --lead-soft:#251c08; --deep:#a78bfa; --deep-soft:#1e1730;
-  --good:#34d399; --good-soft:#0b231a; --warn:#fb923c; --warn-soft:#2a1609; --ask:#2dd4bf; --ask-soft:#0a2321;
-  --code-bg:#0c0c0e; --figbg:#f4f4f5; --sidebar:#0c0c0e;
-  --hl-key:#c4b5fd; --hl-str:#6ee7b7; --hl-num:#fdba74; --hl-com:#71717a; --hl-fn:#93c5fd; --hl-bi:#67e8f9;
-  --shadow-xs:0 1px 2px 0 rgb(0 0 0 / .4); --shadow-sm:0 1px 3px 0 rgb(0 0 0 / .5); --shadow-lg:0 10px 25px -3px rgb(0 0 0 / .6);
+  --background:#000411; --foreground:#E1EFE6; --card:#160C28; --card-foreground:#E1EFE6;
+  --primary:#EFCB68; --primary-foreground:#160C28; --secondary:#221637; --secondary-foreground:#E1EFE6;
+  --muted-bg:#221637; --muted-foreground:#AEB7B3; --accent-bg:#221637; --border:#2A2140; --input:#3A2F52; --ring:#AEB7B3;
+  --bg:#000411; --surface:#160C28; --sunk:#1E1433; --fg:#E1EFE6; --muted:#AEB7B3; --faint:#7D8682; --line:#2A2140; --line-strong:#3E3358;
+  --accent:#C9B8F0; --accent-soft:#221637;
+  --tp:#5CC48D; --fp:#F28C5A; --fn:#E0A43C; --tn:#6E7773; --roc:#C9B8F0; --pr:#86CBD8;
+  --eli5:#86CBD8; --eli5-soft:#0D1F26; --lead:#EFCB68; --lead-soft:#2A2312; --deep:#C9B8F0; --deep-soft:#221637;
+  --good:#5CC48D; --good-soft:#0F2419; --warn:#F28C5A; --warn-soft:#2D160C; --ask:#86CBD8; --ask-soft:#0D1F26;
+  --code-bg:#0A0716; --figbg:#F1F7F3; --sidebar:#070A18;
+  --hl-key:#C9B8F0; --hl-str:#8FD9B0; --hl-num:#EFCB68; --hl-com:#6E7773; --hl-fn:#7FCFB5; --hl-bi:#E1EFE6;
+  --shadow-xs:0 1px 2px 0 rgb(0 0 0 / .45); --shadow-sm:0 1px 3px 0 rgb(0 0 0 / .55); --shadow-lg:0 10px 25px -3px rgb(0 0 0 / .65);
   color-scheme:dark}}
 :root[data-theme="dark"]{
-  --background:#09090b; --foreground:#fafafa; --card:#111113; --card-foreground:#fafafa;
-  --primary:#fafafa; --primary-foreground:#18181b; --secondary:#27272a; --secondary-foreground:#fafafa;
-  --muted-bg:#27272a; --muted-foreground:#a1a1aa; --accent-bg:#27272a; --border:#27272a; --input:#3f3f46; --ring:#52525b;
-  --bg:#09090b; --surface:#111113; --sunk:#1c1c1f; --fg:#fafafa; --muted:#a1a1aa; --faint:#71717a; --line:#27272a; --line-strong:#3f3f46;
-  --accent:#a78bfa; --accent-soft:#1e1730;
-  --tp:#34d399; --fp:#fb923c; --fn:#fbbf24; --tn:#71717a; --roc:#a78bfa; --pr:#22d3ee;
-  --eli5:#38bdf8; --eli5-soft:#0c1d2b; --lead:#fbbf24; --lead-soft:#251c08; --deep:#a78bfa; --deep-soft:#1e1730;
-  --good:#34d399; --good-soft:#0b231a; --warn:#fb923c; --warn-soft:#2a1609; --ask:#2dd4bf; --ask-soft:#0a2321;
-  --code-bg:#0c0c0e; --figbg:#f4f4f5; --sidebar:#0c0c0e;
-  --hl-key:#c4b5fd; --hl-str:#6ee7b7; --hl-num:#fdba74; --hl-com:#71717a; --hl-fn:#93c5fd; --hl-bi:#67e8f9;
-  --shadow-xs:0 1px 2px 0 rgb(0 0 0 / .4); --shadow-sm:0 1px 3px 0 rgb(0 0 0 / .5); --shadow-lg:0 10px 25px -3px rgb(0 0 0 / .6);
+  --background:#000411; --foreground:#E1EFE6; --card:#160C28; --card-foreground:#E1EFE6;
+  --primary:#EFCB68; --primary-foreground:#160C28; --secondary:#221637; --secondary-foreground:#E1EFE6;
+  --muted-bg:#221637; --muted-foreground:#AEB7B3; --accent-bg:#221637; --border:#2A2140; --input:#3A2F52; --ring:#AEB7B3;
+  --bg:#000411; --surface:#160C28; --sunk:#1E1433; --fg:#E1EFE6; --muted:#AEB7B3; --faint:#7D8682; --line:#2A2140; --line-strong:#3E3358;
+  --accent:#C9B8F0; --accent-soft:#221637;
+  --tp:#5CC48D; --fp:#F28C5A; --fn:#E0A43C; --tn:#6E7773; --roc:#C9B8F0; --pr:#86CBD8;
+  --eli5:#86CBD8; --eli5-soft:#0D1F26; --lead:#EFCB68; --lead-soft:#2A2312; --deep:#C9B8F0; --deep-soft:#221637;
+  --good:#5CC48D; --good-soft:#0F2419; --warn:#F28C5A; --warn-soft:#2D160C; --ask:#86CBD8; --ask-soft:#0D1F26;
+  --code-bg:#0A0716; --figbg:#F1F7F3; --sidebar:#070A18;
+  --hl-key:#C9B8F0; --hl-str:#8FD9B0; --hl-num:#EFCB68; --hl-com:#6E7773; --hl-fn:#7FCFB5; --hl-bi:#E1EFE6;
+  --shadow-xs:0 1px 2px 0 rgb(0 0 0 / .45); --shadow-sm:0 1px 3px 0 rgb(0 0 0 / .55); --shadow-lg:0 10px 25px -3px rgb(0 0 0 / .65);
   color-scheme:dark}
 
 *{box-sizing:border-box;border-color:var(--border)}
@@ -247,7 +247,7 @@ svg.mjx-svg{overflow:visible}
 /* ---------- figures ---------- */
 figure{margin:20px 0 24px;padding:14px;background:var(--figbg);border:1px solid var(--border);border-radius:calc(var(--radius) + 2px);max-width:100%;box-shadow:var(--shadow-xs)}
 figure img{display:block;width:100%;height:auto;border-radius:4px}
-figcaption{font-size:13px;color:#52525b;margin-top:10px;line-height:1.55}
+figcaption{font-size:13px;color:#535A57;margin-top:10px;line-height:1.55}
 
 .zoo{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:0 0 24px;background:var(--card)}
 .zrow{display:grid;grid-template-columns:112px minmax(0,1fr);gap:14px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:15px}
@@ -368,7 +368,7 @@ details.qa>*:not(summary){margin-bottom:14px}
 #glq{width:100%;max-width:420px;font:inherit;height:38px;padding:0 12px;border-radius:calc(var(--radius) - 2px);border:1px solid var(--input);background:var(--background);color:var(--foreground);margin:0 0 14px;box-shadow:var(--shadow-xs)}
 
 /* ---------- command menu ---------- */
-.cmdk{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:12vh 16px 16px;background:rgb(0 0 0 / .45);backdrop-filter:blur(2px)}
+.cmdk{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:12vh 16px 16px;background:rgb(0 4 17 / .5);backdrop-filter:blur(2px)}
 .cmdk[hidden]{display:none}
 .cmdk .box{width:100%;max-width:620px;background:var(--card);border:1px solid var(--border);border-radius:calc(var(--radius) + 4px);box-shadow:var(--shadow-lg);overflow:hidden;animation:pop .16s cubic-bezier(.4,0,.2,1)}
 @keyframes pop{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:none}}
@@ -419,7 +419,7 @@ footer.site{margin-top:40px;padding:24px 0 0;border-top:1px solid var(--border);
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
 
 @media print{
-  :root{--background:#fff;--bg:#fff;--surface:#fff;--card:#fff;--sunk:#f4f4f5;--sidebar:#fafafa}
+  :root{--background:#fff;--bg:#fff;--surface:#fff;--card:#fff;--sunk:#EEF5F0;--sidebar:#F1F7F3}
   body{font-size:10.5pt;background:#fff;line-height:1.6}
   body::before{display:none}
   .topbar,nav.rail,.noprint,.controls,.btnrow,.layers,.cmdk,.copy,.story .nav,.ltabs>.tl{display:none!important}
@@ -432,12 +432,12 @@ footer.site{margin-top:40px;padding:24px 0 0;border-top:1px solid var(--border);
   figure,table,.callout,.eq,.zoo,.tile,.cards,.mc,.story .step{page-break-inside:avoid}
   .widget,.story,.ltabs,.layer{box-shadow:none}
   .widget{page-break-inside:avoid}
-  .wtitle::after{content:"(shown at its default setting)";font-size:11px;font-weight:400;color:#888}
-  .ltabs>.layer{display:block!important;border-top:1px solid #e4e4e7}
+  .wtitle::after{content:"(shown at its default setting)";font-size:11px;font-weight:400;color:#6E7773}
+  .ltabs>.layer{display:block!important;border-top:1px solid #D5DDD8}
   .ltabs>.layer:first-of-type{border-top:0}
   .ltabs>.layer>.lh .badge{display:inline-flex}
   .story .stage{display:block}
-  .story .step{display:block!important;opacity:1!important;visibility:visible!important;border-bottom:1px solid #e4e4e7}
+  .story .step{display:block!important;opacity:1!important;visibility:visible!important;border-bottom:1px solid #D5DDD8}
   .story .step .a{opacity:1!important;animation:none!important}
   .story .step .grow-x{transform:none!important;animation:none!important}
   .story .capbox{display:none}
@@ -452,6 +452,6 @@ footer.site{margin-top:40px;padding:24px 0 0;border-top:1px solid var(--border);
   .ptoc{page-break-after:always;padding-top:10px}
   .ptoc ol{list-style:none;padding:0;columns:2;column-gap:28px;font-size:10pt}
   .ptoc li{margin:0 0 3px;break-inside:avoid}
-  .ptoc li span{display:inline-block;min-width:22px;color:#888;font-family:var(--font-mono);font-size:9pt}
+  .ptoc li span{display:inline-block;min-width:22px;color:#6E7773;font-family:var(--font-mono);font-size:9pt}
   .ptoc li.tp{font-weight:700;margin-top:10px}
 }
